@@ -1,0 +1,19 @@
+root = true
+
+[*]
+charset = utf-8
+
+# Addon di terze parti (GodotSteam + gluecode C# generato): silenzia i warning di
+# nullability sul codice generato senza indebolire l'analisi sul nostro codice.
+[addons/**.cs]
+dotnet_diagnostic.CS0618.severity = none
+dotnet_diagnostic.CS8600.severity = none
+dotnet_diagnostic.CS8601.severity = none
+dotnet_diagnostic.CS8602.severity = none
+dotnet_diagnostic.CS8603.severity = none
+dotnet_diagnostic.CS8604.severity = none
+dotnet_diagnostic.CS8618.severity = none
+dotnet_diagnostic.CS8619.severity = none
+dotnet_diagnostic.CS8620.severity = none
+dotnet_diagnostic.CS8625.severity = none
+dotnet_diagnostic.CS8765.severity = none

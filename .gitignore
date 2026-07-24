@@ -1,0 +1,19 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# .NET / C#
+.mono/
+bin/
+obj/
+*.csproj.user
+
+# Godot export output
+/export/
+export_presets.cfg
+
+# Steam: l'AppID puo' differire tra dev e produzione (vedi CLAUDE.md §10)
+steam_appid.txt
+
+# Copie temporanee create da Godot durante l'hot-reload delle librerie native
+addons/**/~*
