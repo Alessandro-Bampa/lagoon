@@ -17,6 +17,11 @@ public partial class GameManager : Node
 
     public GamePhase CurrentPhase { get; private set; } = GamePhase.MainMenu;
 
+    /// True quando una UI modale (menu di pausa/impostazioni) ha il controllo dell'input.
+    /// NON si usa GetTree().Paused: in multiplayer fermerebbe solo il peer locale, desincronizzandolo
+    /// dagli altri (CLAUDE.md §3). Il mondo continua a girare, viene bloccato solo l'input di gameplay.
+    public bool UiModalOpen { get; set; }
+
     public void SetPhase(GamePhase phase)
     {
         CurrentPhase = phase;

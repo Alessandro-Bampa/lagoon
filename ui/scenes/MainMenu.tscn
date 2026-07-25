@@ -54,6 +54,11 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Join (Locale ENet)"
 
+[node name="SettingsButton" type="Button" parent="Center/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Impostazioni"
+
 [node name="StatusLabel" type="Label" parent="Center/VBox"]
 unique_name_in_owner = true
 layout_mode = 2

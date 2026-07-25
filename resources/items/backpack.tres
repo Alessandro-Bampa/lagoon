@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://inventory/scripts/ItemDefinition.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+ItemId = "backpack"
+DisplayName = "Zaino"
+Width = 2
+Height = 3
+Weight = 2.0
+Category = 2
+EquipSlot = 6
+IsContainer = true
+ContainerColumns = 5
+ContainerRows = 5
+MaxStack = 1
+QuickUsable = false

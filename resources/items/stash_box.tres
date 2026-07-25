@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ItemDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://inventory/scripts/ItemDefinition.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+ItemId = "stash_box"
+DisplayName = "Baule"
+Width = 5
+Height = 4
+Weight = 35.0
+Category = 2
+EquipSlot = 0
+IsContainer = true
+ContainerColumns = 8
+ContainerRows = 6
+MaxStack = 1
+QuickUsable = false
+UnpackYields = ""
+UnpackCount = 0
+WorldAnchored = true

@@ -1,9 +1,11 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://player/scripts/PlayerController.cs" id="1"]
 [ext_resource type="Script" path="res://player/scripts/PlayerInput.cs" id="2"]
 [ext_resource type="Script" path="res://player/scripts/PlayerNetworkSync.cs" id="3"]
 [ext_resource type="PackedScene" path="res://player/scenes/PlayerCamera.tscn" id="4"]
+[ext_resource type="Script" path="res://inventory/scripts/PlayerInventory.cs" id="5"]
+[ext_resource type="Script" path="res://inventory/scripts/PlayerHud.cs" id="6"]
 
 [sub_resource type="CapsuleShape3D" id="Shape_1"]
 radius = 0.5
@@ -50,3 +52,9 @@ root_path = NodePath("..")
 replication_config = SubResource("Repl_1")
 
 [node name="PlayerCamera" parent="." instance=ExtResource("4")]
+
+[node name="Inventory" type="Node" parent="."]
+script = ExtResource("5")
+
+[node name="Hud" type="Node" parent="."]
+script = ExtResource("6")

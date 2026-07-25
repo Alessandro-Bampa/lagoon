@@ -1,6 +1,6 @@
 # CLAUDE.md — Guida operativa per Claude Code
 
-Questo file è il punto di riferimento permanente per qualunque sessione di Claude Code su questo progetto. Va letto per intero prima di iniziare a scrivere codice. Se una decisione presa qui viene cambiata durante lo sviluppo, **aggiorna questo file nello stesso commit**: è la fonte di verità architetturale del progetto, non un documento statico.
+Questo file è il punto di riferimento permanente per qualunque sessione di Claude Code su questo progetto. Va letto per intero prima di iniziare a scrivere codice. Se una decisione presa qui viene cambiata durante lo sviluppo, **aggiorna questo file nello stesso commit**: è la fonte di verità architetturale del progetto, non un documento statico. Se ci sono soluzioni migliori che vanno contro questo documento interroga l'utente su come agire.
 
 ---
 
@@ -13,10 +13,6 @@ RPG open world cooperativo, visuale isometrica dall'alto, ambientazione survival
 - Sistema di quest.
 - Sistema di costruzione e personalizzazione di una base.
 - Multiplayer cooperativo fino a 4 giocatori, architettura **Listen Server / Host-Player** (nessun server dedicato nella fase attuale).
-
-Questo documento copre **solo la fase di prototipazione iniziale**: movimento, inventario, shooting. Quest e base-building sono previsti nello scaffolding (cartelle riservate) ma non vanno implementati finché le fondamenta non sono solide — vedi §9.
-
-> Nota di design ereditata da una sessione di analisi precedente: l'architettura Client-Server unificata è stata scelta deliberatamente per poter passare in futuro a un server dedicato (per una modalità con più giocatori) senza riscritture, pagando fin da subito un ~15-20% di codice in più per feature. Questo principio guida ogni decisione tecnica in questo file: **si scrive sempre codice "server-authoritative", anche quando in singleplayer il client E il server sono lo stesso processo.**
 
 ---
 
@@ -31,14 +27,6 @@ Questo documento copre **solo la fase di prototipazione iniziale**: movimento, i
 | Fisica | **Jolt Physics** | Motore fisico di default da Godot 4.6+, necessario per veicoli e fisica dei corpi rigidi (vedi §9.3 e rischi in §12). |
 | Networking | **GodotSteam** (GDExtension) + **GodotSteam C# Bindings** (addon di terze parti, non ufficiale) | Vedi §8: GodotSteam upstream NON supporta C# nativamente, serve un layer di binding separato. |
 | Piattaforma target | Windows/Linux desktop via Steam | Nessun target mobile/web per ora: irrilevante con GodotSteam. |
-
-### Setup ambiente (una tantum)
-1. Installa Godot 4.7 **.NET**, non la build standard.
-2. Installa .NET SDK 8.0 o superiore.
-3. Installa GodotSteam (GDExtension) nella versione compatibile con Godot 4.7.
-4. Installa l'addon `GodotSteam C# Bindings` (repo `LauraWebdev/GodotSteam_CSharpBindings`) in `addons/`.
-5. Crea `steam_appid.txt` nella root con **480** (AppID di test "Spacewar") finché non esiste un AppID reale registrato su Steamworks. Questo file **non va committato** con un AppID di produzione: vedi `.gitignore`.
-6. `Project > Tools > C# > Create C# Solution` per generare la `.sln`/`.csproj`.
 
 ---
 
@@ -89,10 +77,6 @@ public partial class EnemyController : CharacterBody3D
 - Usa `[Rpc]` per eventi discreti "estetici o d'intento" (spara, riproduci animazione, riproduci suono), mai per calcolare direttamente il risultato sul client.
 - In singleplayer/dev locale, l'host È sempre l'autorità (`IsMultiplayerAuthority()` è sempre vero se non c'è multiplayer attivo): il codice non cambia tra singleplayer e multiplayer, per costruzione.
 
-### Cosa NON fare in questa fase (rimandato volutamente)
-- Lag compensation / rewind per gli hitbox: da introdurre solo quando lo shooting prototype è stabile (vedi rischio in §12).
-- Host migration: non previsto nel prototipo. Se l'host esce, la sessione termina. Documentare questa limitazione nel README, non nasconderla.
-- Server dedicato / scaling oltre 4 giocatori: fuori scope.
 
 ---
 
@@ -199,7 +183,6 @@ Crea questa struttura alla root del progetto Godot. I nomi delle cartelle in `sc
 - **Niente logica di gameplay in `_Ready`/`_Process` senza guardia di autorità** quando il nodo è multiplayer-aware (vedi §3).
 - **Evita singleton "statici" C# per lo stato di gioco.** Usa Autoload di Godot: sono già singleton, si integrano con la scene tree e sono ispezionabili dal debugger.
 - **Ogni oggetto raccoglibile/equipaggiabile è un `Resource` (`ItemDefinition`), non una scena duplicata per oggetto**, salvo che serva un comportamento visivo unico nel mondo.
-- **Commenti in italiano o inglese, a scelta, ma coerenti all'interno dello stesso file.** Non mischiare le due lingue nello stesso blocco di commento.
 
 ---
 
@@ -218,38 +201,23 @@ Crea questa struttura alla root del progetto Godot. I nomi delle cartelle in `sc
 
 ---
 
-## 7. Camera e visuale isometrica — decisione di default
+## 7. Sistema di scala della UI e menu impostazioni
 
-Non è stato specificato se il mondo sia 3D con camera isometrica o 2D con proiezione isometrica via tile/sprite. **Assunzione di lavoro**: mondo **3D reale** (necessario per veicoli, fisica Jolt, occlusione naturale, coerente con l'ambientazione S.T.A.L.K.E.R.), con `Camera3D` in **proiezione ortogonale**, angolo fisso (es. 45° yaw / ~35-40° pitch, stile Diablo/Path of Exile), non una camera libera. Se questa assunzione è sbagliata rispetto alla visione del gioco, correggila subito in `player/scenes/PlayerCamera.tscn` prima di costruire altri sistemi sopra: il tipo di camera influenza il design degli hitbox e della UI dell'inventario.
+Regola: **la UI ha dimensione in pixel fissa; sono gli ancoraggi a riposizionarla, non lo scaling automatico dell'engine.**
 
----
+### 7.1 Pixel fissi + ancoraggio dinamico
+- Risoluzione base di riferimento **1920×1080**, dichiarata in `project.godot` insieme a `window/stretch/mode="disabled"`, `window/stretch/aspect="expand"`, `window/stretch/scale=1.0`. Con lo stretch disabilitato un pannello di 100×100 resta 100×100 pixel fisici a qualunque risoluzione: passando a 2K/4K la finestra guadagna spazio e gli elementi si ridistribuiscono lungo i bordi anziché ingrandirsi.
+- Di conseguenza **ogni elemento va ancorato, non posizionato**: `LayoutPreset` (`TopLeft`, `BottomWide`, `FullRect`, `CenterContainer` per i pannelli modali) + `MarginContainer` per la distanza costante dal bordo + `HBox`/`VBox` per l'ordinamento interno. Niente coordinate assolute — unica eccezione dichiarata: le finestre pop-up trascinabili (`FloatingWindow`), posizionabili dall'utente per definizione, che vengono comunque *clampate* dentro l'area visibile.
+- Le griglie in pixel (`GridPanelView.CellSize = 48`, `HotbarSlotView.SlotSize = 56`) dichiarano solo `CustomMinimumSize`: non scrivere mai `Size` a mano su un `Control` dentro un container o con anchor impostati.
+- L'unica leva di scala è **`Window.ContentScaleFactor`** sulla finestra root, esposta come slider **"Scala UI"** (0.75×–2.0×). È il meccanismo documentato da Godot per questo scenario: con stretch `disabled`, `scale = 2.0` significa "1 unità della scena = 2×2 pixel". Poiché agisce sul viewport, **tutto l'albero 2D continua a lavorare in coordinate logiche 1:1**: la matematica in pixel dell'inventario (hit-test in `GridPanelView.CellAt`, rect di `PlayerHud.SyncHudRect`) resta valida senza modifiche.
+- **Eccezione da ricordare**: i `PopupMenu` sono `Window` separate e non ereditano il fattore della root. Ogni popup creato in codice va passato a `SettingsService.ApplyToPopup(...)`.
 
-## 8. Roadmap dei prototipi (ordine vincolante)
-
-Non passare alla fase successiva finché quella corrente non gira in **multi-istanza locale** (vedi §10) con almeno 2 finestre, una Host e una Client.
-
-### Fase 1 — Movimento  ✅ implementata
-- `CharacterBody3D` per il player, input locale solo sul proprio peer.
-- Sincronizzazione posizione/rotazione via `MultiplayerSynchronizer`.
-- Camera isometrica fissa che segue il player locale (§7).
-- Criterio di completamento: 2+ istanze locali si vedono muovere reciprocamente senza scatti evidenti (interpolazione base sui client remoti).
-- **Scelta implementativa**: il movimento è *client-authoritative* — ogni peer è autorità del PROPRIO avatar e ne replica lo stato (coerente con "input locale solo sul proprio peer"). Non viola §3: danno/inventario/nemici (Fasi 2/3) restano server-authoritative. La validazione server dell'input di movimento è rimandata come la lag-compensation (§12).
-- **Test**: usa il trasporto `LocalEnet` dal menu (Host/Join Locale) per verificare le 2 istanze sullo stesso PC; il path Steam richiede gli addon installati (`addons/README-STEAM.md`). File principali: `autoload/NetworkManager.cs`, `player/`, `world/scenes/Main.tscn`, `ui/scenes/MainMenu.tscn`.
-
-### Fase 2 — Inventario (stile Tarkov)
-- Griglia con dimensioni item (celle occupate), non solo slot singoli.
-- Peso totale e limite di carico.
-- Almeno un container annidato (es. zaino) oltre all'inventario base.
-- Logica di stato (aggiungi/rimuovi/sposta item) **autoritativa lato host**, UI aggiornata via replicazione, seguendo lo stesso pattern di §3.
-- Criterio di completamento: raccogliere/spostare/droppare un item funziona correttamente per un client non-host senza desync visibile.
-
-### Fase 3 — Shooting
-- Arma semplice hitscan (no proiettile fisico per iniziare).
-- Danno calcolato **solo** lato host (`RequestHit` pattern di §3).
-- Hitbox su `CharacterBody3D`/`Area3D` del nemico placeholder (cubo/capsula, nessun asset finale necessario).
-- Criterio di completamento: un client non-host spara e vede l'HP del bersaglio aggiornarsi coerentemente per tutti i peer.
-
-> Solo dopo che le tre fasi sono complete e testate in multi-istanza, si passa a IA nemica avanzata, quest e base building — che richiedono l'inventario e il combattimento già stabili come fondamenta.
+### 7.2 Menu di pausa (ESC)
+- **ESC** (azione `toggle_menu`) apre `ui/scenes/PauseMenu.tscn`: pagina radice (Riprendi / Impostazioni / Esci dalla partita / Esci dal gioco) e sotto-pagina Impostazioni con **Scala UI, Schermo intero, VSync, Volumi (Master/Musica/Effetti)**. ESC dentro le Impostazioni torna alla pagina radice invece di chiudere tutto.
+- Vive nel `CanvasLayer` `UI` di `world/scenes/Main.tscn`, portato a `layer = 20` perché `PlayerHud` crea a runtime il proprio `CanvasLayer` a `layer = 10`. Lo stesso pannello è raggiungibile dal `MainMenu` (`Open(settingsOnly: true)`), così le opzioni esistono anche prima di entrare in partita.
+- `autoload/SettingsService.cs` è l'unico proprietario dei valori: li carica/salva su `user://settings.cfg` (`ConfigFile`) e li applica (`ContentScaleFactor`, `DisplayServer`, `AudioServer`). La UI non tocca mai direttamente i server. I bus audio `Master/Music/SFX` sono definiti in `default_bus_layout.tres` (nessuna sorgente sonora esiste ancora: i bus servono perché gli slider abbiano un bersaglio reale).
+- **Il menu NON mette in pausa l'albero.** `GetTree().Paused` fermerebbe solo il peer locale desincronizzandolo dagli altri (§3). Il mondo continua a girare; è sospeso solo l'input locale di gameplay, tramite il flag `GameManager.UiModalOpen` letto da `PlayerInput.ReadMovement()` e `PlayerHud._Input()`.
+- **Limite noto accettato**: "Esci dalla partita" chiude il processo. Il `NetworkManager` non supporta una disconnessione pulita con ritorno al menu principale (coerente con l'assenza di host migration); da implementare insieme a quella.
 
 ---
 
@@ -258,37 +226,16 @@ Non passare alla fase successiva finché quella corrente non gira in **multi-ist
 Setup scelto: scaffolding essenziale, niente pipeline CI/CD per ora. Il testing è manuale ma va fatto in modo sistematico:
 
 1. **Multi-istanza locale**: `Project Settings > Debug > Run Multiple Instances` impostato su almeno 2-3. Ogni feature multiplayer va verificata con più finestre della stessa build, non solo in singola istanza.
-2. **Test manuale per ogni fase**: prima di considerare una fase conclusa, verifica esplicitamente il criterio di completamento elencato in §8, non solo "sembra funzionare da host".
+2. **Test manuale per ogni fase**: prima di considerare una fase conclusa, verifica esplicitamente il criterio di completamento per la feature o fix da implementare.
 3. Non introdurre test automatici/GdUnit in questa fase: è stato deciso di privilegiare velocità di prototipazione. Rivalutare quando i tre sistemi base sono stabili.
-
----
-
-## 10. Git e workflow
-
-- `.gitignore` deve includere almeno: `.godot/`, `.mono/`, `bin/`, `obj/`, `*.csproj.user`, cartelle di export, e **`steam_appid.txt`** (contiene un AppID che può differire tra ambienti dev/produzione).
-- Commit piccoli e per sistema (un commit che tocca `inventory/` non dovrebbe toccare anche `combat/`, salvo refactor condivisi dichiarati come tali nel messaggio).
-- Messaggi di commit in italiano o inglese, purché descrivano il *comportamento* cambiato, non il file toccato (es. "Aggiunge validazione host su pickup item", non "Modifica InventoryGrid.cs").
 
 ---
 
 ## 11. Come deve comportarsi Claude Code su questo progetto
 
 - **Non violare mai il principio di §3** (autorità server-side) per "far funzionare prima una demo": è la decisione architetturale fondante del progetto, discussa e validata esplicitamente. Se una scorciatoia sembra necessaria, segnalalo esplicitamente invece di implementarla silenziosamente.
-- **Non generare codice per `quests/` o `building/`** finché non richiesto esplicitamente: sono cartelle riservate, vedi §4 e §8.
-- **Non introdurre nuove dipendenze/addon** (altri plugin di rete, asset store, librerie di terze parti) senza segnalarlo prima: lo stack è stato scelto deliberatamente (§2) e ogni aggiunta va valutata per compatibilità con GodotSteam C# bindings.
+- **Puoi introdurre nuove dipendenze/addon se disponibili senza sviluppare da zero una feature** (altri plugin, asset store, librerie di terze parti) segnalandolo; ogni aggiunta va valutata per compatibilità con Godot 4.7, C# e le altre librerie già installate.
 - **Preferisci placeholder geometrici** (cubi, capsule, sfere) ad asset finali per tutta la fase di prototipazione: nessuna richiesta di arte/asset in questa fase.
-- **Aggiorna questo file** quando una decisione qui documentata cambia (es. cambio di camera, cambio libreria di rete, nuova fase aggiunta alla roadmap).
 - **Quando un'implementazione richiede una scelta di design non specificata qui**, applica lo stesso approccio del §7: dichiara l'assunzione esplicitamente nel codice/commit, poi procedi — non bloccarti per ogni dettaglio minore.
-- **Se una feature richiesta rischia di violare uno dei "rischi noti" in §12, segnalalo prima di procedere**, anche se non è stato esplicitamente richiesto di evitarlo.
 
 ---
-
-## 12. Rischi noti e debiti tecnici accettati consapevolmente
-
-Da tenere presente per non essere sorpresi in fasi successive (derivati da un'analisi architetturale precedente al prototipo):
-
-- **Vantaggio strutturale dell'host nello shooting**: l'host ha latenza zero verso se stesso, i client remoti no. Nella Fase 3 questo sarà visibile come "colpi persi" percepiti dai client non-host. La lag compensation (rewind lato server al momento dello sparo) è rimandata volutamente: da implementare solo dopo che il pattern base di §3 è stabile, non prima.
-- **Host migration non implementata**: se l'host chiude il gioco, la sessione termina per tutti. Accettato come limite del prototipo.
-- **Fisica dei veicoli non affrontata in questa fase**: quando arriverà (fuori scope per Fasi 1-3), la sincronizzazione andrà pensata con interpolazione/estrapolazione lato client, perché la fisica di Jolt non è garantita deterministica al 100% tra macchine diverse — non si può semplicemente "calcolarla sull'host e sincronizzare lo stato" come per un danno scalare.
-- **Nessun test automatico**: scelta esplicita per velocità in questa fase (§9). Da rivalutare quando il codice di rete diventa più complesso (es. prima di Fase 3 avanzata o di IA/quest).
-- **Movimento client-authoritative in Fase 1**: ogni peer calcola e replica la posizione del proprio avatar; l'host non rivalida l'input di movimento. Accettato per un prototipo co-op fidato; da irrobustire (validazione/riconciliazione lato host) se/quando servirà. Non intacca l'autorità server su danno, inventario e IA.

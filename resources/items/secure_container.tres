@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ItemDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://inventory/scripts/ItemDefinition.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+ItemId = "secure_container"
+DisplayName = "Contenitore sicuro"
+Width = 2
+Height = 2
+Weight = 0.4
+Category = 2
+EquipSlot = 10
+IsContainer = true
+ContainerColumns = 2
+ContainerRows = 2
+MaxStack = 1
+QuickUsable = false
+UnpackYields = ""
+UnpackCount = 0
+WorldAnchored = false

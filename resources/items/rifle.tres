@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ItemDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://inventory/scripts/ItemDefinition.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+ItemId = "rifle"
+DisplayName = "Fucile d'assalto"
+Width = 5
+Height = 2
+Weight = 3.5
+Category = 3
+EquipSlot = 7
+IsContainer = false
+ContainerColumns = 0
+ContainerRows = 0
+MaxStack = 1
+QuickUsable = false

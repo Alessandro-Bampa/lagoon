@@ -26,6 +26,11 @@ public partial class MainMenu : Control
         GetNode<Button>("%HostLocalButton").Pressed += () => StartHost(NetworkManager.TransportMode.LocalEnet);
         GetNode<Button>("%JoinLocalButton").Pressed += () => StartJoin(NetworkManager.TransportMode.LocalEnet);
 
+        // Le opzioni (fra cui la scala UI) servono anche prima di entrare in partita: riusa lo
+        // stesso pannello del menu di pausa, aperto direttamente sulla pagina Impostazioni.
+        GetNode<Button>("%SettingsButton").Pressed += () =>
+            GetParent().GetNode<PauseMenu>("PauseMenu").Open(settingsOnly: true);
+
         _network.HostStarted += OnHostStarted;
         _network.ClientConnected += OnClientConnected;
         _network.NetworkFailed += OnNetworkFailed;
@@ -50,11 +55,17 @@ public partial class MainMenu : Control
         _status.Text = lobbyId > 0
             ? $"Host Steam attivo. Lobby ID: {lobbyId}"
             : "Host locale attivo (127.0.0.1).";
-        Hide();
+        EnterGame();
     }
 
     private void OnClientConnected()
     {
+        EnterGame();
+    }
+
+    private void EnterGame()
+    {
+        GetNode<GameManager>("/root/GameManager").SetPhase(GameManager.GamePhase.InGame);
         Hide();
     }
 
