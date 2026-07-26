@@ -1,4 +1,6 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="PackedScene" path="res://combat/scenes/TargetDummy.tscn" id="1"]
 
 [sub_resource type="BoxShape3D" id="Shape_1"]
 size = Vector3(40, 1, 40)
@@ -23,6 +25,8 @@ tonemap_mode = 2
 [node name="TestLevel" type="Node3D"]
 
 [node name="Floor" type="StaticBody3D" parent="."]
+collision_layer = 1
+collision_mask = 1
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
@@ -39,3 +43,12 @@ shadow_enabled = true
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Env_1")
+
+[node name="TargetDummyA" parent="." instance=ExtResource("1")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 8)
+
+[node name="TargetDummyB" parent="." instance=ExtResource("1")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, 10)
+
+[node name="TargetDummyC" parent="." instance=ExtResource("1")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0, 10)

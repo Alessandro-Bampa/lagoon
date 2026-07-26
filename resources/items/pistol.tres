@@ -1,6 +1,6 @@
-[gd_resource type="Resource" script_class="ItemDefinition" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="WeaponDefinition" load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://inventory/scripts/ItemDefinition.cs" id="1"]
+[ext_resource type="Script" path="res://combat/scripts/WeaponDefinition.cs" id="1"]
 
 [resource]
 script = ExtResource("1")
@@ -16,3 +16,23 @@ ContainerColumns = 0
 ContainerRows = 0
 MaxStack = 1
 QuickUsable = false
+Damage = 18
+FalloffStartMeters = 10.0
+MinDamageFactor = 0.35
+Penetration = 0
+Caliber = "9x19"
+EffectiveRangeMeters = 18.0
+MaxRangeMeters = 35.0
+BaseSpreadDegrees = 1.2
+SpreadPerRangeDegrees = 4.0
+MaxSpreadDegrees = 10.0
+RecoilPerShotDegrees = 1.0
+RecoilRecoveryDegreesPerSecond = 6.0
+MaxRecoilSpreadDegrees = 4.0
+CameraKick = 0.04
+RoundsPerMinute = 380.0
+Automatic = false
+MagazineSize = 12
+ReloadSeconds = 1.6
+AmmoItemId = "ammo"
+ProjectileSpeed = 340.0

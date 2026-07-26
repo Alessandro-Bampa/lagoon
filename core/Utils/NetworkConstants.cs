@@ -8,7 +8,7 @@ public static class NetworkConstants
     /// Porta usata dal trasporto ENet locale (fallback dev per test multi-istanza).
     public const int DefaultPort = 27015;
 
-    /// AppID di test "Spacewar" di Valve, usato finche' non esiste un AppID reale (CLAUDE.md §6).
+    /// AppID di test "Spacewar" di Valve, usato finche' non esiste un AppID reale (vedi la skill steam-networking).
     public const uint SteamAppId = 480;
 
     /// Limite di giocatori del prototipo (CLAUDE.md §1: co-op fino a 4).

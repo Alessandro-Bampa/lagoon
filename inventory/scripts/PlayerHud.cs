@@ -34,6 +34,14 @@ public partial class PlayerHud : Node
     // Pickup attualmente evidenziato col prompt.
     private ItemPickup? _prompted;
 
+    /// <summary>
+    /// True se la schermata inventario e' aperta. Serve al sistema di tiro: a inventario aperto il
+    /// cursore appartiene al drag &amp; drop, quindi reticolo e input di combattimento tacciono, ed e'
+    /// anche il discriminante che disambigua il tasto R (rotazione vs ricarica) — vedi
+    /// <see cref="WeaponInput"/>.
+    /// </summary>
+    public bool InventoryOpen => _screen is { Visible: true };
+
     public override void _Ready()
     {
         // Il Player root ha autorita' = peer proprietario: vero solo sull'istanza locale.
@@ -64,6 +72,8 @@ public partial class PlayerHud : Node
         _hotbar = new Hotbar(_inventory);
         _hudRoot.AddChild(_hotbar);
 
+        AddCombatHud();
+
         SyncHudRect();
         GetTree().Root.SizeChanged += SyncHudRect;
 
@@ -84,6 +94,28 @@ public partial class PlayerHud : Node
         GetTree().Root.SizeChanged -= SyncHudRect;
         if (_settings != null)
             _settings.UiScaleChanged -= OnUiScaleChanged;
+    }
+
+    /// <summary>
+    /// Aggiunge reticolo e pannello arma/salute (Fase 3). Vivono qui e non in una scena propria
+    /// perche' condividono il <c>_hudRoot</c> gia' sincronizzato col viewport, ed esistono solo per
+    /// l'avatar locale come tutto il resto della HUD.
+    /// </summary>
+    private void AddCombatHud()
+    {
+        Node parent = GetParent();
+        var weapon = parent.GetNodeOrNull<WeaponController>("Weapon");
+        var weaponInput = parent.GetNodeOrNull<WeaponInput>("WeaponInput");
+        var camera = parent.GetNodeOrNull<IsometricCamera>("PlayerCamera");
+        var health = parent.GetNodeOrNull<HealthComponent>("Health");
+
+        if (weapon == null || health == null || _hudRoot == null)
+            return;
+
+        _hudRoot.AddChild(new WeaponHudPanel(weapon, health));
+
+        if (weaponInput != null && camera != null)
+            _hudRoot.AddChild(new CrosshairOverlay(weapon, weaponInput, camera, _game, this));
     }
 
     private void OnUiScaleChanged(float scale) => SyncHudRect();
@@ -216,7 +248,10 @@ public partial class PlayerHud : Node
             return;
         }
 
-        if (@event.IsActionPressed("rotate_item"))
+        // R e' legato a DUE azioni: "rotate_item" qui e "reload" in WeaponInput. La disambiguazione
+        // e' la visibilita' dell'inventario: consumiamo l'evento solo a schermata aperta, cosi' a
+        // inventario chiuso resta unhandled e raggiunge _UnhandledInput di WeaponInput.
+        if (InventoryOpen && @event.IsActionPressed("rotate_item"))
         {
             _screen?.ToggleRotation();
             GetViewport().SetInputAsHandled();

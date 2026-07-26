@@ -20,6 +20,13 @@ public partial class PlayerInventory : Node
     [Signal]
     public delegate void InventoryChangedEventHandler();
 
+    /// Emesso SULL'HOST a ogni push dello stato autoritativo. Serve ai sistemi host-side che
+    /// dipendono dal contenuto dell'inventario — il <see cref="WeaponController"/> lo usa per
+    /// ricalcolare le munizioni di riserva e per rivalidare l'arma impugnata quando questa viene
+    /// spostata o lasciata cadere.
+    [Signal]
+    public delegate void HostStateChangedEventHandler();
+
     /// Distanza massima entro cui l'host accetta interazioni col mondo (raccolta, saccheggio).
     public const float PickupRange = 3.5f;
 
@@ -61,7 +68,10 @@ public partial class PlayerInventory : Node
         GiveById("backpack", 1);         // slot Zaino libero -> auto-equip
         GiveById("secure_container", 1); // slot Contenitore Sicuro
         GiveById("medkit", 1);
-        GiveById("ammo", 30);
+        // Armi: slot WeaponPrimary/Sidearm liberi -> auto-equip, pronte da impugnare con 1 e 3.
+        GiveById("rifle", 1);
+        GiveById("pistol", 1);
+        GiveById("ammo", 60);
         PushState();
     }
 
@@ -218,6 +228,10 @@ public partial class PlayerInventory : Node
     //  Push dello stato + replica
     // ====================================================================================
 
+    /// Versione pubblica di <see cref="PushState"/>, per i sistemi host-side che mutano l'inventario
+    /// dall'esterno (es. la ricarica dell'arma, che consuma munizioni dalle griglie).
+    public void HostPushState() => PushState();
+
     private void PushState()
     {
         GDDict data = Model.Serialize();
@@ -225,6 +239,9 @@ public partial class PlayerInventory : Node
             SyncFullState(data); // il proprietario e' l'host stesso: aggiorna in locale
         else
             RpcId(_ownerPeerId, MethodName.SyncFullState, data);
+
+        // Notifica host-side: lo stato autoritativo e' cambiato, chi ne dipende si riallinei.
+        EmitSignal(SignalName.HostStateChanged);
     }
 
     [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]

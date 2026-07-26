@@ -12,7 +12,7 @@ obj/
 /export/
 export_presets.cfg
 
-# Steam: l'AppID puo' differire tra dev e produzione (vedi CLAUDE.md §10)
+# Steam: l'AppID puo' differire tra dev e produzione (vedi la skill steam-networking)
 steam_appid.txt
 
 # Copie temporanee create da Godot durante l'hot-reload delle librerie native

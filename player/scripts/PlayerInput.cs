@@ -20,7 +20,7 @@ public partial class PlayerInput : Node
     }
 
     /// Vettore di movimento su piano XZ: X = destra/sinistra, Y = giu'/su (schermo).
-    /// Ritorna zero se questo non e' il peer proprietario (input solo sul proprio peer, §8)
+    /// Ritorna zero se questo non e' il peer proprietario (input solo sul proprio peer, §3)
     /// oppure se una UI modale (menu di pausa) sta assorbendo l'input locale.
     public Vector2 ReadMovement()
     {

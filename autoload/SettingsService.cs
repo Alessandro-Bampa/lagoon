@@ -7,7 +7,7 @@ namespace Lagoon;
 /// applicarli: la UI (<see cref="PauseMenu"/>) legge e scrive queste proprieta', non tocca mai
 /// direttamente <c>DisplayServer</c> o <c>AudioServer</c>.
 ///
-/// Scala della UI: il progetto usa stretch "disabled" (UI a dimensione pixel fissa, CLAUDE.md §7),
+/// Scala della UI: il progetto usa stretch "disabled" (UI a dimensione pixel fissa, vedi la skill ui-hud),
 /// quindi l'unica leva di scala e' <c>Window.ContentScaleFactor</c> sulla finestra root. Con lo
 /// stretch disabilitato Godot lo interpreta come "1 unita' della scena = N pixel fisici": e' la via
 /// documentata per offrire uno slider "Scala UI" senza toccare i singoli nodi. Di conseguenza

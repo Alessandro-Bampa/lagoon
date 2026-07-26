@@ -15,9 +15,9 @@ namespace Lagoon;
 ///    e' presente. I nomi di metodi/segnali seguono le convenzioni GodotSteam 4.x e vanno
 ///    verificati contro la versione installata (vedi CLAUDE.md, gap 4.6.1 <-> 4.20.1).
 ///  - <see cref="TransportMode.LocalEnet"/>: fallback dev (ENet su 127.0.0.1) per testare piu'
-///    istanze sullo stesso PC (CLAUDE.md §9/§10) senza Steam.
+///    istanze sullo stesso PC (CLAUDE.md §6) senza Steam.
 ///
-/// NB (CLAUDE.md §12): host migration NON implementata. Se l'host esce, la sessione termina.
+/// NB: host migration NON implementata. Se l'host esce, la sessione termina.
 /// </summary>
 public partial class NetworkManager : Node
 {
@@ -386,7 +386,7 @@ public partial class NetworkManager : Node
 
     private void OnServerDisconnected()
     {
-        // Host uscito: nel prototipo la sessione termina (niente host migration, §12).
+        // Host uscito: nel prototipo la sessione termina (niente host migration).
         Fail("L'host ha chiuso la sessione.");
         Multiplayer.MultiplayerPeer = null;
         _gameManager.SetPhase(GameManager.GamePhase.MainMenu);

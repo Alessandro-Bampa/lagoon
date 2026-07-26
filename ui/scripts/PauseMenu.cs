@@ -5,7 +5,7 @@ namespace Lagoon;
 /// <summary>
 /// Menu di pausa (ESC) con sotto-pagina Impostazioni. E' il punto in cui il giocatore regola la
 /// <b>Scala UI</b>: il progetto usa una UI a dimensione pixel fissa (stretch "disabled",
-/// CLAUDE.md §7), quindi su schermi ad alta risoluzione serve una leva esplicita per ingrandirla.
+/// vedi la skill ui-hud), quindi su schermi ad alta risoluzione serve una leva esplicita per ingrandirla.
 ///
 /// NON mette in pausa l'albero: in multiplayer <c>GetTree().Paused</c> fermerebbe solo questo peer
 /// desincronizzandolo dagli altri (CLAUDE.md §3). Il mondo continua a girare dietro il menu; a
@@ -130,7 +130,7 @@ public partial class PauseMenu : Control
     {
         // La disconnessione pulita (ritorno al MainMenu, despawn dei player) non e' ancora
         // supportata dal NetworkManager: chiudere il processo e' l'unica uscita coerente.
-        // Vedi CLAUDE.md §12 (host migration / uscita dalla sessione non implementate).
+        // Vedi la skill ui-hud (host migration / uscita dalla sessione non implementate).
         GetTree().Quit();
     }
 

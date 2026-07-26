@@ -10,7 +10,8 @@ namespace Lagoon;
 ///
 /// Nota di design (Fase 1): il movimento e' client-authoritative — ogni peer e' autorita' del
 /// PROPRIO avatar e ne replica la posizione. La validazione server-side dell'input (anti-cheat)
-/// e' rimandata, come la lag-compensation (CLAUDE.md §12). Le fasi 2/3 (inventario, danno) restano
+/// e' rimandata, come la lag-compensation (vedi la skill combat-shooting). Le fasi 2/3
+/// (inventario, danno) restano
 /// invece pienamente server-authoritative.
 /// </summary>
 public partial class PlayerController : CharacterBody3D
@@ -21,7 +22,7 @@ public partial class PlayerController : CharacterBody3D
     /// Fattore di interpolazione per gli avatar remoti (piu' alto = piu' reattivo, meno morbido).
     [Export] public float InterpolationSpeed { get; set; } = 14.0f;
 
-    /// Yaw della camera isometrica (§7). L'input viene ruotato di questo angolo cosi' che
+    /// Yaw della camera isometrica. L'input viene ruotato di questo angolo cosi' che
     /// "avanti" sullo schermo corrisponda alla direzione attesa. Deve combaciare con PlayerCamera.
     [Export] public float CameraYawDegrees { get; set; } = 45.0f;
 

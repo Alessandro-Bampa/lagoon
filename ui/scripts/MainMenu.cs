@@ -4,7 +4,7 @@ namespace Lagoon;
 
 /// <summary>
 /// Menu di avvio: host/join sia via Steam (path primario) sia via ENet locale (fallback dev per
-/// test multi-istanza sullo stesso PC, CLAUDE.md §9/§10). Non contiene logica di rete: delega tutto
+/// test multi-istanza sullo stesso PC, CLAUDE.md §6). Non contiene logica di rete: delega tutto
 /// al <see cref="NetworkManager"/> e reagisce ai suoi segnali per aggiornare lo stato.
 /// </summary>
 public partial class MainMenu : Control

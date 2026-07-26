@@ -8,8 +8,10 @@ namespace Lagoon;
 /// <see cref="ItemAddress"/>, uso, apertura pacchetto).
 ///
 /// Le voci legate alle armi (scarico caricatore, svuota munizioni, piega calcio, smonta moduli)
-/// compaiono ma sono DISABILITATE: dipendono dal sistema armi/allegati della Fase 3
-/// (CLAUDE.md §8) e non vanno implementate prima (§11).
+/// compaiono ma sono DISABILITATE: la Fase 3 (skill combat-shooting) ha introdotto il tiro e le
+/// munizioni, ma il caricatore vive come stato host-side dentro <see cref="WeaponController"/>
+/// e non come item
+/// manipolabile in griglia. Allegati e durabilita' restano fuori dal prototipo (CLAUDE.md §7).
 /// </summary>
 public partial class ItemContextMenu : PopupMenu
 {

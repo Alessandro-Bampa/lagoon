@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://player/scripts/PlayerController.cs" id="1"]
 [ext_resource type="Script" path="res://player/scripts/PlayerInput.cs" id="2"]
@@ -6,6 +6,11 @@
 [ext_resource type="PackedScene" path="res://player/scenes/PlayerCamera.tscn" id="4"]
 [ext_resource type="Script" path="res://inventory/scripts/PlayerInventory.cs" id="5"]
 [ext_resource type="Script" path="res://inventory/scripts/PlayerHud.cs" id="6"]
+[ext_resource type="Script" path="res://combat/scripts/WeaponVisual.cs" id="7"]
+[ext_resource type="Script" path="res://combat/scripts/HealthComponent.cs" id="8"]
+[ext_resource type="Script" path="res://combat/scripts/HitboxComponent.cs" id="9"]
+[ext_resource type="Script" path="res://combat/scripts/WeaponController.cs" id="10"]
+[ext_resource type="Script" path="res://combat/scripts/WeaponInput.cs" id="11"]
 
 [sub_resource type="CapsuleShape3D" id="Shape_1"]
 radius = 0.5
@@ -26,7 +31,40 @@ properties/1/path = NodePath(".:SyncFacing")
 properties/1/spawn = true
 properties/1/replication_mode = 1
 
+[sub_resource type="SceneReplicationConfig" id="Repl_2"]
+properties/0/path = NodePath(".:CurrentHealth")
+properties/0/spawn = true
+properties/0/replication_mode = 1
+properties/1/path = NodePath(".:MaxHealth")
+properties/1/spawn = true
+properties/1/replication_mode = 1
+properties/2/path = NodePath(".:IsDead")
+properties/2/spawn = true
+properties/2/replication_mode = 1
+
+[sub_resource type="SceneReplicationConfig" id="Repl_3"]
+properties/0/path = NodePath(".:HeldItemId")
+properties/0/spawn = true
+properties/0/replication_mode = 1
+properties/1/path = NodePath(".:HeldSlot")
+properties/1/spawn = true
+properties/1/replication_mode = 1
+properties/2/path = NodePath(".:MagazineAmmo")
+properties/2/spawn = true
+properties/2/replication_mode = 1
+properties/3/path = NodePath(".:ReserveAmmo")
+properties/3/spawn = true
+properties/3/replication_mode = 1
+properties/4/path = NodePath(".:RecoilSpread")
+properties/4/spawn = true
+properties/4/replication_mode = 1
+properties/5/path = NodePath(".:Reloading")
+properties/5/spawn = true
+properties/5/replication_mode = 1
+
 [node name="Player" type="CharacterBody3D"]
+collision_layer = 2
+collision_mask = 7
 script = ExtResource("1")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
@@ -40,6 +78,10 @@ mesh = SubResource("Mesh_1")
 [node name="Nose" type="MeshInstance3D" parent="Visual"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0.6)
 mesh = SubResource("Mesh_2")
+
+[node name="WeaponMount" type="Node3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.25, 0.15, 0.45)
+script = ExtResource("7")
 
 [node name="Input" type="Node" parent="."]
 script = ExtResource("2")
@@ -55,6 +97,33 @@ replication_config = SubResource("Repl_1")
 
 [node name="Inventory" type="Node" parent="."]
 script = ExtResource("5")
+
+[node name="Health" type="Node" parent="."]
+script = ExtResource("8")
+
+[node name="Sync" type="MultiplayerSynchronizer" parent="Health"]
+root_path = NodePath("..")
+replication_config = SubResource("Repl_2")
+
+[node name="Hitbox" type="Area3D" parent="."]
+collision_layer = 8
+collision_mask = 0
+monitoring = false
+script = ExtResource("9")
+HealthPath = NodePath("../Health")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Hitbox"]
+shape = SubResource("Shape_1")
+
+[node name="Weapon" type="Node" parent="."]
+script = ExtResource("10")
+
+[node name="Sync" type="MultiplayerSynchronizer" parent="Weapon"]
+root_path = NodePath("..")
+replication_config = SubResource("Repl_3")
+
+[node name="WeaponInput" type="Node" parent="."]
+script = ExtResource("11")
 
 [node name="Hud" type="Node" parent="."]
 script = ExtResource("6")

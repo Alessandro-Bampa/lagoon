@@ -4,9 +4,9 @@ namespace Lagoon;
 
 /// <summary>
 /// Configura la "presentazione locale" dell'avatar in base all'autorita' di rete:
-///  - attiva la camera isometrica SOLO per il player locale (§7);
+///  - attiva la camera isometrica SOLO per il player locale;
 ///  - colora il placeholder (verde = tu, rosso = altri) per rendere evidente il criterio di
-///    completamento della Fase 1 durante il test multi-istanza (§8).
+///    completamento della Fase 1 durante il test multi-istanza (CLAUDE.md §6).
 /// Non tocca la logica di movimento: quella vive in <see cref="PlayerController"/>.
 /// </summary>
 public partial class PlayerNetworkSync : Node

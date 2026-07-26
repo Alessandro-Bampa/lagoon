@@ -7,7 +7,7 @@ using GDDict = Godot.Collections.Dictionary;
 namespace Lagoon;
 
 /// <summary>
-/// Modello autoritativo dell'inventario di UN giocatore (CLAUDE.md §3/§8). Aggrega:
+/// Modello autoritativo dell'inventario di UN giocatore (CLAUDE.md §3). Aggrega:
 ///  - 4 tasche (griglia 4x1 sempre presente);
 ///  - l'equipaggiamento (testa/torso/gambe/piedi/gilet/zaino + slot arma riservati);
 ///  - le griglie di gilet e zaino, che esistono solo se il relativo item e' equipaggiato;
@@ -269,6 +269,64 @@ public sealed class PlayerInventoryModel
 
     /// Griglia indirizzata da un containerId, per il motore di trasferimento. Null se inesistente.
     public InventoryGrid? GridFor(int containerId) => ResolveGrid(containerId);
+
+    /// <summary>
+    /// Unita' totali di un tipo di item presenti nelle GRIGLIE (tasche, rig, zaino). Gli slot di
+    /// equipaggiamento sono esclusi di proposito: l'arma impugnata non e' munizione di riserva.
+    /// Usata dal <see cref="WeaponController"/> per la riserva mostrata nella HUD.
+    /// </summary>
+    public int CountById(string itemId)
+    {
+        int total = 0;
+        foreach (var grid in AllGrids())
+            foreach (var item in grid.Items)
+                if (item.Definition.ItemId == itemId)
+                    total += item.StackCount;
+        return total;
+    }
+
+    /// <summary>
+    /// Consuma fino a <paramref name="max"/> unita' del tipo indicato dalle griglie e restituisce
+    /// quante ne ha effettivamente rimosse (puo' essere meno del richiesto, o zero). Gli stack che
+    /// si svuotano vengono rimossi insieme ai loro riferimenti nella hotbar.
+    /// Solo host: e' una mutazione dello stato autoritativo.
+    /// </summary>
+    public int ConsumeById(string itemId, int max)
+    {
+        if (max <= 0)
+            return 0;
+
+        int remaining = max;
+        var emptied = new List<int>();
+
+        foreach (var grid in AllGrids())
+        {
+            foreach (var item in grid.Items)
+            {
+                if (remaining <= 0)
+                    break;
+                if (item.Definition.ItemId != itemId)
+                    continue;
+
+                int taken = Math.Min(item.StackCount, remaining);
+                item.StackCount -= taken;
+                remaining -= taken;
+                if (item.StackCount <= 0)
+                    emptied.Add(item.InstanceId);
+            }
+            if (remaining <= 0)
+                break;
+        }
+
+        // Rimozione differita: mutare una griglia mentre la si itera invaliderebbe l'enumerazione.
+        foreach (int id in emptied)
+        {
+            FindLocation(id)?.Grid?.Remove(id);
+            ClearQuickSlotReferences(id);
+        }
+
+        return max - remaining;
+    }
 
     /// Rimuove l'item dal punto in cui si trova (griglia o slot) e lo restituisce, senza altri effetti.
     /// Usato da <see cref="ItemTransfer"/>: il riposizionamento lo decide il chiamante.

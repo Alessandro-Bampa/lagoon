@@ -7,8 +7,9 @@ namespace Lagoon;
 /// statistiche dell'oggetto.
 ///
 /// L'area MODULI/DURABILITA' e' predisposta ma vuota: allegati, usura e smontaggio dei componenti
-/// dipendono dal sistema armi, che CLAUDE.md §8 colloca in Fase 3 (la cartella <c>combat/</c> e'
-/// tuttora vuota). Qui resta il gancio, senza costruire sistemi speculativi (§11).
+/// restano fuori dal prototipo. La Fase 3 (skill combat-shooting) ha introdotto solo la balistica
+/// di base in <see cref="WeaponDefinition"/>; qui resta il gancio, senza costruire sistemi
+/// speculativi (CLAUDE.md §7).
 /// </summary>
 public partial class InspectWindow : FloatingWindow
 {
