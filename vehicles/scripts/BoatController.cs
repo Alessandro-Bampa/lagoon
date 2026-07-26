@@ -83,8 +83,22 @@ public partial class BoatController : RigidBody3D
 
     // Solo client: eta' dell'ultimo pacchetto di stato ricevuto, per l'extrapolazione.
     private float _sinceLastState;
-    private Vector3 _lastSeenPosition;
     private bool _gotFirstState;
+
+    /// <summary>
+    /// Rete di sicurezza: se per qualunque motivo non arrivasse nessuno stato, dopo questo tempo lo
+    /// scafo si mostra comunque alla posa che ha. Una barca invisibile ma SOLIDA e' un guasto peggiore
+    /// di una barca disegnata nel posto sbagliato per un istante.
+    /// </summary>
+    private const float FirstStateTimeoutSeconds = 2.0f;
+
+    /// <summary>
+    /// Tetto all'extrapolazione (3 intervalli di replica). Senza questo tetto il termine
+    /// <c>velocita' * eta' del pacchetto</c> cresce senza limite: a pacchetti persi la barca schizza in
+    /// avanti, e alla caduta dell'host se ne va all'infinito. Col tetto il bersaglio si assesta e la
+    /// barca si FERMA quando l'host tace — che e' l'invariante di §3 da cui dipende tutto il resto.
+    /// </summary>
+    private const float MaxExtrapolationSeconds = 0.15f;
 
     private Marker3D[] _floaters = null!;
     private Marker3D _helmSeat = null!;
@@ -153,7 +167,12 @@ public partial class BoatController : RigidBody3D
 
         SyncBodyPosition = GlobalPosition;
         SyncBodyRotation = GlobalBasis.GetRotationQuaternion();
-        _lastSeenPosition = SyncBodyPosition;
+
+        // L'arrivo di uno stato si prende dal segnale del Synchronizer, NON confrontando i valori
+        // replicati: con la barca all'ormeggio lo stato ricevuto e' identico a quello dell'editor,
+        // quindi un confronto non scatterebbe mai e lo scafo resterebbe invisibile fino al primo
+        // movimento (bug osservato in multi-macchina).
+        GetNode<MultiplayerSynchronizer>("Sync").Synchronized += OnStateReceived;
 
         _eventBus.PeerLeft += OnPeerLeft;
         _eventBus.PeerJoined += OnNetworkChanged;
@@ -296,30 +315,44 @@ public partial class BoatController : RigidBody3D
     //  Presentazione (solo client)
     // ====================================================================================
 
+    /// <summary>
+    /// Uno stato dall'host e' arrivato (segnale del <c>MultiplayerSynchronizer</c> figlio). Serve solo a
+    /// datare l'extrapolazione e a rivelare lo scafo al primo pacchetto: non entra in nessun calcolo di
+    /// gioco, quindi non e' un'eccezione a §3.
+    /// </summary>
+    private void OnStateReceived()
+    {
+        _sinceLastState = 0f;
+        if (_gotFirstState)
+            return;
+
+        // Primo stato: ci si aggancia di netto, senza interpolare da una posa arbitraria.
+        _gotFirstState = true;
+        _visual.Visible = true;
+        GlobalPosition = SyncBodyPosition;
+        Quaternion = SyncBodyRotation.Normalized();
+    }
+
     private void RemotePresentation(double delta)
     {
-        // Il Synchronizer non espone un segnale "pacchetto arrivato": lo si deduce dal cambio del
-        // valore replicato. Serve solo a datare l'extrapolazione, non entra in nessun calcolo di gioco.
-        if (SyncBodyPosition != _lastSeenPosition)
+        _sinceLastState += (float)delta;
+
+        if (!_gotFirstState)
         {
-            _lastSeenPosition = SyncBodyPosition;
-            _sinceLastState = 0f;
-            if (!_gotFirstState)
+            if (_sinceLastState > FirstStateTimeoutSeconds)
             {
                 _gotFirstState = true;
                 _visual.Visible = true;
-                GlobalPosition = SyncBodyPosition;
-                Quaternion = SyncBodyRotation.Normalized();
-                return;
             }
+            return;
         }
-        _sinceLastState += (float)delta;
 
         // Presentazione, non simulazione: si stima dove sara' la posa REPLICATA adesso (le velocita'
         // arrivano dall'host) e ci si avvicina con un lerp. Nessuna forza, nessuna integrazione locale:
         // se l'host tace, il bersaglio resta fermo e la barca si arresta invece di divergere.
         float t = Mathf.Clamp((float)delta * RemoteLerpSpeed, 0f, 1f);
-        Vector3 target = SyncBodyPosition + SyncLinearVelocity * _sinceLastState;
+        float age = Mathf.Min(_sinceLastState, MaxExtrapolationSeconds);
+        Vector3 target = SyncBodyPosition + SyncLinearVelocity * age;
         GlobalPosition = GlobalPosition.Lerp(target, t);
 
         // Slerp e non lerp di Eulero: col beccheggio del galleggiamento interpolare gli angoli di

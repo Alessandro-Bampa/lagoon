@@ -177,3 +177,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22, 2.25, 0)
 [node name="Boat" parent="." instance=ExtResource("3")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 31, 0.2, 0)
 
+
+

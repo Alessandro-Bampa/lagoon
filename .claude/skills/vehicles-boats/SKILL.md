@@ -122,6 +122,21 @@ discriminante operativo del design attuale è verificabile: **se l'host smette d
 si ferma invece di divergere**, perché il bersaglio dell'interpolazione è funzione esclusiva dei dati
 ricevuti.
 
+### Due trappole già pagate in multi-macchina
+
+**1. "È arrivato uno stato" si legge dal segnale, non confrontando i valori.** Il primo pacchetto si
+rileva con `MultiplayerSynchronizer.Synchronized`. Dedurlo da un cambio di `SyncBodyPosition` **non
+funziona**: con la barca all'ormeggio lo stato ricevuto è identico a quello dell'editor, quindi il
+confronto non scatta mai. Bug osservato: la barca restava invisibile — ma **solida** — sul client finché
+qualcuno non la muoveva. C'è anche un timeout di 2 s che la rivela comunque, perché una barca invisibile
+e solida è un guasto peggiore di una disegnata male per un istante.
+
+**2. L'extrapolazione va limitata.** Il termine `SyncLinearVelocity * età del pacchetto` cresce senza
+limite: con l'host silenzioso la barca del client se ne andava all'infinito, cioè proprio la deriva che
+il design dichiara di non avere. `MaxExtrapolationSeconds = 0.15` (3 intervalli di replica) fa assestare
+il bersaglio. Verificato: staccando l'host la barca del client si ferma di netto e non si muove più di un
+millimetro per oltre 10 s.
+
 **Trappola da non reintrodurre**: `Main.tscn` (e quindi la barca) viene caricata **prima** che esista un
 peer di rete. Con `MultiplayerPeer == null` `IsMultiplayerAuthority()` è **vero** anche su un futuro
 client. Per questo `ApplySimulationMode()` è richiamata in `_Ready` **e** su `EventBus.ConnectedToServer`
@@ -267,6 +282,11 @@ riprodurre i criteri senza un secondo giocatore, e in particolare il più import
 > Con `DebugAutoDrive` attivo sull'host, spegnerlo deve fermare la barca **anche sul client** entro poche
 > decine di ms, e lasciarla ferma indefinitamente senza derivare. Se il client derivasse, starebbe
 > simulando in parallelo.
+
+Si può collaudare la rete **anche in headless**, senza toccare la UI: `NetworkManager.HostGame` /
+`JoinGame(LocalEnet, "127.0.0.1")` sono pubbliche, quindi un nodo temporaneo che legga
+`OS.GetCmdlineUserArgs()` permette di lanciare due processi Godot `--headless` e registrare lo stato
+della barca sui due lati. È così che sono state trovate entrambe le trappole del §3.
 
 Altri controlli utili in multi-istanza (ENet locale, A host e B client): un passeggero remoto sul ponte
 deve apparire **fermo rispetto al ponte** e non scivolare verso poppa; un non-pilota che tiene W non deve
