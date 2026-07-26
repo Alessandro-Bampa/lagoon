@@ -17,8 +17,12 @@ namespace Lagoon;
 /// Stato replicato a TUTTI i peer (non solo al proprietario, a differenza dell'inventario): serve
 /// agli altri per vedere chi impugna cosa e, per il proprietario, ad avere una HUD coerente.
 ///
-/// LIMITE NOTO (accettato in Fase 3): nessuna lag compensation. L'host ri-traccia da
-/// <see cref="PlayerController.SyncPosition"/>, che per un tiratore remoto e' vecchio fino a ~1 RTT.
+/// L'origine del colpo si legge da <see cref="PlayerController.ResolvedSyncPosition"/> e non da
+/// <c>SyncPosition</c>: dalla Fase 4 quest'ultima puo' essere espressa in coordinate locali a
+/// un'imbarcazione, quindi usarla direttamente farebbe partire i colpi dall'origine dello scafo.
+///
+/// LIMITE NOTO (accettato in Fase 3): nessuna lag compensation. L'host ri-traccia dalla posizione
+/// replicata del tiratore, che per un tiratore remoto e' vecchia fino a ~1 RTT.
 /// Chi si muove veloce puo' vedere il tracciante partire leggermente dietro al proprio avatar, e un
 /// bersaglio che si e' spostato durante l'RTT puo' essere mancato pur sembrando colpito sul client.
 /// Il rimedio (buffer storico delle posizioni + rewind) va insieme alla validazione anti-cheat del
@@ -232,7 +236,7 @@ public partial class WeaponController : Node
 
         // Origine SEMPRE ricavata dallo stato replicato del tiratore, mai fornita dal client, e mai
         // da GlobalPosition (che sugli avatar remoti e' il risultato dell'interpolazione).
-        Vector3 origin = _player.SyncPosition + Vector3.Up * MuzzleHeight;
+        Vector3 origin = _player.ResolvedSyncPosition + Vector3.Up * MuzzleHeight;
 
         Vector3 toAim = aimPoint - origin;
         if (toAim.LengthSquared() < 0.0001f)

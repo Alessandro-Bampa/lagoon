@@ -104,6 +104,7 @@ I nomi delle cartelle in `scenes/` e `scripts/` sono **per sistema di gameplay**
 ├── player/          # Movimento, input locale, camera isometrica
 ├── combat/          # Armi, tiro, salute, hitbox        -> skill `combat-shooting`
 ├── inventory/       # Griglia, item, equipaggiamento, HUD -> skill `inventory-tarkov`
+├── vehicles/        # Barche, acqua, galleggiamento           -> skill `vehicles-boats`
 ├── ai/              # Nemici, navigazione (non ancora implementato)
 ├── world/           # Livelli, spawn di giocatori e oggetti
 ├── quests/          # Riservato, non implementare ora (post-prototipo)
@@ -165,5 +166,6 @@ La documentazione d'ambito vive in `.claude/skills/<nome>/SKILL.md`. **Carica la
 | `inventory-tarkov` | `inventory/` — griglia, item, equipaggiamento, contenitori annidati, peso, raccolta/drop, casse, drag & drop, hotbar |
 | `ui-hud` | `ui/`, la HUD, menu e popup, scala UI, risoluzione, audio, **o l'assegnazione di un tasto/azione di input** |
 | `steam-networking` | `NetworkManager`, `addons/godotsteam*`, lobby, trasporti, errori di GDExtension Steam |
+| `vehicles-boats` | `vehicles/` — barche, acqua, galleggiamento, timone, passeggeri, ponte calpestabile, piattaforme mobili, coordinate locali a un veicolo (`SyncAnchorId`) |
 
 Ambiti ancora senza skill perché non implementati: IA/nemici, quest, base building. Quando uno di questi viene prototipato, la sua documentazione va in una skill nuova, non qui.

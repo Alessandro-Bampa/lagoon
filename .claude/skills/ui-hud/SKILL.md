@@ -50,7 +50,8 @@ Qualunque nuova UI modale deve alzare `GameManager.UiModalOpen`, mai `GetTree().
 |---|---|---|---|
 | `move_up/down/left/right` | WASD / frecce | `PlayerInput` | Ruotate di `CameraYawDegrees` |
 | `toggle_inventory` | Tab | `PlayerHud._Input` | |
-| `interact` | F | `PlayerHud._Input` | Breve = raccogli/apri, lunga = menu contestuale |
+| `interact` | **F** | `PlayerHud._Input` | Breve = raccogli/apri, lunga = menu contestuale. Consumata **solo se il pickup vince sul timone** — vedi sotto |
+| `interact` | **F** | `VehicleInput._UnhandledInput` | Prendi / lascia il timone. Raggiunta quando `PlayerHud` non consuma |
 | `rotate_item` | **R** | `PlayerHud._Input` | Consumata **solo a inventario aperto** — vedi sotto |
 | `reload` | **R** | `WeaponInput._UnhandledInput` | Raggiunta **solo a inventario chiuso** |
 | `quick_slot_4…0` | 4 5 6 7 8 9 0 | `PlayerHud._Input` | Hotbar consumabili |
@@ -60,6 +61,8 @@ Qualunque nuova UI modale deve alzare `GameManager.UiModalOpen`, mai `GetTree().
 | `toggle_menu` | Esc | `PauseMenu` | |
 
 **R è legato di proposito a due azioni.** La disambiguazione non è un `if` sparso ma la pipeline di input di Godot: `PlayerHud` usa `_Input` e consuma `rotate_item` **solo se la schermata inventario è visibile** (`PlayerHud.InventoryOpen`); altrimenti l'evento resta *unhandled* e arriva a `WeaponInput._UnhandledInput` come `reload`.
+
+**F è legato a due sistemi** con lo stesso meccanismo, ma il discriminante non è una flag booleana: è una **distanza**. Alla pressione `PlayerHud` interroga `VehicleInteraction.VehicleWins(...)` — al timone vince sempre il veicolo, altrimenti vince il candidato più vicino fra pickup (3.5 m) e timone (3.0 m) — e consuma solo se vince il pickup. Se non vince nessuno, **nessuno consuma**. Dettagli e trappola del rilascio nella skill `vehicles-boats` §5.
 
 **Se un nuovo sistema rivendica un tasto già assegnato, usa lo stesso meccanismo invece di aggiungere un tasto**: chi ha il contesto più specifico usa `_Input` e consuma solo quando quel contesto è attivo; chi ha il contesto di default usa `_UnhandledInput`.
 

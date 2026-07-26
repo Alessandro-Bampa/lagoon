@@ -1,6 +1,8 @@
-[gd_scene load_steps=8 format=3]
+﻿[gd_scene load_steps=21 format=3]
 
 [ext_resource type="PackedScene" path="res://combat/scenes/TargetDummy.tscn" id="1"]
+[ext_resource type="Script" path="res://vehicles/scripts/WaterVolume.cs" id="2"]
+[ext_resource type="PackedScene" path="res://vehicles/scenes/Boat.tscn" id="3"]
 
 [sub_resource type="BoxShape3D" id="Shape_1"]
 size = Vector3(40, 1, 40)
@@ -10,6 +12,44 @@ size = Vector3(40, 1, 40)
 
 [sub_resource type="StandardMaterial3D" id="Mat_1"]
 albedo_color = Color(0.32, 0.34, 0.36, 1)
+
+[sub_resource type="BoxShape3D" id="Shape_Seabed"]
+size = Vector3(60, 1, 60)
+
+[sub_resource type="BoxMesh" id="Mesh_Seabed"]
+size = Vector3(60, 1, 60)
+
+[sub_resource type="StandardMaterial3D" id="Mat_Sand"]
+albedo_color = Color(0.76, 0.7, 0.5, 1)
+
+[sub_resource type="BoxShape3D" id="Shape_Dock"]
+size = Vector3(9, 3, 6)
+
+[sub_resource type="BoxMesh" id="Mesh_Dock"]
+size = Vector3(9, 3, 6)
+
+[sub_resource type="StandardMaterial3D" id="Mat_Wood"]
+albedo_color = Color(0.45, 0.32, 0.2, 1)
+
+[sub_resource type="BoxShape3D" id="Shape_Ramp"]
+size = Vector3(4.4, 0.4, 4)
+
+[sub_resource type="BoxMesh" id="Mesh_Ramp"]
+size = Vector3(4.4, 0.4, 4)
+
+[sub_resource type="BoxShape3D" id="Shape_Plank"]
+size = Vector3(3.5, 0.1, 2)
+
+[sub_resource type="BoxMesh" id="Mesh_Plank"]
+size = Vector3(3.5, 0.1, 2)
+
+[sub_resource type="PlaneMesh" id="Mesh_Water"]
+size = Vector2(60, 60)
+
+[sub_resource type="StandardMaterial3D" id="Mat_Water"]
+transparency = 1
+cull_mode = 2
+albedo_color = Color(0.1, 0.35, 0.55, 0.45)
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat_1"]
 
@@ -52,3 +92,88 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, 10)
 
 [node name="TargetDummyC" parent="." instance=ExtResource("1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0, 10)
+
+; --- Laguna (Fase 4) -----------------------------------------------------------------------------
+; Il Floor esistente (x,z in [-20,20], superficie y=0) NON e' stato toccato: la laguna e' adiacente
+; in +X. Quote scelte perche' non ci sia nessuno scalino da superare a piedi: molo e ponte della barca
+; sono COMPLANARI a y=1.25, collegati da una passerella che li sovrappone; da terra si sale con una
+; rampa inclinata (CharacterBody3D in Godot 4 non ha step-up automatico).
+[node name="Lagoon" type="Node3D" parent="."]
+
+[node name="Seabed" type="StaticBody3D" parent="Lagoon"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50, -4.5, 0)
+collision_layer = 1
+collision_mask = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Lagoon/Seabed"]
+shape = SubResource("Shape_Seabed")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Lagoon/Seabed"]
+mesh = SubResource("Mesh_Seabed")
+material_override = SubResource("Mat_Sand")
+
+[node name="Dock" type="StaticBody3D" parent="Lagoon"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22.5, -0.25, 0)
+collision_layer = 1
+collision_mask = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Lagoon/Dock"]
+shape = SubResource("Shape_Dock")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Lagoon/Dock"]
+mesh = SubResource("Mesh_Dock")
+material_override = SubResource("Mat_Wood")
+
+; Rampa terra -> molo: 20 gradi, sotto il floor_max_angle di 45.
+; Il piede e' INTERRATO sotto il pavimento (la faccia superiore attraversa y=0 a x=14): un
+; CharacterBody3D in Godot 4 non ha step-up automatico, quindi anche una soglia di pochi centimetri si
+; comporterebbe come un muro. La rampa deve emergere dal pavimento come un cuneo, senza spigoli.
+[node name="Ramp" type="StaticBody3D" parent="Lagoon"]
+transform = Transform3D(0.9397, -0.342, 0, 0.342, 0.9397, 0, 0, 0, 1, 16.385, 0.437, 0)
+collision_layer = 1
+collision_mask = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Lagoon/Ramp"]
+shape = SubResource("Shape_Ramp")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Lagoon/Ramp"]
+mesh = SubResource("Mesh_Ramp")
+material_override = SubResource("Mat_Wood")
+
+; Passerella molo -> ponte: complanare a entrambi (superficie y=1.25), sovrapposta al molo per 1 m e al
+; ponte per 0.3 m, cosi' l'imbarco regge anche se la barca deriva un poco all'ormeggio. Passa 0.35 m
+; sopra il tetto dello scafo (y=0.8), quindi non lo urta; arriva sul varco del parapetto di sinistra.
+[node name="Plank" type="StaticBody3D" parent="Lagoon"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 27.75, 1.2, 0)
+collision_layer = 1
+collision_mask = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Lagoon/Plank"]
+shape = SubResource("Shape_Plank")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Lagoon/Plank"]
+mesh = SubResource("Mesh_Plank")
+material_override = SubResource("Mat_Wood")
+
+; Superficie d'acqua: SOLO mesh, nessun corpo fisico (vedi WaterVolume.cs).
+[node name="WaterSurface" type="MeshInstance3D" parent="Lagoon"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50, 0, 0)
+mesh = SubResource("Mesh_Water")
+material_override = SubResource("Mat_Water")
+
+[node name="WaterVolume" type="Node3D" parent="Lagoon"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50, 0, 0)
+script = ExtResource("2")
+SurfaceY = 0.0
+ExtentXZ = Vector2(60, 60)
+
+; Rientro di chi finisce in acqua: sul molo, y = 1.25 + mezza capsula.
+[node name="ShoreRespawn" type="Marker3D" parent="Lagoon" groups=["water_respawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22, 2.25, 0)
+
+; Barca STATICA nel livello, non spawnata a runtime: il NodePath e' identico su ogni peer, quindi il
+; MultiplayerSynchronizer interno funziona senza passare da un MultiplayerSpawner (stesso criterio di
+; TargetDummy). y=0.2 e' anche la quota di riposo del galleggiamento, quindi non c'e' assestamento.
+[node name="Boat" parent="." instance=ExtResource("3")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 31, 0.2, 0)
+

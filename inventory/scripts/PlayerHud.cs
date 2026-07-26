@@ -31,6 +31,13 @@ public partial class PlayerHud : Node
     private ItemPickup? _heldTarget;
     private bool _holdConsumed;
 
+    /// <summary>
+    /// True se la pressione di F in corso appartiene a NOI e non al sistema veicoli. Deciso una volta
+    /// sola alla pressione: anche il rilascio deve andare allo stesso proprietario, altrimenti
+    /// <see cref="_holdingInteract"/> resterebbe appeso e il menu contestuale si aprirebbe da solo.
+    /// </summary>
+    private bool _interactClaimed;
+
     // Pickup attualmente evidenziato col prompt.
     private ItemPickup? _prompted;
 
@@ -147,6 +154,7 @@ public partial class PlayerHud : Node
         if (_game.UiModalOpen)
         {
             _holdingInteract = false;
+            _interactClaimed = false;
             _heldTarget = null;
             return;
         }
@@ -266,18 +274,33 @@ public partial class PlayerHud : Node
         }
 
         // F: distinzione pressione breve / prolungata.
+        //
+        // F e' condiviso col sistema veicoli (prendi/lascia il timone). Stesso meccanismo di R (skill
+        // ui-hud §4): decidiamo QUI se il contesto piu' specifico e' il nostro e consumiamo l'evento
+        // solo in quel caso; altrimenti resta unhandled e raggiunge VehicleInput._UnhandledInput.
+        // Effetto collaterale desiderabile: F a vuoto non viene piu' ingoiato.
         if (@event.IsActionPressed("interact"))
         {
+            ItemPickup? target = FindNearestPickup(out float pickupDistance);
+            _interactClaimed = target != null
+                && !VehicleInteraction.VehicleWins(GetParent<PlayerController>(), pickupDistance);
+            if (!_interactClaimed)
+                return;
+
             _holdingInteract = true;
             _holdConsumed = false;
             _heldFor = 0f;
-            _heldTarget = FindNearestPickup();
+            _heldTarget = target;
             GetViewport().SetInputAsHandled();
             return;
         }
 
         if (@event.IsActionReleased("interact"))
         {
+            if (!_interactClaimed)
+                return;
+
+            _interactClaimed = false;
             _holdingInteract = false;
             if (!_holdConsumed && _heldTarget != null && GodotObject.IsInstanceValid(_heldTarget))
                 Interact(_heldTarget.Uid, _heldTarget.Anchored);
@@ -299,7 +322,13 @@ public partial class PlayerHud : Node
     }
 
     /// Pickup piu' vicino entro il raggio di interazione (o null).
-    private ItemPickup? FindNearestPickup()
+    private ItemPickup? FindNearestPickup() => FindNearestPickup(out _);
+
+    /// <summary>
+    /// Come sopra, ma restituisce anche la distanza dal candidato (<see cref="float.MaxValue"/> se non
+    /// ce n'e' nessuno): serve all'arbitraggio di F fra oggetto a terra e timone.
+    /// </summary>
+    private ItemPickup? FindNearestPickup(out float distance)
     {
         Vector3 playerPos = GetParent<Node3D>().GlobalPosition;
         ItemPickup? nearest = null;
@@ -309,13 +338,15 @@ public partial class PlayerHud : Node
         {
             if (node is not ItemPickup pickup || pickup.IsQueuedForDeletion())
                 continue;
-            float distance = pickup.GlobalPosition.DistanceTo(playerPos);
-            if (distance <= best)
+            float d = pickup.GlobalPosition.DistanceTo(playerPos);
+            if (d <= best)
             {
-                best = distance;
+                best = d;
                 nearest = pickup;
             }
         }
+
+        distance = nearest != null ? best : float.MaxValue;
         return nearest;
     }
 }

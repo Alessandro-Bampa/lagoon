@@ -20,7 +20,7 @@ La realizzazione reale separa i ruoli:
 | Ruolo | Chi | Come |
 |---|---|---|
 | Intento | client | `WeaponController.RequestFire(Vector3 aimPoint)` — RPC `AnyPeer`. Il client invia **solo il punto verso cui sta mirando**. Mai un bersaglio, mai un'origine, mai un ammontare di danno. |
-| Calcolo | host | Ricava l'origine da `PlayerController.SyncPosition` (lo stato *replicato* del tiratore, non `GlobalPosition`), tira il dado della dispersione, ri-traccia il raggio, applica il falloff. |
+| Calcolo | host | Ricava l'origine da `PlayerController.ResolvedSyncPosition` (lo stato *replicato* del tiratore, non `GlobalPosition`), tira il dado della dispersione, ri-traccia il raggio, applica il falloff. Dalla Fase 4 **non** si usa `SyncPosition` grezza: può essere in coordinate locali a un'imbarcazione (skill `vehicles-boats` §1). |
 | Applicazione | host | `HealthComponent.ApplyDamage(...)` — metodo **normale, non RPC**. Non è raggiungibile dalla rete per costruzione. |
 | Propagazione | rete | La salute è una proprietà replicata da un `MultiplayerSynchronizer` a **tutti** i peer. |
 | Estetica | host → tutti | `WeaponController.BroadcastShot(...)` — RPC `Authority`, `Unreliable`. Traccianti e vampe, nessun effetto sullo stato. |
@@ -79,8 +79,10 @@ Prima della Fase 3 tutto stava sul layer 1, quindi un raycast di mira avrebbe co
 | 2 | `players` | `Player` (`CharacterBody3D`) | 1\|2\|3 |
 | 3 | `enemies` | `TargetDummy`, futuri nemici | 1 |
 | 4 | `hitbox` | `HitboxComponent` (`Area3D`) | **0** — non interroga mai, viene solo interrogata |
+| 5 | `vehicles` | scafo delle imbarcazioni (`RigidBody3D`) | 1 — **mai** nella maschera dei player |
+| 6 | `vehicle_deck` | ponte e parapetti (`AnimatableBody3D`) | **0** — è il ponte che i player calpestano |
 
-Ogni query di tiro usa `AimMask = world | hitbox`, `CollideWithAreas = true`, ed esclude il RID della *propria* hitbox. Conseguenze: un raggio **non colpisce mai il corpo fisico** di un giocatore (solo la sua hitbox), quindi il fuoco amico e l'immunità a sé stessi diventano esatti anziché approssimati per distanza.
+Ogni query di tiro usa `AimMask = world | hitbox | vehicles | vehicle_deck`, `CollideWithAreas = true`, ed esclude il RID della *propria* hitbox. **La barca ferma i proiettili** come la geometria statica: chi sta dietro la murata è al coperto. Scafo e ponte sono separati perché la collisione in Godot è simmetrica e un giocatore che toccasse lo scafo lo spingerebbe via (vedi skill `vehicles-boats` §2). Conseguenze: un raggio **non colpisce mai il corpo fisico** di un giocatore (solo la sua hitbox), quindi il fuoco amico e l'immunità a sé stessi diventano esatti anziché approssimati per distanza.
 
 Un nuovo tipo di entità danneggiabile va montato con la stessa coppia: corpo sul proprio layer + `HitboxComponent` (`Area3D`) su layer 4 con `HealthPath` verso il suo `HealthComponent`.
 

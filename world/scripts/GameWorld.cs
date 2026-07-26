@@ -93,6 +93,16 @@ public partial class GameWorld : Node3D
         return new Vector3((index - 1.5f) * 2.0f, 1.0f, 0f);
     }
 
+    /// <summary>
+    /// Avatar del peer dato (o null). Il nome del nodo E' l'id del peer (vedi <see cref="SpawnPlayer"/>),
+    /// quindi la ricerca e' diretta. Serve all'host per validare un intento (es. "prendo il timone")
+    /// contro la posizione replicata del richiedente.
+    /// </summary>
+    public PlayerController? FindPlayer(int peerId)
+    {
+        return _players.GetNodeOrNull<PlayerController>(peerId.ToString());
+    }
+
     // ====================================================================================
     //  Item nel mondo (host-authoritative, replicati dal MultiplayerSpawner)
     // ====================================================================================
