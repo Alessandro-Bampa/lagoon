@@ -152,7 +152,6 @@ Setup scelto: scaffolding essenziale, niente pipeline CI/CD per ora. Il testing 
 - **Carica la Skill dell'ambito prima di lavorarci** (§8). Contiene invarianti che non sono deducibili leggendo un file alla volta.
 - **Non gonfiare questo documento.** Se al termine di un lavoro c'è documentazione da lasciare, va nella Skill dell'ambito. Qui si scrive solo ciò che vale per tutto il progetto. Se un ambito non ha ancora una Skill e la merita, creala.
 - **Puoi introdurre nuove dipendenze/addon se disponibili senza sviluppare da zero una feature** (altri plugin, asset store, librerie di terze parti) segnalandolo; ogni aggiunta va valutata per compatibilità con Godot 4.7, C# e le altre librerie già installate.
-- **Preferisci placeholder geometrici** (cubi, capsule, sfere) ad asset finali per tutta la fase di prototipazione: nessuna richiesta di arte/asset in questa fase.
 - **Quando un'implementazione richiede una scelta di design non specificata qui**, dichiara l'assunzione esplicitamente nel codice/commit, poi procedi — non bloccarti per ogni dettaglio minore.
 
 ---
@@ -169,5 +168,6 @@ La documentazione d'ambito vive in `.claude/skills/<nome>/SKILL.md`. **Carica la
 | `steam-networking` | `NetworkManager`, `addons/godotsteam*`, lobby, trasporti, errori di GDExtension Steam |
 | `vehicles-boats` | `vehicles/` — barche, acqua, galleggiamento, timone, passeggeri, ponte calpestabile, piattaforme mobili, coordinate locali a un veicolo (`SyncAnchorId`) |
 | `i18n-localization` | `locales/`, `Loc`, **qualunque testo visibile all'utente**: nuove label, nuovi item, dialoghi, cambio lingua, chiavi grezze a video |
+| `blender-pipeline` | `assets/models/`, `tools/blender/` — pipeline Blender→`.glb`→Godot, `Body_Base`, `Armature_Character`, rig e animazioni Mixamo, scala/unità di un modello importato, dialogo con Blender via MCP |
 
 Ambiti ancora senza skill perché non implementati: IA/nemici, quest, base building. Quando uno di questi viene prototipato, la sua documentazione va in una skill nuova, non qui.
