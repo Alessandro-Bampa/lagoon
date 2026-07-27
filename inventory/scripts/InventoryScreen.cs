@@ -90,13 +90,15 @@ public partial class InventoryScreen : Control
         // resta agganciata a sinistra, la fonte esterna a destra, e le proprie griglie assorbono
         // tutto lo spazio in mezzo. Cosi' i due pannelli non "scivolano" al variare della
         // risoluzione o della scala UI: restano dove il giocatore si aspetta di trovarli.
-        _gearColumn = AddColumn(columns, "EQUIPAGGIAMENTO", GearColumnWidth, SizeFlags.ShrinkBegin);
-        _storageColumn = AddColumn(columns, "TASCHE E CONTENITORI", GridColumnWidth, SizeFlags.ExpandFill);
-        _sourceColumn = AddColumn(columns, "A TERRA", GridColumnWidth, SizeFlags.ShrinkEnd);
+        _gearColumn = AddColumn(columns, "UI_INV_COL_GEAR", GearColumnWidth, SizeFlags.ShrinkBegin);
+        _storageColumn = AddColumn(columns, "UI_INV_COL_STORAGE", GridColumnWidth, SizeFlags.ExpandFill);
+        _sourceColumn = AddColumn(columns, "UI_INV_COL_SOURCE", GridColumnWidth, SizeFlags.ShrinkEnd);
 
-        _weightLabel = new Label();
+        // Testo composto e gia' tradotto: niente auto-translate, l'aggiornamento passa da Rebuild
+        // e da UpdateRotationLabel (rieseguiti su NotificationTranslationChanged).
+        _weightLabel = new Label { AutoTranslateMode = AutoTranslateModeEnum.Disabled };
         _gearColumn.AddChild(_weightLabel);
-        _rotationLabel = new Label();
+        _rotationLabel = new Label { AutoTranslateMode = AutoTranslateModeEnum.Disabled };
         _gearColumn.AddChild(_rotationLabel);
 
         // Layer finestre: sopra i pannelli, non partecipa al layout.
@@ -126,7 +128,7 @@ public partial class InventoryScreen : Control
     /// residuo (una sola colonna dovrebbe espandersi, altrimenti le altre non restano ancorate).
     /// </summary>
     private static VBoxContainer AddColumn(
-        HBoxContainer parent, string title, int minWidth, SizeFlags horizontal)
+        HBoxContainer parent, string titleKey, int minWidth, SizeFlags horizontal)
     {
         var outer = new VBoxContainer
         {
@@ -136,7 +138,9 @@ public partial class InventoryScreen : Control
         outer.AddThemeConstantOverride("separation", 6);
         parent.AddChild(outer);
 
-        var header = new Label { Text = title };
+        // Chiave di traduzione: essendo un Control nell'albero, la risolve l'auto-translate di
+        // Godot, che la riaggiorna da solo al cambio lingua.
+        var header = new Label { Text = titleKey };
         header.AddThemeColorOverride("font_color", new Color(0.75f, 0.75f, 0.8f));
         outer.AddChild(header);
 
@@ -169,7 +173,7 @@ public partial class InventoryScreen : Control
         RebuildStorage();
         RebuildSource();
         RefreshWindows();
-        _weightLabel.Text = $"Peso: {Model.TotalWeight():0.##} / {Model.MaxLoadKg:0} kg";
+        _weightLabel.Text = Loc.T("UI_INV_WEIGHT", Loc.Num(Model.TotalWeight()), Loc.Num(Model.MaxLoadKg, "0"));
     }
 
     /// Le finestre aperte rileggono il proprio contenuto dall'indirizzo (niente dati stale).
@@ -239,7 +243,7 @@ public partial class InventoryScreen : Control
     {
         ClearFrom(_storageColumn, keep: 0);
 
-        AddLabeledGrid(_storageColumn, "Tasche", Model.Pockets, ItemAddress.Pockets(), OpenableIn(Model.Pockets));
+        AddLabeledGrid(_storageColumn, Loc.T("UI_INV_POCKETS"), Model.Pockets, ItemAddress.Pockets(), OpenableIn(Model.Pockets));
 
         AddContainerSlot(EquipSlotType.Vest);
         AddContainerSlot(EquipSlotType.Backpack);
@@ -284,14 +288,19 @@ public partial class InventoryScreen : Control
 
         var header = new HBoxContainer();
         header.AddThemeConstantOverride("separation", 8);
-        var back = new Button { Text = "< A terra" };
+        var back = new Button { Text = "UI_INV_BACK_TO_GROUND" };
         back.Pressed += () => { _openWorldUid = 0; RebuildSource(); };
         header.AddChild(back);
-        header.AddChild(new Label { Text = root.Definition.DisplayName, VerticalAlignment = VerticalAlignment.Center });
+        header.AddChild(new Label
+        {
+            Text = root.Definition.DisplayName,
+            AutoTranslateMode = AutoTranslateModeEnum.Disabled,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
         _sourceColumn.AddChild(header);
 
         AddLabeledGrid(
-            _sourceColumn, "Contenuto", root.ContainerGrid,
+            _sourceColumn, Loc.T("UI_INV_CONTENTS"), root.ContainerGrid,
             ItemAddress.WorldContainerAt(_openWorldUid), OpenableIn(root.ContainerGrid));
         return true;
     }
@@ -325,7 +334,7 @@ public partial class InventoryScreen : Control
         }
 
         if (count == 0)
-            _sourceColumn.AddChild(Dim("Nessun oggetto nelle vicinanze."));
+            _sourceColumn.AddChild(Dim(Loc.T("UI_INV_GROUND_EMPTY")));
 
         var view = new GridPanelView(
             this, grid, ItemAddress.Ground(),
@@ -366,6 +375,7 @@ public partial class InventoryScreen : Control
         row.AddChild(new Label
         {
             Text = EquipmentSlotView.SlotLabel(slot),
+            AutoTranslateMode = AutoTranslateModeEnum.Disabled,
             CustomMinimumSize = new Vector2(80, 0),
             VerticalAlignment = VerticalAlignment.Center,
         });
@@ -373,12 +383,13 @@ public partial class InventoryScreen : Control
         return row;
     }
 
+    /// <paramref name="title"/> e' testo GIA' tradotto (viene da Loc.T o da un DisplayName).
     private void AddLabeledGrid(
         VBoxContainer parent, string title, InventoryGrid grid, ItemAddress address, HashSet<int> openable)
     {
         var box = new VBoxContainer();
         box.AddThemeConstantOverride("separation", 4);
-        box.AddChild(new Label { Text = title });
+        box.AddChild(new Label { Text = title, AutoTranslateMode = AutoTranslateModeEnum.Disabled });
         box.AddChild(new GridPanelView(this, grid, address, openable: openable));
         parent.AddChild(box);
     }
@@ -393,9 +404,10 @@ public partial class InventoryScreen : Control
         return set;
     }
 
+    /// Riceve testo GIA' tradotto: l'auto-translate va disattivato (skill i18n-localization).
     private static Label Dim(string text)
     {
-        var label = new Label { Text = text };
+        var label = new Label { Text = text, AutoTranslateMode = AutoTranslateModeEnum.Disabled };
         label.AddThemeColorOverride("font_color", new Color(0.6f, 0.6f, 0.66f));
         return label;
     }
@@ -440,8 +452,25 @@ public partial class InventoryScreen : Control
 
     private void UpdateRotationLabel()
     {
-        if (_rotationLabel != null)
-            _rotationLabel.Text = $"Rotazione (R): {(PendingRotated ? "ON" : "OFF")}";
+        if (_rotationLabel == null)
+            return;
+
+        // Il tasto si legge dall'InputMap invece di scriverlo nel testo (skill ui-hud §4).
+        _rotationLabel.Text = Loc.T(
+            "UI_INV_ROTATION",
+            Loc.KeyFor("rotate_item"),
+            Loc.T(PendingRotated ? "UI_INV_ROTATION_ON" : "UI_INV_ROTATION_OFF"));
+    }
+
+    /// Al cambio lingua i testi composti non si riaggiornano da soli: si ricostruisce la schermata,
+    /// che e' gia' l'operazione che la rigenera interamente dallo stato replicato.
+    public override void _Notification(int what)
+    {
+        if (what == NotificationTranslationChanged && _rotationLabel != null)
+        {
+            UpdateRotationLabel();
+            Rebuild();
+        }
     }
 
     // ====================================================================================

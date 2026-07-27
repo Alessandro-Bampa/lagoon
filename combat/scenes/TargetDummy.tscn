@@ -46,6 +46,7 @@ billboard = 1
 no_depth_test = true
 fixed_size = true
 pixel_size = 0.002
+auto_translate_mode = 2
 text = "100 / 100"
 
 [node name="Health" type="Node" parent="."]

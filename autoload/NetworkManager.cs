@@ -132,7 +132,7 @@ public partial class NetworkManager : Node
         Error err = peer.CreateServer(NetworkConstants.DefaultPort, NetworkConstants.MaxPlayers);
         if (err != Error.Ok)
         {
-            Fail($"ENet: impossibile creare il server (porta {NetworkConstants.DefaultPort}): {err}");
+            Fail(Loc.T("NET_ERR_ENET_SERVER", NetworkConstants.DefaultPort, err));
             return false;
         }
 
@@ -147,7 +147,7 @@ public partial class NetworkManager : Node
         Error err = peer.CreateClient(address, NetworkConstants.DefaultPort);
         if (err != Error.Ok)
         {
-            Fail($"ENet: impossibile connettersi a {address}:{NetworkConstants.DefaultPort}: {err}");
+            Fail(Loc.T("NET_ERR_ENET_CLIENT", address, NetworkConstants.DefaultPort, err));
             return false;
         }
 
@@ -177,7 +177,7 @@ public partial class NetworkManager : Node
         }
         catch (System.Exception e)
         {
-            Fail($"Steam: createLobby fallita (verifica la versione dell'addon): {e.Message}");
+            Fail(Loc.T("NET_ERR_STEAM_CREATE_LOBBY", e.Message));
             return false;
         }
     }
@@ -189,7 +189,7 @@ public partial class NetworkManager : Node
 
         if (!long.TryParse(lobbyIdText, out long lobbyId))
         {
-            Fail($"Steam: id lobby non valido: '{lobbyIdText}'");
+            Fail(Loc.T("NET_ERR_STEAM_LOBBY_ID", lobbyIdText));
             return false;
         }
 
@@ -202,7 +202,7 @@ public partial class NetworkManager : Node
         }
         catch (System.Exception e)
         {
-            Fail($"Steam: joinLobby fallita: {e.Message}");
+            Fail(Loc.T("NET_ERR_STEAM_JOIN_LOBBY", e.Message));
             return false;
         }
     }
@@ -215,8 +215,7 @@ public partial class NetworkManager : Node
 
         if (!Engine.HasSingleton(SteamSingleton))
         {
-            Fail("GodotSteam non installato: manca il singleton 'Steam'. "
-                 + "Installa la GDExtension (addons/godotsteam) o usa il trasporto locale ENet.");
+            Fail(Loc.T("NET_ERR_STEAM_MISSING"));
             return false;
         }
 
@@ -234,8 +233,7 @@ public partial class NetworkManager : Node
 
             if (status != 0)
             {
-                Fail($"Steam init fallita: {verbal} (status={status}). "
-                     + "Steam e' avviato e loggato? steam_appid.txt = 480?");
+                Fail(Loc.T("NET_ERR_STEAM_INIT", verbal, status));
                 return false;
             }
 
@@ -250,7 +248,7 @@ public partial class NetworkManager : Node
         }
         catch (System.Exception e)
         {
-            Fail($"Steam: inizializzazione fallita (Steam in esecuzione? appid 480?): {e.Message}");
+            Fail(Loc.T("NET_ERR_STEAM_INIT_EXCEPTION", e.Message));
             return false;
         }
     }
@@ -260,7 +258,7 @@ public partial class NetworkManager : Node
         const long kResultOk = 1; // EResult.k_EResultOK
         if (result != kResultOk)
         {
-            Fail($"Steam: creazione lobby fallita (EResult={result}).");
+            Fail(Loc.T("NET_ERR_STEAM_LOBBY_RESULT", result));
             return;
         }
 
@@ -274,7 +272,7 @@ public partial class NetworkManager : Node
         }
         catch (System.Exception e)
         {
-            Fail($"Steam: create_host fallita: {e.Message}");
+            Fail(Loc.T("NET_ERR_STEAM_CREATE_HOST", e.Message));
             return;
         }
 
@@ -301,7 +299,7 @@ public partial class NetworkManager : Node
         }
         catch (System.Exception e)
         {
-            Fail($"Steam: getLobbyOwner fallita: {e.Message}");
+            Fail(Loc.T("NET_ERR_STEAM_LOBBY_OWNER", e.Message));
             return;
         }
 
@@ -315,7 +313,7 @@ public partial class NetworkManager : Node
         }
         catch (System.Exception e)
         {
-            Fail($"Steam: create_client fallita: {e.Message}");
+            Fail(Loc.T("NET_ERR_STEAM_CREATE_CLIENT", e.Message));
             return;
         }
 
@@ -328,14 +326,14 @@ public partial class NetworkManager : Node
     {
         if (!ClassDB.ClassExists(SteamPeerClass))
         {
-            Fail($"GodotSteam: classe '{SteamPeerClass}' non trovata. GDExtension installata?");
+            Fail(Loc.T("NET_ERR_STEAM_PEER_CLASS", SteamPeerClass));
             return null;
         }
 
         var instance = ClassDB.Instantiate(SteamPeerClass);
         MultiplayerPeer? peer = instance.As<MultiplayerPeer>();
         if (peer is null)
-            Fail($"GodotSteam: impossibile creare un {SteamPeerClass}.");
+            Fail(Loc.T("NET_ERR_STEAM_PEER_INSTANCE", SteamPeerClass));
         return peer;
     }
 
@@ -381,13 +379,13 @@ public partial class NetworkManager : Node
 
     private void OnConnectionFailed()
     {
-        Fail("Connessione all'host fallita.");
+        Fail(Loc.T("NET_ERR_CONNECTION_FAILED"));
     }
 
     private void OnServerDisconnected()
     {
         // Host uscito: nel prototipo la sessione termina (niente host migration).
-        Fail("L'host ha chiuso la sessione.");
+        Fail(Loc.T("NET_ERR_HOST_CLOSED"));
         Multiplayer.MultiplayerPeer = null;
         _gameManager.SetPhase(GameManager.GamePhase.MainMenu);
     }

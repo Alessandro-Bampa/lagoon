@@ -5,7 +5,6 @@
 [resource]
 script = ExtResource("1")
 ItemId = "rifle"
-DisplayName = "Fucile d'assalto"
 Width = 5
 Height = 2
 Weight = 3.5

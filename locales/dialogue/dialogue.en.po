@@ -1,0 +1,44 @@
+### Dialoghi — inglese (lingua di fallback).
+###
+### Formato gettext PO: scelto per i testi LUNGHI (battute, descrizioni di quest, note
+### trovate nel mondo). Le stringhe brevi stanno nei CSV in locales/, non qui — vedi la
+### skill i18n-localization.
+###
+### Godot carica i .po nativamente: non serve nessun passo di import, il file e'
+### registrato cosi' com'e' in project.godot > internationalization/locale/translations.
+###
+### Regole:
+###  - msgid = chiave (prefisso DLG_), MAI il testo inglese. Cosi' correggere una battuta
+###    inglese non invalida la traduzione italiana.
+###  - Righe lunghe: msgstr "" seguito da stringhe concatenate, una per riga.
+###  - \n per l'a capo dentro una battuta.
+###
+### Il sistema di dialogo (NPC, scelte, quest) NON esiste ancora: qui c'e' solo
+### l'infrastruttura, con voci di esempio per validare il flusso end-to-end.
+
+msgid ""
+msgstr ""
+"Project-Id-Version: Lagoon\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: esempio — battuta breve di un NPC
+msgid "DLG_SAMPLE_GREETING"
+msgstr "You made it across the water. Not many do."
+
+#: esempio — battuta lunga su piu' righe
+msgid "DLG_SAMPLE_BRIEFING"
+msgstr ""
+"The lagoon swallowed the old district three winters ago. What's left above the "
+"waterline is picked clean by now, but the flooded levels below have not been "
+"touched.\n"
+"Take a boat, take a light, and do not stay after dark."
+
+#: esempio — nota trovata nel mondo
+msgid "DLG_SAMPLE_NOTE_PIER"
+msgstr ""
+"Day 41. The pumps stopped again. We moved the supplies to the upper floor and "
+"nailed the stairwell shut.\n"
+"If you are reading this, do not open it."

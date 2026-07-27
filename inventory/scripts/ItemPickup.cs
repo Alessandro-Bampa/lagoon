@@ -89,15 +89,26 @@ public partial class ItemPickup : Node3D
     {
         string display = def?.DisplayName ?? ItemId;
         if (StackCount > 1)
-            display += $" x{StackCount}";
+            display = Loc.T("UI_HUD_ITEM_STACK", display, StackCount);
 
         // Segnala a colpo d'occhio che il contenitore a terra non e' vuoto.
         int contained = CountContained();
         if (contained > 0)
-            display += $" ({contained})";
+            display = Loc.T("UI_HUD_ITEM_CONTAINS", display, contained);
 
-        // Combinazione di tasti, come nel riferimento: "Nome  [F]" / "Cassa  [F] Apri".
-        return Anchored ? $"{display}   [F] Apri" : $"{display}   [F]";
+        // Il tasto arriva dall'InputMap, non e' scritto nel testo (skill ui-hud §4): se "interact"
+        // viene rimappato, il prompt segue senza toccare le traduzioni.
+        string key = Loc.KeyFor("interact");
+        return Loc.T(Anchored ? "UI_HUD_PROMPT_OPEN" : "UI_HUD_PROMPT_PICKUP", display, key);
+    }
+
+    /// Il prompt e' testo composto: al cambio lingua va ricostruito a mano.
+    public override void _Notification(int what)
+    {
+        if (what != NotificationTranslationChanged || _label == null)
+            return;
+
+        _label.Text = BuildLabel(GetNodeOrNull<ItemDatabase>("/root/ItemDatabase")?.Get(ItemId));
     }
 
     /// Numero di oggetti contenuti al primo livello del payload (0 se non e' un container).

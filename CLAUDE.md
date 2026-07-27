@@ -130,6 +130,7 @@ I nomi delle cartelle in `scenes/` e `scripts/` sono **per sistema di gameplay**
 - **Nodi**: recupera i riferimenti con `GetNode<T>("Path")` in `_Ready()` e mettili in campi tipizzati; evita `GetNode` sparsi in tutto il codice a runtime.
 - **Segnali**: usa `[Signal] public delegate void XxxEventHandler(...)` per comunicazione tra nodi nella stessa gerarchia; usa `EventBus` (autoload) solo per comunicazione tra sistemi non collegati direttamente nella scene tree.
 - **Niente logica di gameplay in `_Ready`/`_Process` senza guardia di autorità** quando il nodo è multiplayer-aware (vedi §3).
+- **Nessuna stringa visibile all'utente è scritta nel codice.** Ogni testo mostrato a video passa da una chiave di traduzione (`Loc.T("UI_...")`, oppure la chiave scritta direttamente in un `.tscn` e risolta dall'auto-translate). I testi vivono in `locales/`; i nomi degli oggetti si derivano dall'`ItemId`, quindi i `.tres` non contengono testo. Sono esclusi solo i messaggi di sola console (`GD.Print*`), che restano in italiano. Verifica con `tools/check-i18n.ps1`; dettagli e casi particolari nella skill `i18n-localization`.
 - **Evita singleton "statici" C# per lo stato di gioco.** Usa Autoload di Godot: sono già singleton, si integrano con la scene tree e sono ispezionabili dal debugger.
 - **Ogni oggetto raccoglibile/equipaggiabile è un `Resource` (`ItemDefinition`), non una scena duplicata per oggetto**, salvo che serva un comportamento visivo unico nel mondo. Quando una categoria ha attributi propri, **estendi con una sottoclasse `[GlobalClass]`** invece di aggiungere campi opzionali alla base: `WeaponDefinition : ItemDefinition` porta danno/portata/cadenza, che su un medkit non avrebbero senso. Il `.tres` dichiara `script_class="WeaponDefinition"`; `ItemDatabase` non cambia, perché `ResourceLoader.Load<ItemDefinition>` restituisce già l'istanza derivata.
 
@@ -167,5 +168,6 @@ La documentazione d'ambito vive in `.claude/skills/<nome>/SKILL.md`. **Carica la
 | `ui-hud` | `ui/`, la HUD, menu e popup, scala UI, risoluzione, audio, **o l'assegnazione di un tasto/azione di input** |
 | `steam-networking` | `NetworkManager`, `addons/godotsteam*`, lobby, trasporti, errori di GDExtension Steam |
 | `vehicles-boats` | `vehicles/` — barche, acqua, galleggiamento, timone, passeggeri, ponte calpestabile, piattaforme mobili, coordinate locali a un veicolo (`SyncAnchorId`) |
+| `i18n-localization` | `locales/`, `Loc`, **qualunque testo visibile all'utente**: nuove label, nuovi item, dialoghi, cambio lingua, chiavi grezze a video |
 
 Ambiti ancora senza skill perché non implementati: IA/nemici, quest, base building. Quando uno di questi viene prototipato, la sua documentazione va in una skill nuova, non qui.

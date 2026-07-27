@@ -141,18 +141,11 @@ public partial class EquipmentSlotView : Control
             payload.From, payload.InstanceId, Address, PlayerInventory.AutoPlace, 0, false);
     }
 
-    public static string SlotLabel(EquipSlotType slot) => slot switch
-    {
-        EquipSlotType.Head => "Testa",
-        EquipSlotType.Torso => "Torso",
-        EquipSlotType.Legs => "Gambe",
-        EquipSlotType.Feet => "Piedi",
-        EquipSlotType.Vest => "Rig",
-        EquipSlotType.Backpack => "Zaino",
-        EquipSlotType.SecureContainer => "Sicuro",
-        EquipSlotType.WeaponPrimary => "Arma 1",
-        EquipSlotType.WeaponSecondary => "Arma 2",
-        EquipSlotType.Sidearm => "Pistola",
-        _ => slot.ToString(),
-    };
+    /// <summary>
+    /// Etichetta localizzata di uno slot. La chiave si deriva dal nome dell'enum
+    /// (<c>Backpack</c> -> <c>SLOT_BACKPACK</c>): aggiungere uno slot significa aggiungere una riga
+    /// a <c>locales/ui.csv</c>, e <c>tools/check-i18n.ps1</c> segnala quella dimenticata.
+    /// </summary>
+    public static string SlotLabel(EquipSlotType slot)
+        => Loc.T($"SLOT_{slot.ToString().ToUpperInvariant()}");
 }

@@ -1,0 +1,34 @@
+keys,en,it
+ITEM_AMMO_NAME,Ammo,Munizioni
+ITEM_AMMO_DESC,Loose rounds. Kept in reserve and consumed when reloading.,Cartucce sfuse. Restano di riserva e si consumano ricaricando.
+ITEM_AMMO_CRATE_NAME,Ammo crate,Cassa munizioni
+ITEM_AMMO_CRATE_DESC,Crate anchored to the ground: it can be opened and looted but not picked up.,Cassa fissata al terreno: si apre e si saccheggia ma non si raccoglie.
+ITEM_AMMO_PACK_NAME,Ammo pack,Pacchetto munizioni
+ITEM_AMMO_PACK_DESC,Sealed pack. Open it to turn it into loose rounds.,Pacchetto sigillato. Aprilo per ottenere cartucce sfuse.
+ITEM_AMMO_PACK_EFFECT,Yields loose rounds when opened.,Aprendolo produce cartucce sfuse.
+ITEM_BACKPACK_NAME,Backpack,Zaino
+ITEM_BACKPACK_DESC,Large pack worn on the back. The bulkiest way to carry loot.,Zaino capiente da portare in spalla. Il modo più ingombrante di trasportare bottino.
+ITEM_BACKPACK_EFFECT,Adds a large storage grid.,Aggiunge una griglia di stivaggio ampia.
+ITEM_BODY_ARMOR_NAME,Body armor,Corpetto antiproiettile
+ITEM_BODY_ARMOR_DESC,Plated vest worn on the torso.,Corpetto con piastre da indossare sul torso.
+ITEM_BOOTS_NAME,Boots,Stivali
+ITEM_BOOTS_DESC,Sturdy boots for the marshland.,Stivali robusti adatti alla palude.
+ITEM_HELMET_NAME,Helmet,Elmetto
+ITEM_HELMET_DESC,Hard helmet worn on the head.,Elmetto rigido da indossare sulla testa.
+ITEM_MEDKIT_NAME,Medkit,Kit medico
+ITEM_MEDKIT_DESC,Field medical kit. Assignable to a quick slot.,Kit medico da campo. Assegnabile a uno slot rapido.
+ITEM_MEDKIT_EFFECT,Restores health when used.,Ripristina salute quando viene usato.
+ITEM_PANTS_NAME,Trousers,Pantaloni
+ITEM_PANTS_DESC,Reinforced trousers worn on the legs.,Pantaloni rinforzati da indossare sulle gambe.
+ITEM_PISTOL_NAME,Pistol,Pistola
+ITEM_PISTOL_DESC,Compact sidearm. Fast to draw but short ranged.,Arma corta compatta. Rapida da estrarre ma di portata ridotta.
+ITEM_RIFLE_NAME,Assault rifle,Fucile d'assalto
+ITEM_RIFLE_DESC,Automatic primary weapon. Heavy and bulky but accurate at range.,Arma primaria automatica. Pesante e ingombrante ma precisa a distanza.
+ITEM_SECURE_CONTAINER_NAME,Secure container,Contenitore sicuro
+ITEM_SECURE_CONTAINER_DESC,Small container always worn. Its contents stay with you.,Piccolo contenitore sempre indossato. Il contenuto resta con te.
+ITEM_SECURE_CONTAINER_EFFECT,Adds a small always-worn storage grid.,Aggiunge una piccola griglia sempre indossata.
+ITEM_STASH_BOX_NAME,Stash box,Baule
+ITEM_STASH_BOX_DESC,Chest anchored to the ground: it can be opened and looted but not picked up.,Baule fissato al terreno: si apre e si saccheggia ma non si raccoglie.
+ITEM_VEST_NAME,Tactical rig,Gilet tattico
+ITEM_VEST_DESC,Rig worn over the torso with pouches for quick-access items.,Gilet da indossare sul torso con tasche per gli oggetti a portata di mano.
+ITEM_VEST_EFFECT,Adds a storage grid usable by the quick slots.,Aggiunge una griglia utilizzabile dagli slot rapidi.

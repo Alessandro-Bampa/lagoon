@@ -153,6 +153,10 @@ weapon_slot_3={
 ]
 }
 
+[internationalization]
+
+locale/translations=PackedStringArray("res://locales/ui.en.translation", "res://locales/ui.it.translation", "res://locales/items.en.translation", "res://locales/items.it.translation", "res://locales/dialogue/dialogue.en.po", "res://locales/dialogue/dialogue.it.po")
+
 [layer_names]
 
 3d_physics/layer_1="world"

@@ -5,7 +5,6 @@
 [resource]
 script = ExtResource("1")
 ItemId = "ammo_crate"
-DisplayName = "Cassa munizioni"
 Width = 4
 Height = 3
 Weight = 20.0

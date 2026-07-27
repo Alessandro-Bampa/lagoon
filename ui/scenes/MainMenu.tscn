@@ -25,42 +25,42 @@ theme_override_constants/separation = 8
 
 [node name="Title" type="Label" parent="Center/VBox"]
 layout_mode = 2
-text = "Lagoon — Prototipo Fase 1 (Movimento)"
+text = "UI_MENU_TITLE"
 horizontal_alignment = 1
 
 [node name="TargetField" type="LineEdit" parent="Center/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(320, 0)
-placeholder_text = "IP (locale, vuoto = 127.0.0.1) oppure Lobby ID (Steam)"
+placeholder_text = "UI_MENU_TARGET_PLACEHOLDER"
 
 [node name="HostSteamButton" type="Button" parent="Center/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Host (Steam)"
+text = "UI_MENU_HOST_STEAM"
 
 [node name="JoinSteamButton" type="Button" parent="Center/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Join (Steam)"
+text = "UI_MENU_JOIN_STEAM"
 
 [node name="HostLocalButton" type="Button" parent="Center/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Host (Locale ENet)"
+text = "UI_MENU_HOST_LOCAL"
 
 [node name="JoinLocalButton" type="Button" parent="Center/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Join (Locale ENet)"
+text = "UI_MENU_JOIN_LOCAL"
 
 [node name="SettingsButton" type="Button" parent="Center/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Impostazioni"
+text = "UI_MENU_SETTINGS"
 
 [node name="StatusLabel" type="Label" parent="Center/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Pronto."
+text = "UI_MENU_STATUS_READY"
 horizontal_alignment = 1

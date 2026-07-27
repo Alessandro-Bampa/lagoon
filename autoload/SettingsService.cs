@@ -19,6 +19,20 @@ public partial class SettingsService : Node
     private const string ConfigPath = "user://settings.cfg";
     private const string SectionDisplay = "display";
     private const string SectionAudio = "audio";
+    private const string SectionLocale = "locale";
+
+    /// Valore di <see cref="Language"/> che significa "segui la lingua del sistema operativo".
+    public const string SystemLanguage = "system";
+
+    /// Lingue offerte nel menu, nell'ordine in cui compaiono. L'etichetta e' l'ENDONIMO (il nome
+    /// della lingua nella lingua stessa): un giocatore che ha avviato per sbaglio in una lingua che
+    /// non conosce deve poter ritrovare la propria nell'elenco.
+    public static readonly (string Code, string Label)[] AvailableLanguages =
+    {
+        (SystemLanguage, ""), // etichetta tradotta a runtime (UI_SETTINGS_LANGUAGE_SYSTEM)
+        ("it", "Italiano"),
+        ("en", "English"),
+    };
 
     public const float MinUiScale = 0.75f;
     public const float MaxUiScale = 2.0f;
@@ -29,6 +43,18 @@ public partial class SettingsService : Node
     /// Emesso dopo ogni applicazione di una scala diversa dalla precedente.
     [Signal]
     public delegate void UiScaleChangedEventHandler(float scale);
+
+    /// Emesso dopo ogni cambio effettivo di lingua. La UI da scena si aggiorna gia' da sola
+    /// (Godot notifica NotificationTranslationChanged a tutti i Control): questo segnale serve a
+    /// chi non e' un Control, o a chi deve rifare un lavoro piu' grosso di un semplice testo.
+    [Signal]
+    public delegate void LanguageChangedEventHandler(string locale);
+
+    /// <summary>
+    /// Lingua della UI: <c>"system"</c>, oppure un codice locale fra
+    /// <see cref="AvailableLanguages"/>. Il setter NON applica nulla: chiamare <see cref="ApplyAll"/>.
+    /// </summary>
+    public string Language { get; set; } = SystemLanguage;
 
     private float _uiScale = 1.0f;
 
@@ -70,9 +96,26 @@ public partial class SettingsService : Node
     /// Applica tutte le impostazioni allo stato corrente del runtime.
     public void ApplyAll()
     {
+        // Per prima: tutto cio' che viene mostrato dopo deve gia' essere nella lingua giusta.
+        ApplyLocale();
         ApplyUiScale();
         ApplyWindow();
         ApplyVolumes();
+    }
+
+    /// <summary>
+    /// Imposta la lingua di <see cref="TranslationServer"/>. Con <see cref="SystemLanguage"/> si
+    /// segue la lingua del sistema: se non e' fra quelle tradotte, il fallback dichiarato in
+    /// <c>project.godot</c> (inglese) copre tutto, quindi non serve nessuna lista di controllo qui.
+    /// </summary>
+    private void ApplyLocale()
+    {
+        string target = Language == SystemLanguage ? OS.GetLocaleLanguage() : Language;
+        if (TranslationServer.GetLocale() == target)
+            return;
+
+        TranslationServer.SetLocale(target);
+        EmitSignal(SignalName.LanguageChanged, target);
     }
 
     private void ApplyUiScale()
@@ -131,6 +174,8 @@ public partial class SettingsService : Node
         if (config.Load(ConfigPath) != Error.Ok)
             return; // primo avvio: restano i default dichiarati sulle proprieta'
 
+        Language = (string)config.GetValue(SectionLocale, "language", Language);
+
         UiScale = (float)config.GetValue(SectionDisplay, "ui_scale", _uiScale);
         Fullscreen = (bool)config.GetValue(SectionDisplay, "fullscreen", Fullscreen);
         VSyncEnabled = (bool)config.GetValue(SectionDisplay, "vsync", VSyncEnabled);
@@ -143,6 +188,8 @@ public partial class SettingsService : Node
     public void Save()
     {
         var config = new ConfigFile();
+        config.SetValue(SectionLocale, "language", Language);
+
         config.SetValue(SectionDisplay, "ui_scale", UiScale);
         config.SetValue(SectionDisplay, "fullscreen", Fullscreen);
         config.SetValue(SectionDisplay, "vsync", VSyncEnabled);

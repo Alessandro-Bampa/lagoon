@@ -1,0 +1,106 @@
+keys,en,it
+UI_MENU_TITLE,Lagoon — Prototype Phase 1 (Movement),Lagoon — Prototipo Fase 1 (Movimento)
+UI_MENU_TARGET_PLACEHOLDER,"IP (local, empty = 127.0.0.1) or Lobby ID (Steam)","IP (locale, vuoto = 127.0.0.1) oppure Lobby ID (Steam)"
+UI_MENU_HOST_STEAM,Host (Steam),Host (Steam)
+UI_MENU_JOIN_STEAM,Join (Steam),Join (Steam)
+UI_MENU_HOST_LOCAL,Host (Local ENet),Host (Locale ENet)
+UI_MENU_JOIN_LOCAL,Join (Local ENet),Join (Locale ENet)
+UI_MENU_SETTINGS,Settings,Impostazioni
+UI_MENU_STATUS_READY,Ready.,Pronto.
+UI_MENU_STATUS_HOSTING_STEAM,Starting Steam host...,Avvio host Steam...
+UI_MENU_STATUS_HOSTING_LOCAL,Starting local host...,Avvio host locale...
+UI_MENU_STATUS_CONNECTING,Connecting...,Connessione...
+UI_MENU_STATUS_HOST_STEAM_OK,Steam host running. Lobby ID: {0},Host Steam attivo. Lobby ID: {0}
+UI_MENU_STATUS_HOST_LOCAL_OK,Local host running (127.0.0.1).,Host locale attivo (127.0.0.1).
+UI_MENU_STATUS_ERROR,Error: {0},Errore: {0}
+UI_PAUSE_TITLE,PAUSED,PAUSA
+UI_PAUSE_RESUME,Resume,Riprendi
+UI_PAUSE_SETTINGS,Settings,Impostazioni
+UI_PAUSE_LEAVE,Leave session,Esci dalla partita
+UI_PAUSE_QUIT,Quit game,Esci dal gioco
+UI_SETTINGS_TITLE,SETTINGS,IMPOSTAZIONI
+UI_SETTINGS_LANGUAGE,Language,Lingua
+UI_SETTINGS_LANGUAGE_SYSTEM,System,Sistema
+UI_SETTINGS_UI_SCALE,UI scale,Scala UI
+UI_SETTINGS_FULLSCREEN,Fullscreen,Schermo intero
+UI_SETTINGS_VSYNC,VSync,VSync
+UI_SETTINGS_VOLUME_MASTER,Master volume,Volume generale
+UI_SETTINGS_VOLUME_MUSIC,Music,Musica
+UI_SETTINGS_VOLUME_SFX,Effects,Effetti
+UI_SETTINGS_PERCENT,{0}%,{0}%
+UI_SETTINGS_HINT,The UI has a fixed pixel size: raise the scale on 2K/4K displays.,La UI ha dimensione in pixel fissa: alza la scala su schermi 2K/4K.
+UI_SETTINGS_BACK,Back,Indietro
+UI_WINDOW_CLOSE_TOOLTIP,Close,Chiudi
+UI_INV_COL_GEAR,GEAR,EQUIPAGGIAMENTO
+UI_INV_COL_STORAGE,POCKETS AND CONTAINERS,TASCHE E CONTENITORI
+UI_INV_COL_SOURCE,ON THE GROUND,A TERRA
+UI_INV_WEIGHT,Weight: {0} / {1} kg,Peso: {0} / {1} kg
+UI_INV_ROTATION,Rotation ({0}): {1},Rotazione ({0}): {1}
+UI_INV_ROTATION_ON,ON,ON
+UI_INV_ROTATION_OFF,OFF,OFF
+UI_INV_POCKETS,Pockets,Tasche
+UI_INV_BACK_TO_GROUND,< Ground,< A terra
+UI_INV_CONTENTS,Contents,Contenuto
+UI_INV_GROUND_EMPTY,No items nearby.,Nessun oggetto nelle vicinanze.
+UI_INV_CTX_USE,Use,Usa
+UI_INV_CTX_INSPECT,Inspect,Ispeziona
+UI_INV_CTX_EXAMINE,Examine,Esamina
+UI_INV_CTX_EQUIP,Equip,Equipaggia
+UI_INV_CTX_UNPACK,Open pack,Apri pacchetto
+UI_INV_CTX_DISCARD,Drop on the ground,Getta a terra
+UI_INV_CTX_UNLOAD_MAGAZINE,Unload magazine,Scarica caricatore
+UI_INV_CTX_UNLOAD_AMMO,Empty ammo,Svuota munizioni
+UI_INV_CTX_FOLD_STOCK,Fold stock,Piega calcio
+UI_INV_CTX_WEAPON_LOCKED,Available with the weapon system (Phase 3).,Disponibile con il sistema armi (Fase 3).
+UI_INSPECT_TITLE,Inspect — {0},Ispeziona — {0}
+UI_INSPECT_CATEGORY,Category: {0},Categoria: {0}
+UI_INSPECT_SIZE,Size: {0}x{1} cells,Ingombro: {0}x{1} celle
+UI_INSPECT_WEIGHT,Weight: {0} kg,Peso: {0} kg
+UI_INSPECT_QUANTITY,Quantity: {0},Quantità: {0}
+UI_INSPECT_CAPACITY,Capacity: {0}x{1},Capacità: {0}x{1}
+UI_INSPECT_MODS_TITLE,Mods and durability,Moduli e durabilità
+UI_INSPECT_MODS_LOCKED,Available with the weapon system (Phase 3).,Disponibili con il sistema armi (Fase 3).
+UI_HUD_PROMPT_PICKUP,{0}   [{1}],{0}   [{1}]
+UI_HUD_PROMPT_OPEN,{0}   [{1}] Open,{0}   [{1}] Apri
+UI_HUD_ITEM_STACK,{0} x{1},{0} x{1}
+UI_HUD_ITEM_CONTAINS,{0} ({1}),{0} ({1})
+UI_HUD_GROUND_OPEN,Open,Apri
+UI_HUD_GROUND_PICKUP,Pick up,Raccogli
+UI_HUD_GROUND_EXAMINE,Examine,Esamina
+UI_HUD_RELOADING,RELOADING…,RICARICA…
+UI_HUD_AMMO,{0} / {1},{0} / {1}
+UI_MOUSE_LEFT,LMB,TSX
+UI_MOUSE_RIGHT,RMB,TDX
+UI_MOUSE_MIDDLE,MMB,TCE
+SLOT_NONE,—,—
+SLOT_HEAD,Head,Testa
+SLOT_TORSO,Torso,Torso
+SLOT_LEGS,Legs,Gambe
+SLOT_FEET,Feet,Piedi
+SLOT_VEST,Rig,Rig
+SLOT_BACKPACK,Backpack,Zaino
+SLOT_WEAPONPRIMARY,Weapon 1,Arma 1
+SLOT_WEAPONSECONDARY,Weapon 2,Arma 2
+SLOT_SIDEARM,Sidearm,Pistola
+SLOT_SECURECONTAINER,Secure,Sicuro
+CATEGORY_GENERIC,Generic,Generico
+CATEGORY_EQUIPMENT,Equipment,Equipaggiamento
+CATEGORY_CONTAINER,Container,Contenitore
+CATEGORY_WEAPON,Weapon,Arma
+CATEGORY_CONSUMABLE,Consumable,Consumabile
+NET_ERR_ENET_SERVER,"ENet: cannot create the server (port {0}): {1}","ENet: impossibile creare il server (porta {0}): {1}"
+NET_ERR_ENET_CLIENT,"ENet: cannot connect to {0}:{1}: {2}","ENet: impossibile connettersi a {0}:{1}: {2}"
+NET_ERR_STEAM_CREATE_LOBBY,"Steam: createLobby failed (check the addon version): {0}","Steam: createLobby fallita (verifica la versione dell'addon): {0}"
+NET_ERR_STEAM_LOBBY_ID,Steam: invalid lobby id: '{0}',Steam: id lobby non valido: '{0}'
+NET_ERR_STEAM_JOIN_LOBBY,Steam: joinLobby failed: {0},Steam: joinLobby fallita: {0}
+NET_ERR_STEAM_MISSING,GodotSteam is not installed: the 'Steam' singleton is missing. Install the GDExtension (addons/godotsteam) or use the local ENet transport.,GodotSteam non installato: manca il singleton 'Steam'. Installa la GDExtension (addons/godotsteam) o usa il trasporto locale ENet.
+NET_ERR_STEAM_INIT,"Steam init failed: {0} (status={1}). Is Steam running and logged in? steam_appid.txt = 480?","Steam init fallita: {0} (status={1}). Steam è avviato e loggato? steam_appid.txt = 480?"
+NET_ERR_STEAM_INIT_EXCEPTION,"Steam: initialization failed (is Steam running? appid 480?): {0}","Steam: inizializzazione fallita (Steam in esecuzione? appid 480?): {0}"
+NET_ERR_STEAM_LOBBY_RESULT,Steam: lobby creation failed (EResult={0}).,Steam: creazione lobby fallita (EResult={0}).
+NET_ERR_STEAM_CREATE_HOST,Steam: create_host failed: {0},Steam: create_host fallita: {0}
+NET_ERR_STEAM_LOBBY_OWNER,Steam: getLobbyOwner failed: {0},Steam: getLobbyOwner fallita: {0}
+NET_ERR_STEAM_CREATE_CLIENT,Steam: create_client failed: {0},Steam: create_client fallita: {0}
+NET_ERR_STEAM_PEER_CLASS,Steam: class '{0}' not found. Is the GDExtension installed?,Steam: classe '{0}' non trovata. GDExtension installata?
+NET_ERR_STEAM_PEER_INSTANCE,Steam: cannot create a {0}.,Steam: impossibile creare un {0}.
+NET_ERR_CONNECTION_FAILED,Connection to the host failed.,Connessione all'host fallita.
+NET_ERR_HOST_CLOSED,The host has closed the session.,L'host ha chiuso la sessione.

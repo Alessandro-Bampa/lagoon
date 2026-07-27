@@ -14,6 +14,11 @@ public partial class MainMenu : Control
     private LineEdit _targetField = null!;
     private Label _status = null!;
 
+    // Ultimo messaggio di stato in forma NON risolta: la Label mostra testo gia' tradotto, che al
+    // cambio lingua non si potrebbe ritradurre a partire da se' stesso.
+    private string? _statusKey;
+    private object[] _statusArgs = System.Array.Empty<object>();
+
     public override void _Ready()
     {
         _network = GetNode<NetworkManager>("/root/NetworkManager");
@@ -38,23 +43,24 @@ public partial class MainMenu : Control
 
     private void StartHost(NetworkManager.TransportMode mode)
     {
-        _status.Text = mode == NetworkManager.TransportMode.Steam
-            ? "Avvio host Steam..."
-            : "Avvio host locale...";
+        SetStatus(mode == NetworkManager.TransportMode.Steam
+            ? "UI_MENU_STATUS_HOSTING_STEAM"
+            : "UI_MENU_STATUS_HOSTING_LOCAL");
         _network.HostGame(mode);
     }
 
     private void StartJoin(NetworkManager.TransportMode mode)
     {
-        _status.Text = "Connessione...";
+        SetStatus("UI_MENU_STATUS_CONNECTING");
         _network.JoinGame(mode, _targetField.Text);
     }
 
     private void OnHostStarted(long lobbyId)
     {
-        _status.Text = lobbyId > 0
-            ? $"Host Steam attivo. Lobby ID: {lobbyId}"
-            : "Host locale attivo (127.0.0.1).";
+        if (lobbyId > 0)
+            SetStatus("UI_MENU_STATUS_HOST_STEAM_OK", lobbyId);
+        else
+            SetStatus("UI_MENU_STATUS_HOST_LOCAL_OK");
         EnterGame();
     }
 
@@ -69,8 +75,28 @@ public partial class MainMenu : Control
         Hide();
     }
 
+    /// Il messaggio arriva dal <see cref="NetworkManager"/> gia' tradotto (chiavi NET_ERR_*):
+    /// qui si aggiunge solo la cornice "Errore: ...".
     private void OnNetworkFailed(string message)
     {
-        _status.Text = $"Errore: {message}";
+        SetStatus("UI_MENU_STATUS_ERROR", message);
+    }
+
+    /// <summary>
+    /// Scrive la riga di stato da una chiave di traduzione e memorizza chiave+argomenti, cosi' il
+    /// testo si puo' rigenerare se la lingua cambia mentre il menu e' a video (l'auto-translate dei
+    /// Control non copre le stringhe composte: vedi la skill i18n-localization).
+    /// </summary>
+    private void SetStatus(string key, params object[] args)
+    {
+        _statusKey = key;
+        _statusArgs = args;
+        _status.Text = Loc.T(key, args);
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationTranslationChanged && _status != null && _statusKey != null)
+            _status.Text = Loc.T(_statusKey, _statusArgs);
     }
 }

@@ -23,6 +23,7 @@ public partial class PauseMenu : Control
     private Control _settingsPage = null!;
     private Button _leaveButton = null!;
 
+    private OptionButton _languageOption = null!;
     private HSlider _uiScaleSlider = null!;
     private Label _uiScaleValue = null!;
     private CheckButton _fullscreenToggle = null!;
@@ -47,6 +48,7 @@ public partial class PauseMenu : Control
         _settingsPage = GetNode<Control>("%SettingsPage");
         _leaveButton = GetNode<Button>("%LeaveButton");
 
+        _languageOption = GetNode<OptionButton>("%LanguageOption");
         _uiScaleSlider = GetNode<HSlider>("%UiScaleSlider");
         _uiScaleValue = GetNode<Label>("%UiScaleValue");
         _fullscreenToggle = GetNode<CheckButton>("%FullscreenToggle");
@@ -60,6 +62,7 @@ public partial class PauseMenu : Control
 
         _uiScaleSlider.MinValue = SettingsService.MinUiScale;
         _uiScaleSlider.MaxValue = SettingsService.MaxUiScale;
+        BuildLanguageOptions();
 
         GetNode<Button>("%ResumeButton").Pressed += Close;
         GetNode<Button>("%SettingsButton").Pressed += () => ShowPage(settings: true);
@@ -68,6 +71,7 @@ public partial class PauseMenu : Control
         GetNode<Button>("%QuitButton").Pressed += () => GetTree().Quit();
 
         // Applicazione live: il giocatore vede l'effetto mentre trascina.
+        _languageOption.ItemSelected += _ => ApplyFromControls();
         _uiScaleSlider.ValueChanged += _ => ApplyFromControls();
         _masterSlider.ValueChanged += _ => ApplyFromControls();
         _musicSlider.ValueChanged += _ => ApplyFromControls();
@@ -138,10 +142,39 @@ public partial class PauseMenu : Control
     //  Impostazioni <-> controlli
     // ====================================================================================
 
+    /// <summary>
+    /// Popola l'elenco delle lingue. Le voci sono ENDONIMI e restano invariate al cambio lingua
+    /// (l'OptionButton ha auto_translate_mode = disabled nella scena): l'unica voce tradotta e'
+    /// "Sistema", che va rigenerata quando la lingua cambia — vedi <see cref="_Notification"/>.
+    /// </summary>
+    private void BuildLanguageOptions()
+    {
+        int previous = _languageOption.Selected;
+        _languageOption.Clear();
+
+        for (int i = 0; i < SettingsService.AvailableLanguages.Length; i++)
+        {
+            (string code, string label) = SettingsService.AvailableLanguages[i];
+            _languageOption.AddItem(
+                code == SettingsService.SystemLanguage ? Loc.T("UI_SETTINGS_LANGUAGE_SYSTEM") : label, i);
+        }
+
+        if (previous >= 0 && previous < _languageOption.ItemCount)
+            _languageOption.Selected = previous;
+    }
+
+    /// La voce "Sistema" e' l'unica tradotta nell'elenco: al cambio lingua va riscritta.
+    public override void _Notification(int what)
+    {
+        if (what == NotificationTranslationChanged && _languageOption != null)
+            BuildLanguageOptions();
+    }
+
     private void SyncControlsFromSettings()
     {
         _syncing = true;
 
+        _languageOption.Selected = LanguageIndex(_settings.Language);
         _uiScaleSlider.Value = _settings.UiScale;
         _fullscreenToggle.ButtonPressed = _settings.Fullscreen;
         _vsyncToggle.ButtonPressed = _settings.VSyncEnabled;
@@ -158,6 +191,7 @@ public partial class PauseMenu : Control
         if (_syncing)
             return;
 
+        _settings.Language = LanguageCode(_languageOption.Selected);
         _settings.UiScale = (float)_uiScaleSlider.Value;
         _settings.Fullscreen = _fullscreenToggle.ButtonPressed;
         _settings.VSyncEnabled = _vsyncToggle.ButtonPressed;
@@ -171,9 +205,24 @@ public partial class PauseMenu : Control
 
     private void UpdateValueLabels()
     {
-        _uiScaleValue.Text = $"{_uiScaleSlider.Value * 100:0}%";
-        _masterValue.Text = $"{_masterSlider.Value * 100:0}%";
-        _musicValue.Text = $"{_musicSlider.Value * 100:0}%";
-        _sfxValue.Text = $"{_sfxSlider.Value * 100:0}%";
+        _uiScaleValue.Text = Percent(_uiScaleSlider.Value);
+        _masterValue.Text = Percent(_masterSlider.Value);
+        _musicValue.Text = Percent(_musicSlider.Value);
+        _sfxValue.Text = Percent(_sfxSlider.Value);
     }
+
+    private static string Percent(double value) => Loc.T("UI_SETTINGS_PERCENT", Loc.Num((float)value * 100f, "0"));
+
+    private static int LanguageIndex(string code)
+    {
+        for (int i = 0; i < SettingsService.AvailableLanguages.Length; i++)
+            if (SettingsService.AvailableLanguages[i].Code == code)
+                return i;
+        return 0; // "Sistema"
+    }
+
+    private static string LanguageCode(int index)
+        => index >= 0 && index < SettingsService.AvailableLanguages.Length
+            ? SettingsService.AvailableLanguages[index].Code
+            : SettingsService.SystemLanguage;
 }

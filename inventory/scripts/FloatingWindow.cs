@@ -99,16 +99,25 @@ public partial class FloatingWindow : PanelContainer
         var bar = new HBoxContainer { CustomMinimumSize = new Vector2(0, TitleBarHeight) };
         bar.AddThemeConstantOverride("separation", 8);
 
+        // Il titolo arriva gia' tradotto dalla sottoclasse (nome dell'item o Loc.T).
         var title = new Label
         {
             Text = _title,
+            AutoTranslateMode = AutoTranslateModeEnum.Disabled,
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             VerticalAlignment = VerticalAlignment.Center,
             MouseFilter = MouseFilterEnum.Ignore, // il trascinamento lo gestisce la finestra
         };
         bar.AddChild(title);
 
-        var close = new Button { Text = "X", CustomMinimumSize = new Vector2(24, 0) };
+        // "X" e' un simbolo, non testo naturale: non si traduce. Il significato lo porta il
+        // tooltip, che invece e' localizzato.
+        var close = new Button
+        {
+            Text = "X", // i18n-ignore
+            TooltipText = Loc.T("UI_WINDOW_CLOSE_TOOLTIP"),
+            CustomMinimumSize = new Vector2(24, 0),
+        };
         close.Pressed += QueueFree;
         bar.AddChild(close);
 

@@ -70,7 +70,13 @@ Qualunque nuova UI modale deve alzare `GameManager.UiModalOpen`, mai `GetTree().
 
 ---
 
-## 5. Cursore
+## 5. Testo
+
+Nessuna label, voce di menu o tooltip contiene testo scritto nel codice: si usa una **chiave** di traduzione (`Loc.T("UI_...")`, o la chiave direttamente nella proprietà `text` di un `.tscn`). I tasti nei prompt si leggono dall'InputMap con `Loc.KeyFor("azione")`, mai scritti a mano nella stringa — così una rimappatura non lascia indietro il testo. I `PopupMenu` non passano dall'auto-translate, come non ereditano la scala UI: vanno tradotti a mano. Dettagli nella skill `i18n-localization`.
+
+---
+
+## 6. Cursore
 
 Il cursore del sistema resta **sempre visibile e mai catturato**: tutto l'inventario è drag & drop e dipende dal cursore reale. Il reticolo (`CrosshairOverlay`) si disegna *attorno* alla posizione del mouse invece di sostituirla, con `MouseFilter = Ignore`, e sparisce quando l'inventario o una modale prendono il controllo.
 

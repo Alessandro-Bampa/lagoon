@@ -24,6 +24,8 @@ Questa skill documenta **gli invarianti che non vanno rotti**, non l'elenco dei 
 
 Sulla rete non viaggia mai una definizione: solo l'`ItemId` (stringa), che host e client risolvono identicamente con `ItemDatabase`.
 
+> **I `.tres` non contengono testo.** Nome, descrizione ed effetto di un item sono chiavi derivate dall'`ItemId` (`ITEM_<ID>_NAME` / `_DESC` / `_EFFECT`) e vivono in `locales/items.csv`. Creare un item significa quindi anche aggiungere le sue righe lì, altrimenti `ItemDatabase` lo segnala all'avvio. Vedi la skill `i18n-localization`.
+
 ---
 
 ## 2. `ItemAddress` — lo schema di indirizzamento

@@ -21,6 +21,26 @@ public partial class ItemDatabase : Node
     {
         LoadAll();
         GD.Print($"[ItemDatabase] Caricate {_byId.Count} definizioni item da {ItemsFolder}.");
+        // Le traduzioni sono gia' registrate all'avvio degli autoload: la verifica puo' girare qui.
+        WarnMissingTranslations();
+    }
+
+    /// <summary>
+    /// In debug, segnala gli item privi di nome tradotto. Il nome NON sta piu' nel <c>.tres</c>: e'
+    /// una chiave derivata dall'ItemId (<c>ITEM_&lt;ID&gt;_NAME</c>) risolta da <c>locales/items.csv</c>.
+    /// Senza questo controllo un item aggiunto senza la riga nel CSV si scoprirebbe solo aprendo
+    /// l'inventario; cosi' invece si vede all'avvio.
+    /// </summary>
+    private void WarnMissingTranslations()
+    {
+        if (!OS.IsDebugBuild())
+            return;
+
+        foreach (ItemDefinition def in _byId.Values)
+            if (!Loc.TryT(def.NameKey, out _))
+                GD.PushWarning(
+                    $"[ItemDatabase] '{def.ItemId}' non ha un nome tradotto: aggiungi la riga "
+                    + $"{def.NameKey} in locales/items.csv.");
     }
 
     private void LoadAll()

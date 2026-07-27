@@ -16,7 +16,29 @@ public partial class ItemDefinition : Resource
     /// Identificatore stabile e univoco del tipo (chiave di rete e di database). Es: "backpack".
     [Export] public string ItemId { get; set; } = "";
 
-    [Export] public string DisplayName { get; set; } = "";
+    // ------------------------------------------------------------------------------------
+    //  Testo localizzato
+    //
+    //  I .tres NON contengono testo: nome, descrizione ed effetto sono CHIAVI derivate
+    //  dall'ItemId, tradotte a runtime da locales/items.csv. Cosi' e' impossibile creare un
+    //  item con un nome hardcoded, e la definizione resta un dato puro (CLAUDE.md §4).
+    //
+    //  Sulla rete continua a viaggiare solo l'ItemId: due giocatori con lingue diverse
+    //  vedono nomi diversi dello stesso identico oggetto, senza alcuna desincronizzazione.
+    // ------------------------------------------------------------------------------------
+
+    public string NameKey => $"ITEM_{ItemId.ToUpperInvariant()}_NAME";
+    public string DescriptionKey => $"ITEM_{ItemId.ToUpperInvariant()}_DESC";
+    public string EffectKey => $"ITEM_{ItemId.ToUpperInvariant()}_EFFECT";
+
+    /// Nome localizzato. NON memorizzarlo in un campo: cambia quando cambia la lingua.
+    public string DisplayName => Loc.T(NameKey);
+
+    /// Descrizione estesa. Stringa vuota se l'item non ne ha una (chiave assente, nessun warning).
+    public string Description => Loc.TOrEmpty(DescriptionKey);
+
+    /// Effetto di gioco in forma leggibile. Vuoto per gli oggetti che non ne hanno.
+    public string Effect => Loc.TOrEmpty(EffectKey);
 
     // Dimensioni in celle di griglia (orientamento base, prima di un'eventuale rotazione).
     [Export] public int Width { get; set; } = 1;

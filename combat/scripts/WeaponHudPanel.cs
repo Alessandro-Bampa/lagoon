@@ -92,13 +92,20 @@ public partial class WeaponHudPanel : Control
         _weaponBlock.AddThemeConstantOverride("separation", 2);
         column.AddChild(_weaponBlock);
 
-        _weaponLabel = new Label { MouseFilter = MouseFilterEnum.Ignore };
+        // Entrambe le etichette ricevono testo gia' tradotto e sono riscritte ogni frame in
+        // _Process: nessun auto-translate, nessun aggiornamento da NotificationTranslationChanged.
+        _weaponLabel = new Label
+        {
+            MouseFilter = MouseFilterEnum.Ignore,
+            AutoTranslateMode = AutoTranslateModeEnum.Disabled,
+        };
         _weaponLabel.AddThemeFontSizeOverride("font_size", 13);
         _weaponBlock.AddChild(_weaponLabel);
 
         _ammoLabel = new Label
         {
             MouseFilter = MouseFilterEnum.Ignore,
+            AutoTranslateMode = AutoTranslateModeEnum.Disabled,
             HorizontalAlignment = HorizontalAlignment.Right,
         };
         _ammoLabel.AddThemeFontSizeOverride("font_size", 22);
@@ -115,7 +122,7 @@ public partial class WeaponHudPanel : Control
         if (weapon == null)
             return;
 
-        _weaponLabel.Text = weapon.DisplayName;
+        _weaponLabel.Text = weapon.DisplayName; // gia' localizzato: ItemDefinition risolve da chiave
 
         // L'override del colore si applica solo al cambio di stato: rifarlo ogni frame
         // scatenerebbe una notifica di tema inutile a 60 Hz.
@@ -129,7 +136,7 @@ public partial class WeaponHudPanel : Control
         }
 
         _ammoLabel.Text = _weapon.Reloading
-            ? "RICARICA…"
-            : $"{_weapon.MagazineAmmo} / {_weapon.ReserveAmmo}";
+            ? Loc.T("UI_HUD_RELOADING")
+            : Loc.T("UI_HUD_AMMO", _weapon.MagazineAmmo, _weapon.ReserveAmmo);
     }
 }

@@ -5,7 +5,6 @@
 [resource]
 script = ExtResource("1")
 ItemId = "stash_box"
-DisplayName = "Baule"
 Width = 5
 Height = 4
 Weight = 35.0

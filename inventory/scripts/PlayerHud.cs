@@ -194,8 +194,9 @@ public partial class PlayerHud : Node
             return;
 
         var menu = new PopupMenu();
-        menu.AddItem(pickup.Anchored ? "Apri" : "Raccogli", 0);
-        menu.AddItem("Esamina", 1);
+        // Un PopupMenu costruito in codice non passa dall'auto-translate: le voci si traducono qui.
+        menu.AddItem(Loc.T(pickup.Anchored ? "UI_HUD_GROUND_OPEN" : "UI_HUD_GROUND_PICKUP"), 0);
+        menu.AddItem(Loc.T("UI_HUD_GROUND_EXAMINE"), 1);
         _hudRoot.AddChild(menu);
         SettingsService.ApplyToPopup(menu);
 

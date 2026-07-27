@@ -1,0 +1,28 @@
+### Dialoghi — italiano. Vedi le regole nell'intestazione di dialogue.en.po.
+
+msgid ""
+msgstr ""
+"Project-Id-Version: Lagoon\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: esempio — battuta breve di un NPC
+msgid "DLG_SAMPLE_GREETING"
+msgstr "Sei riuscito ad attraversare l'acqua. In pochi ci riescono."
+
+#: esempio — battuta lunga su piu' righe
+msgid "DLG_SAMPLE_BRIEFING"
+msgstr ""
+"La laguna si è ingoiata il vecchio quartiere tre inverni fa. Quel che resta sopra "
+"il livello dell'acqua ormai è stato ripulito, ma i piani allagati sotto non li ha "
+"toccati nessuno.\n"
+"Prendi una barca, prendi una luce, e non restare lì dopo il tramonto."
+
+#: esempio — nota trovata nel mondo
+msgid "DLG_SAMPLE_NOTE_PIER"
+msgstr ""
+"Giorno 41. Le pompe si sono fermate di nuovo. Abbiamo spostato le provviste al "
+"piano di sopra e inchiodato la tromba delle scale.\n"
+"Se stai leggendo questo, non aprirla."
