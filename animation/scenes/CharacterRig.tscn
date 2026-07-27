@@ -1,0 +1,35 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/models/Body_Base.glb" id="1"]
+[ext_resource type="AnimationLibrary" path="res://assets/models/animations/CharacterAnimations.glb" id="2"]
+[ext_resource type="AnimationNodeBlendTree" path="res://animation/resources/CharacterBlendTree.tres" id="3"]
+[ext_resource type="Script" path="res://animation/scripts/CharacterAnimator.cs" id="4"]
+[ext_resource type="Script" path="res://animation/scripts/WeaponGripRig.cs" id="5"]
+
+; Rig del personaggio, condiviso da player e (in futuro) NPC: nessun riferimento a
+; PlayerController qui dentro, il pilotaggio arriva dall'esterno via CharacterAnimator.
+[node name="CharacterRig" type="Node3D"]
+script = ExtResource("4")
+
+[node name="Body" parent="." instance=ExtResource("1")]
+
+; AnimationTree senza AnimationPlayer: da Godot 4.2 l'AnimationTree e' un AnimationMixer
+; e puo' tenere le librerie direttamente, quindi un AnimationPlayer intermedio sarebbe
+; solo un nodo in piu' da tenere allineato.
+;
+; root_node DEVE puntare al nodo istanziato dal .glb: i path delle track sono
+; "Armature_Character/Skeleton3D:<Bone>", relativi a quella radice. Puntandolo altrove
+; le track non risolvono e l'animazione non si vede, senza alcun errore a runtime.
+[node name="AnimationTree" type="AnimationTree" parent="."]
+root_node = NodePath("../Body")
+tree_root = ExtResource("3")
+libraries = {
+&"": ExtResource("2")
+}
+active = true
+
+; Aggancio dell'arma alla mano destra. Crea da codice il BoneAttachment3D e l'IK della
+; mano di supporto: sono figli dello Skeleton3D, che vive dentro Body_Base.glb e si
+; rigenera, quindi metterli qui nella scena li esporrebbe a sparire a ogni reimport.
+[node name="GripRig" type="Node3D" parent="."]
+script = ExtResource("5")

@@ -17,3 +17,7 @@ steam_appid.txt
 
 # Copie temporanee create da Godot durante l'hot-reload delle librerie native
 addons/**/~*
+
+# Cache Python degli script Blender (tools/blender/)
+__pycache__/
+*.pyc

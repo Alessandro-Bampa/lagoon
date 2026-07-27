@@ -99,6 +99,20 @@ public partial class WeaponDefinition : ItemDefinition
     [Export] public float ProjectileSpeed { get; set; } = 400f;
 
     // ====================================================================================
+    //  Animazione
+    // ====================================================================================
+
+    /// <summary>
+    /// Come l'arma va impugnata e animata. E' un riferimento a una <c>Resource</c> condivisa e non un
+    /// blocco di campi qui, perche' tutte le armi a due mani impugnano allo stesso modo: un solo
+    /// <c>.tres</c> serve l'intera categoria.
+    ///
+    /// Puo' essere null: un'arma senza set usa la posa disarmata, cioe' la sola locomozione. Il layer
+    /// di animazione non deve mai assumere che ci sia.
+    /// </summary>
+    [Export] public WeaponAnimationSet? AnimationSet { get; set; }
+
+    // ====================================================================================
     //  Formule condivise
     // ====================================================================================
 

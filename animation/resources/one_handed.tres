@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="WeaponAnimationSet" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://animation/scripts/WeaponAnimationSet.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+HoldPose = "pistol_idle"
+FirePose = "pistol_idle"
+IsTwoHanded = false
+GripOffset = Vector3(0, 0, 0)
+GripRotationDegrees = Vector3(0, 0, 0)
+SupportGripOffset = Vector3(0, 0, 0)
+RecoilKickBack = 0.03
+RecoilKickUpDegrees = 5.0
+RecoilRecoverySpeed = 12.0

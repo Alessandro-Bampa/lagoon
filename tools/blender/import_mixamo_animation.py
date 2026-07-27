@@ -120,11 +120,17 @@ for curve in curves:
         spans["xyz"[curve.array_index]] = round(max(vals) - min(vals), 4)
 log["hips_span_m"] = spans
 
-# Una clip "In Place" oscilla di pochi centimetri; se trasla molto, ha root
-# motion e combatterebbe contro SyncPosition.
-horizontal = max(spans.get("x", 0.0), spans.get("y", 0.0))
+# Una clip "In Place" oscilla di pochi centimetri IN ORIZZONTALE; se trasla molto ha root motion e
+# combatterebbe contro SyncPosition.
+#
+# ATTENZIONE ALL'ASSE. La traslazione di un pose bone e' nello spazio LOCALE dell'osso, e l'osso
+# Hips punta verso l'ALTO: il canale Y e' quindi la VERTICALE, non una direzione orizzontale.
+# L'orizzontale sono X e Z. Sbagliarsi qui fa scartare come "root motion" qualunque salto, il cui
+# unico peccato e' staccarsi da terra: Jump.fbx ha y = 0.91 m (l'altezza del salto) e x/z ~ 5 cm.
+horizontal = max(spans.get("x", 0.0), spans.get("z", 0.0))
 log["in_place"] = horizontal <= IN_PLACE_MAX_M
 log["horizontal_span_m"] = round(horizontal, 4)
+log["vertical_span_m"] = round(spans.get("y", 0.0), 4)
 
 animation_data = ours.animation_data_create()
 animation_data.action = action

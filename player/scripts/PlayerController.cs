@@ -32,8 +32,30 @@ public enum PlayerMode
 /// </summary>
 public partial class PlayerController : CharacterBody3D
 {
-    [Export] public float Speed { get; set; } = 6.0f;
+    /// Frazione dell'altezza in piedi a cui si riduce la capsula da accovacciati.
+    private const float CrouchHeightFactor = 0.6f;
+
+    [Export] public float WalkSpeed { get; set; } = 4.0f;
+    [Export] public float RunSpeed { get; set; } = 7.0f;
+    [Export] public float CrouchSpeed { get; set; } = 2.0f;
     [Export] public float Gravity { get; set; } = 20.0f;
+
+    /// Velocita' verticale impressa dal salto, in m/s.
+    [Export] public float JumpVelocity { get; set; } = 6.0f;
+
+    /// <summary>
+    /// Velocita' con cui l'avatar ruota verso la direzione voluta. Serve perche' da armato
+    /// l'orientamento insegue il cursore, che puo' saltare da una parte all'altra dello schermo in un
+    /// frame: senza smorzamento l'avatar scatterebbe.
+    /// </summary>
+    [Export] public float TurnSpeed { get; set; } = 14.0f;
+
+    /// <summary>
+    /// Velocita' d'impatto oltre la quale l'atterraggio e' "duro". Non ha alcun effetto sul movimento:
+    /// la legge <see cref="PlayerAnimationBridge"/> e la gira al <c>CharacterAnimator</c>, che ci scala
+    /// l'ammortizzazione procedurale del bacino.
+    /// </summary>
+    [Export] public float HardLandingSpeed { get; set; } = 9.0f;
 
     /// Fattore di interpolazione per gli avatar remoti (piu' alto = piu' reattivo, meno morbido).
     [Export] public float InterpolationSpeed { get; set; } = 14.0f;
@@ -63,7 +85,45 @@ public partial class PlayerController : CharacterBody3D
     /// </summary>
     [Export] public int SyncAnchorId { get; set; }
 
+    /// <summary>
+    /// Velocita' orizzontale espressa nel riferimento dell'AVATAR: X = destra, Y = avanti, in m/s.
+    ///
+    /// E' locale e non in coordinate mondo perche' e' esattamente cio' che serve al
+    /// <c>BlendSpace2D</c> della locomozione: se fosse in mondo, ogni peer dovrebbe riproiettarla
+    /// usando <see cref="SyncFacing"/>, e con i due valori che arrivano in pacchetti diversi ci
+    /// sarebbe un frame in cui direzione e orientamento non corrispondono. Replicando gia' la
+    /// grandezza finale il problema non esiste.
+    /// </summary>
+    [Export] public Vector2 SyncLocalVelocity { get; set; }
+
+    /// Stato replicato: accovacciato. Pilota il peso del layer crouch sugli altri peer.
+    [Export] public bool SyncCrouching { get; set; }
+
+    /// Stato replicato: a terra. Distingue locomozione da caduta sugli altri peer.
+    [Export] public bool SyncGrounded { get; set; } = true;
+
+    /// <summary>
+    /// Salto: evento estetico, non uno stato. Emesso su OGNI peer da <see cref="BroadcastJump"/>,
+    /// cosi' il layer one-shot lo intercetta senza dover confrontare stati fra un frame e l'altro.
+    /// </summary>
+    [Signal]
+    public delegate void JumpedEventHandler();
+
+    /// Atterraggio, con la velocita' d'impatto in m/s: sceglie fra atterraggio morbido e duro.
+    [Signal]
+    public delegate void LandedEventHandler(float impactSpeed);
+
     private PlayerInput _input = null!;
+    private WeaponController? _weapon;
+    private WeaponInput? _weaponInput;
+    private CollisionShape3D _collision = null!;
+    private ShapeCast3D _headroom = null!;
+    private CapsuleShape3D _capsule = null!;
+
+    private float _standHeight;
+    private float _crouchBlend;
+    private bool _wasGrounded = true;
+    private float _fallSpeed;
     private Node3D _visual = null!;
     private RayCast3D _groundProbe = null!;
     private WaterVolume? _water;
@@ -127,6 +187,15 @@ public partial class PlayerController : CharacterBody3D
         _groundProbe = GetNode<RayCast3D>("GroundProbe");
         _water = WaterVolume.Find(this);
 
+        // Opzionali: un avatar puo' esistere senza armi (NPC futuri), il movimento non deve dipenderne.
+        _weapon = GetNodeOrNull<WeaponController>("Weapon");
+        _weaponInput = GetNodeOrNull<WeaponInput>("WeaponInput");
+
+        _collision = GetNode<CollisionShape3D>("CollisionShape3D");
+        _headroom = GetNode<ShapeCast3D>("Headroom");
+        _capsule = (CapsuleShape3D)_collision.Shape;
+        _standHeight = _capsule.Height;
+
         // Evita che gli avatar remoti "saltino" dall'origine al primo update.
         SyncPosition = GlobalPosition;
         SyncAnchorId = 0;
@@ -181,24 +250,157 @@ public partial class PlayerController : CharacterBody3D
         if (worldDir.LengthSquared() > 1f)
             worldDir = worldDir.Normalized();
 
+        bool grounded = IsOnFloor();
+        UpdateCrouch(delta, grounded);
+
         Vector3 velocity = Velocity;
-        velocity.X = worldDir.X * Speed;
-        velocity.Z = worldDir.Z * Speed;
-        velocity.Y = IsOnFloor() ? 0f : velocity.Y - Gravity * (float)delta;
+        float speed = SelectSpeed();
+        velocity.X = worldDir.X * speed;
+        velocity.Z = worldDir.Z * speed;
+
+        if (grounded)
+        {
+            // Il salto va impresso PRIMA di MoveAndSlide e dopo l'azzeramento, altrimenti l'azzeramento
+            // di questo stesso frame lo cancellerebbe: a terra IsOnFloor() e' ancora vero quando si salta.
+            velocity.Y = 0f;
+            if (!SyncCrouching && _input.ReadJumpPressed())
+            {
+                velocity.Y = JumpVelocity;
+                Rpc(MethodName.BroadcastJump);
+            }
+        }
+        else
+        {
+            velocity.Y -= Gravity * (float)delta;
+        }
+
+        // Velocita' di caduta al momento del contatto: campionata prima di MoveAndSlide, perche' dopo
+        // la collisione l'ha gia' azzerata.
+        if (!grounded)
+            _fallSpeed = Mathf.Max(_fallSpeed, -velocity.Y);
+
         Velocity = velocity;
         MoveAndSlide();
 
+        DetectLanding();
         RefreshAnchor();
         CheckWaterFallback();
 
         // Pubblica lo stato che verra' replicato agli altri peer.
         PublishState();
-        if (worldDir.LengthSquared() > 0.001f)
-        {
-            SyncFacing = Mathf.Atan2(worldDir.X, worldDir.Z);
-            _visual.Rotation = new Vector3(0f, SyncFacing, 0f);
-        }
+        UpdateFacing(worldDir, delta);
+        PublishLocomotionState();
     }
+
+    /// <summary>
+    /// Velocita' orizzontale corrente. L'accovacciamento vince sulla corsa: non si sprinta accovacciati.
+    /// Sono modificatori di velocita', non stati esclusivi, cosi' il BlendSpace2D riceve un valore
+    /// continuo invece di un enum.
+    /// </summary>
+    private float SelectSpeed()
+    {
+        if (SyncCrouching)
+            return CrouchSpeed;
+
+        return _input.ReadSprint() ? RunSpeed : WalkSpeed;
+    }
+
+    /// <summary>
+    /// Aggiorna l'accovacciamento e la capsula di collisione.
+    ///
+    /// Rialzarsi non e' garantito: se sopra la testa non c'e' spazio (<c>Headroom</c>) si resta giu'
+    /// anche lasciando il tasto, altrimenti si finirebbe incastrati dentro il soffitto. In aria non si
+    /// cambia postura, per non alterare la capsula a mezz'aria.
+    /// </summary>
+    private void UpdateCrouch(double delta, bool grounded)
+    {
+        bool wants = grounded && _input.ReadCrouch();
+
+        if (!wants && SyncCrouching)
+        {
+            _headroom.ForceShapecastUpdate();
+            if (_headroom.IsColliding())
+                wants = true;
+        }
+
+        SyncCrouching = wants;
+
+        // La capsula si accorcia dall'ALTO: il fondo resta dov'e', cosi' l'avatar non sprofonda ne'
+        // viene espulso dal pavimento quando cambia postura.
+        _crouchBlend = Mathf.MoveToward(_crouchBlend, SyncCrouching ? 1f : 0f, (float)delta * 6f);
+        float height = Mathf.Lerp(_standHeight, _standHeight * CrouchHeightFactor, _crouchBlend);
+
+        _capsule.Height = height;
+        _collision.Position = new Vector3(0f, (height - _standHeight) * 0.5f, 0f);
+    }
+
+    /// Rileva il passaggio aria -> terra ed emette l'evento di atterraggio una sola volta.
+    private void DetectLanding()
+    {
+        bool grounded = IsOnFloor();
+
+        if (grounded && !_wasGrounded)
+            Rpc(MethodName.BroadcastLand, _fallSpeed);
+
+        if (grounded)
+            _fallSpeed = 0f;
+
+        _wasGrounded = grounded;
+        SyncGrounded = grounded;
+    }
+
+    /// <summary>
+    /// Orientamento dell'avatar.
+    ///
+    /// Da ARMATO guarda il punto di mira e si muove di lato: e' quello che rende sensato un
+    /// BlendSpace2D a otto direzioni, perche' altrimenti si camminerebbe sempre in avanti e meta'
+    /// delle clip non verrebbe mai usata. Da DISARMATO guarda dove va, che e' piu' naturale.
+    ///
+    /// Il punto di mira si legge da <see cref="WeaponInput.AimPoint"/>, che lo ricalcola gia' ogni
+    /// frame per il tiro: non si duplica <see cref="AimResolver"/>.
+    /// </summary>
+    private void UpdateFacing(Vector3 worldDir, double delta)
+    {
+        float target = SyncFacing;
+        bool armed = _weapon is { IsArmed: true } && _weaponInput != null;
+
+        if (armed)
+        {
+            Vector3 toAim = _weaponInput!.AimPoint - GlobalPosition;
+            toAim.Y = 0f;
+            if (toAim.LengthSquared() > 0.0001f)
+                target = Mathf.Atan2(toAim.X, toAim.Z);
+        }
+        else if (worldDir.LengthSquared() > 0.001f)
+        {
+            target = Mathf.Atan2(worldDir.X, worldDir.Z);
+        }
+
+        SyncFacing = Mathf.LerpAngle(SyncFacing, target, Mathf.Clamp((float)delta * TurnSpeed, 0f, 1f));
+        _visual.Rotation = new Vector3(0f, SyncFacing, 0f);
+    }
+
+    /// Proietta la velocita' nel riferimento dell'avatar (vedi <see cref="SyncLocalVelocity"/>).
+    private void PublishLocomotionState()
+    {
+        Vector3 planar = new(Velocity.X, 0f, Velocity.Z);
+        Vector3 local = planar.Rotated(Vector3.Up, -SyncFacing);
+        SyncLocalVelocity = new Vector2(local.X, local.Z);
+    }
+
+    /// <summary>
+    /// Eventi one-shot del movimento. Seguono lo stesso schema di
+    /// <c>WeaponController.BroadcastShot</c>: l'autorita' del nodo li trasmette, ogni peer riemette
+    /// un segnale LOCALE che il layer di animazione ascolta. Nel payload non viaggia nessun esito di
+    /// gioco (CLAUDE.md §3): solo il fatto che il salto o l'atterraggio sono avvenuti.
+    /// </summary>
+    [Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = true,
+        TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    public void BroadcastJump() => EmitSignal(SignalName.Jumped);
+
+    [Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = true,
+        TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    public void BroadcastLand(float impactSpeed) => EmitSignal(SignalName.Landed, impactSpeed);
 
     /// <summary>
     /// Al timone: nessuna gravita' e nessun <c>MoveAndSlide</c>, quindi il pilota non produce alcuna

@@ -46,4 +46,30 @@ public partial class PlayerInput : Node
 
         return Input.GetVector("move_left", "move_right", "move_up", "move_down");
     }
+
+    /// Corsa (Shift tenuto). Come il movimento, e' soppressa al timone.
+    public bool ReadSprint() => ReadHeld("sprint");
+
+    /// Accovacciamento (Ctrl tenuto): a pressione mantenuta, non a interruttore.
+    public bool ReadCrouch() => ReadHeld("crouch");
+
+    /// <summary>
+    /// Salto (Spazio). E' un evento, non uno stato: si consuma alla lettura tramite
+    /// <c>IsActionJustPressed</c>, cosi' tenere premuto non produce salti ripetuti.
+    /// </summary>
+    public bool ReadJumpPressed()
+    {
+        if (!_isLocalAuthority || _game.UiModalOpen || MovementSuppressed)
+            return false;
+
+        return Input.IsActionJustPressed("jump");
+    }
+
+    private bool ReadHeld(string action)
+    {
+        if (!_isLocalAuthority || _game.UiModalOpen || MovementSuppressed)
+            return false;
+
+        return Input.IsActionPressed(action);
+    }
 }
