@@ -16,6 +16,7 @@ public partial class NpcAnimationBridge : Node
 {
     private NpcController _controller = null!;
     private CharacterAnimator _animator = null!;
+    private HealthComponent? _health;
 
     /// Stato per la derivata smorzata di <c>SyncFacing</c>.
     private float _lastFacing;
@@ -28,6 +29,13 @@ public partial class NpcAnimationBridge : Node
 
         _controller.Jumped += OnJumped;
         _controller.Landed += OnLanded;
+        _controller.Vaulted += OnVaulted;
+
+        // Stesso schema del giocatore: la RPC estetica di HealthComponent viene riemessa come
+        // segnale locale su ogni peer, e qui si trasforma in flinch animato.
+        _health = GetParent().GetNodeOrNull<HealthComponent>("Health");
+        if (_health != null)
+            _health.HitReaction += OnHitReaction;
 
         // Le velocita' definiscono la geometria degli spazi di blend: vanno prese da chi si muove,
         // non ridichiarate qui, altrimenti divergono in silenzio e la locomozione va in T-pose ai
@@ -43,6 +51,9 @@ public partial class NpcAnimationBridge : Node
     {
         _controller.Jumped -= OnJumped;
         _controller.Landed -= OnLanded;
+        _controller.Vaulted -= OnVaulted;
+        if (_health != null)
+            _health.HitReaction -= OnHitReaction;
     }
 
     public override void _Process(double delta)
@@ -76,4 +87,9 @@ public partial class NpcAnimationBridge : Node
     private void OnJumped() => _animator.TriggerJump();
 
     private void OnLanded(float impactSpeed) => _animator.TriggerLand(impactSpeed);
+
+    private void OnHitReaction(Vector3 worldDirection) =>
+        _animator.TriggerHitReaction(worldDirection);
+
+    private void OnVaulted(Vector3 ledgePoint) => _animator.TriggerVault(ledgePoint);
 }

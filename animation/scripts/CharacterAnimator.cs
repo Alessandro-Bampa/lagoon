@@ -23,26 +23,34 @@ public partial class CharacterAnimator : Node3D
     private const string WalkPosition = "parameters/WalkSpace/blend_position";
     private const string RunPosition = "parameters/RunSpace/blend_position";
     private const string RunAmount = "parameters/MoveBlend/blend_amount";
-    private const string ArmedWalkPosition = "parameters/RifleWalkSpace/blend_position";
-    private const string ArmedRunPosition = "parameters/RifleRunSpace/blend_position";
-    private const string ArmedRunAmount = "parameters/ArmedMoveBlend/blend_amount";
-    private const string StanceAmount = "parameters/StanceBlend/blend_amount";
     private const string CrouchPosition = "parameters/CrouchSpace/blend_position";
     private const string AirAmount = "parameters/AirBlend/blend_amount";
     private const string LandRequest = "parameters/Land/request";
     private const string CrouchAmount = "parameters/CrouchBlend/blend_amount";
-    private const string WeaponAmount = "parameters/WeaponBlend/blend_amount";
+    private const string HoldAmount = "parameters/HoldAdd/add_amount";
+    private const string AimAmount = "parameters/AimAdd/add_amount";
+    private const string AimPosition = "parameters/AimSpace/blend_position";
     private const string WeaponPoseRequest = "parameters/WeaponPose/transition_request";
     private const string FirePoseRequest = "parameters/FirePose/transition_request";
+    private const string HitPoseRequest = "parameters/HitPose/transition_request";
     private const string LandPoseRequest = "parameters/LandPose/transition_request";
     private const string FireRequest = "parameters/Fire/request";
+    private const string HitRequest = "parameters/Hit/request";
     private const string JumpRequest = "parameters/Jump/request";
+    private const string VaultRequest = "parameters/Vault/request";
     private const string JumpTimeScale = "parameters/JumpScale/scale";
+
+    // Escursione dell'aim offset, in gradi: DEVONO combaciare con AIM_YAW_DEG e AIM_PITCH_DEG di
+    // tools/blender/build_procedural_clips.py, perche' le pose additive sono authorate a quegli
+    // angoli e la blend_position e' normalizzata su di essi.
+    private const float AimYawRangeDeg = 60.0f;
+    private const float AimPitchRangeDeg = 45.0f;
 
     private const string WalkSpaceNode = "WalkSpace";
     private const string RunSpaceNode = "RunSpace";
     private const string CrouchSpaceNode = "CrouchSpace";
     private const string JumpClipName = "jump";
+    private const string VaultClipName = "vault_low";
 
     /// Velocita' di transizione dei pesi di blend (crouch, arma), in frazione al secondo.
     [Export] public float BlendSpeed { get; set; } = 10.0f;
@@ -139,8 +147,8 @@ public partial class CharacterAnimator : Node3D
     public Vector3 AimDirection { get; set; }
 
     /// <summary>
-    /// Stance di mira attiva. Decide se il set armato full-body e la mira procedurale sono accesi:
-    /// da armati SENZA mira l'arma e' portata rilassata e il corpo cammina come da disarmato.
+    /// Stance di mira attiva. Decide se aim offset e mira procedurale sono accesi: da armati SENZA
+    /// mira l'arma e' portata rilassata (delta di porto basso) e il corpo cammina come da disarmato.
     /// </summary>
     public bool Aiming { get; set; }
 
@@ -168,10 +176,12 @@ public partial class CharacterAnimator : Node3D
     private AimRig? _aimRig;
     private FootIkRig? _footRig;
     private WeaponGripRig? _gripRig;
+    private VaultIkRig? _vaultRig;
     private Vector2 _smoothedVelocity;
     private float _crouchWeight;
     private float _weaponWeight;
-    private float _stanceWeight;
+    private float _aimWeight;
+    private Vector2 _aimOffset;
     private float _runWeight;
     private float _airWeight;
     private string _lastPoseRequest = "";
@@ -188,6 +198,7 @@ public partial class CharacterAnimator : Node3D
         _aimRig = GetNodeOrNull<AimRig>("AimRig");
         _footRig = GetNodeOrNull<FootIkRig>("FootIkRig");
         _gripRig = GetNodeOrNull<WeaponGripRig>("GripRig");
+        _vaultRig = GetNodeOrNull<VaultIkRig>("VaultRig");
 
         // Posizione a riposo del rig: l'abbassamento d'atterraggio e' un OFFSET da questa, non un
         // valore assoluto. Il rig sta gia' a Y = -1 sotto Visual (origine ai piedi contro capsula
@@ -240,6 +251,7 @@ public partial class CharacterAnimator : Node3D
         UpdateAir(dt);
         UpdateCrouch(dt);
         UpdateWeapon(dt);
+        UpdateAimOffset(dt);
         UpdateAimRig();
         UpdateFootRig();
         UpdatePelvisOffset(dt);
@@ -319,8 +331,6 @@ public partial class CharacterAnimator : Node3D
 
         _tree.Set(WalkPosition, walk);
         _tree.Set(RunPosition, run);
-        _tree.Set(ArmedWalkPosition, walk);
-        _tree.Set(ArmedRunPosition, run);
         _tree.Set(CrouchPosition, ClampToDiamond(blendVelocity, CrouchSpeed));
 
         // Peso della corsa: cresce fra WalkSpeed e RunSpeed, e basta. Non serve piu' il fattore di
@@ -330,7 +340,6 @@ public partial class CharacterAnimator : Node3D
         float band = Mathf.Max(RunSpeed - WalkSpeed, 0.001f);
         _runWeight = Mathf.Clamp((speed - WalkSpeed) / band, 0f, 1f);
         _tree.Set(RunAmount, _runWeight);
-        _tree.Set(ArmedRunAmount, _runWeight);
     }
 
     /// Proiezione sulla palla L1 di raggio <paramref name="radius"/> (il rombo dei triangoli).
@@ -354,16 +363,13 @@ public partial class CharacterAnimator : Node3D
     }
 
     /// <summary>
-    /// Sceglie la STANCE e, dove serve, la posa d'arma sul solo upper body.
+    /// Layer di impugnatura: un DELTA additivo upper-body che si somma sopra qualunque locomozione.
     ///
-    /// Sono due meccanismi distinti e non intercambiabili:
-    ///  - un'arma a DUE MANI cambia come si cammina, quindi accende il set di locomozione armato su
-    ///    tutto il corpo (<c>StanceBlend</c>);
-    ///  - una PISTOLA no: si tiene bassa, le gambe restano quelle disarmate e basta sostituire il
-    ///    busto (<c>WeaponBlend</c>). Quattro clip dedicate sarebbero spese male.
-    ///
-    /// Da ACCOVACCIATI vale sempre il secondo caso, anche col fucile: non esistono clip di crouch
-    /// armato, e il set di stance verrebbe comunque coperto dal layer crouch.
+    /// La locomozione e' agnostica dall'arma: reggere un fucile o una pistola non cambia come si
+    /// cammina, cambia solo cosa fanno busto e braccia. Il delta e' authorato in Blender dalla stessa
+    /// posa assoluta su cui sono misurati presa e polo IK, quindi sommato sull'idle riproduce
+    /// esattamente quella posa; sommato su una clip in movimento, le braccia "si aggiustano" sul
+    /// busto della clip e l'errore residuo di mira lo chiude SpineAimModifier.
     /// </summary>
     private void UpdateWeapon(float dt)
     {
@@ -404,19 +410,41 @@ public partial class CharacterAnimator : Node3D
             _lastFirePoseRequest = "";
         }
 
-        // Stance armata full-body: solo a due mani, solo in piedi e SOLO IN MIRA. Fuori mira
-        // l'arma e' portata rilassata e si cammina con la locomozione disarmata: e' l'overlay
-        // upper-body a mostrare il porto, come per la pistola.
-        float stance = twoHanded && Aiming ? 1f - _crouchWeight : 0f;
-        _stanceWeight = Mathf.Lerp(_stanceWeight, stance, Damp(BlendSpeed, dt));
-        _tree.Set(StanceAmount, _stanceWeight);
-
-        // Override upper-body: da armati e' sempre acceso. La posa (porto rilassato o mira,
-        // fucile o pistola) la sceglie il Transition qui sopra; sul set armato full-body
-        // l'overlay ribadisce la stessa famiglia di pose, quindi non confligge.
+        // Peso del delta di impugnatura: da armati e' sempre acceso, con qualunque locomozione
+        // sotto (in piedi, accovacciati, in aria). La posa la sceglie il Transition qui sopra.
         float overlay = armed ? 1f : 0f;
         _weaponWeight = Mathf.Lerp(_weaponWeight, overlay, Damp(BlendSpeed, dt));
-        _tree.Set(WeaponAmount, _weaponWeight);
+        _tree.Set(HoldAmount, _weaponWeight);
+    }
+
+    /// <summary>
+    /// Aim offset additivo: la "sfera di mira" a 5 pose, pilotata da yaw/pitch della mira RELATIVI
+    /// al corpo. Il grosso della posa (spalle e braccia comprese, che il procedurale non tocca) lo
+    /// mette questo layer; l'errore residuo — che dipende da quale clip sta girando e con che peso —
+    /// lo chiude SpineAimModifier rimisurando la posa vera di ogni frame.
+    /// </summary>
+    private void UpdateAimOffset(float dt)
+    {
+        Vector2 target = Vector2.Zero;
+        bool aiming = Aiming && WeaponPose != null && AimDirection.LengthSquared() > 0.0001f;
+        if (aiming)
+        {
+            // La mira e' in coordinate MONDO: si porta nel riferimento del rig, dove il corpo
+            // guarda +Z e la sua sinistra e' +X. Yaw POSITIVO = mira a DESTRA del corpo (quindi
+            // -X locale), pitch positivo = in alto: sono gli assi dell'AimSpace.
+            Vector3 local = GlobalTransform.Basis.Inverse() * AimDirection;
+            float yaw = Mathf.Atan2(-local.X, local.Z);
+            float pitch = Mathf.Asin(Mathf.Clamp(local.Y, -1f, 1f));
+            target = new Vector2(
+                Mathf.Clamp(yaw / Mathf.DegToRad(AimYawRangeDeg), -1f, 1f),
+                Mathf.Clamp(pitch / Mathf.DegToRad(AimPitchRangeDeg), -1f, 1f));
+        }
+
+        float weight = aiming ? 1f : 0f;
+        _aimWeight = Mathf.Lerp(_aimWeight, weight, Damp(BlendSpeed, dt));
+        _aimOffset = _aimOffset.Lerp(target, Damp(BlendSpeed, dt));
+        _tree.Set(AimAmount, _aimWeight);
+        _tree.Set(AimPosition, _aimOffset);
     }
 
     /// <summary>
@@ -485,6 +513,43 @@ public partial class CharacterAnimator : Node3D
         float hardness = Mathf.Clamp(impactSpeed / Mathf.Max(HardLandingSpeed, 0.001f), 0f, 1f);
         _landingOffset = Mathf.Max(_landingOffset, hardness * LandingDip);
     }
+
+    /// <summary>
+    /// Reazione al colpo. <paramref name="worldDirection"/> e' la direzione di VOLO del proiettile
+    /// in coordinate mondo, calcolata dall'host (nel payload di rete viaggia la direzione, mai il
+    /// danno: CLAUDE.md §3). Il flinch e' un delta additivo sul busto: si somma a qualunque
+    /// locomozione/mira in corso, identico in piedi, accovacciati o in corsa.
+    /// </summary>
+    public void TriggerHitReaction(Vector3 worldDirection)
+    {
+        if (worldDirection.LengthSquared() < 0.0001f)
+            return;
+
+        // Nel riferimento del rig il corpo guarda +Z e la sua sinistra e' +X. Un proiettile che
+        // viaggia verso -Z arriva da davanti; uno che viaggia verso -X arriva dalla sua sinistra.
+        Vector3 local = GlobalTransform.Basis.Inverse() * worldDirection;
+        string pose = Mathf.Abs(local.Z) >= Mathf.Abs(local.X)
+            ? (local.Z < 0f ? "front" : "back")
+            : (local.X < 0f ? "left" : "right");
+
+        _tree.Set(HitPoseRequest, pose);
+        Request(HitRequest);
+    }
+
+    /// <summary>
+    /// Scavalcamento. La clip e' IN PLACE e generica: la traiettoria della radice la deforma il
+    /// motion warping di chi pilota (che da <see cref="VaultClipLength"/> sa quanto dura la posa),
+    /// le mani le mette <see cref="VaultIkRig"/> sul bordo misurato che arriva qui.
+    /// </summary>
+    public void TriggerVault(Vector3 ledgePoint)
+    {
+        _vaultRig?.Begin(ledgePoint, VaultClipLength);
+        Request(VaultRequest);
+    }
+
+    /// Durata della clip di scavalcamento, per sincronizzare il motion warping alla posa.
+    public float VaultClipLength =>
+        _tree.HasAnimation(VaultClipName) ? (float)_tree.GetAnimation(VaultClipName).Length : 0.9f;
 
     private void Request(string parameter) =>
         _tree.Set(parameter, (int)AnimationNodeOneShot.OneShotRequest.Fire);

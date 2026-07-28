@@ -1,10 +1,25 @@
 # Genera il BlendTree del personaggio e lo salva come risorsa.
 #
+# ARCHITETTURA A LAYER ADDITIVI (rifatta rispetto alla versione a stance):
+#   1. Locomozione FULL BODY, agnostica dall'arma: walk/run/crouch/aria. Nessun set
+#      armato: l'arma non cambia come si cammina.
+#   2. Impugnatura: delta ADDITIVO upper-body (add/rifle_* e add/pistol*), sommato
+#      sopra qualunque locomozione. Le clip delta portano SOLO le track dell'upper
+#      body, quindi le gambe non ricevono nulla per costruzione: non servono filtri.
+#   3. Aim offset: BlendSpace2D di 5 pose additive (centro/su/giu'/sx/dx) pilotato
+#      da yaw/pitch della mira, sommato sopra impugnatura e locomozione.
+#   4. One-shot additivi: sparo e hit reaction (delta, MIX_MODE_ADD).
+#   5. One-shot assoluti full body: salto, atterraggio, scavalcamento.
+#   I layer procedurali (SpineAim, FootIk, GripRig) NON stanno qui: sono
+#   SkeletonModifier3D che girano dopo l'albero.
+#
+# Le clip delta vivono in una libreria SEPARATA, prefisso `add/`
+# (animation/resources/AdditiveClips.tres, generata da tools/build_additive_clips.gd).
+# Non passano da Blender: il perche' — due difetti misurati della via glTF — sta
+# nell'intestazione di quel tool. Rigenerare l'albero dopo aver rigenerato le clip.
+#
 # Perche' generato e non scritto a mano nel .tscn: l'albero e' fatto di path di
-# track (`Armature_Character/Skeleton3D:Spine`) e di indici di connessione, che
-# scritti a mano si sbagliano in silenzio — un filtro con un path errato non da'
-# errore, semplicemente non maschera nulla. Qui la struttura e' leggibile, i nomi
-# dei bone vengono da una lista sola, ed e' rigenerabile quando l'albero cambia.
+# track e di indici di connessione, che scritti a mano si sbagliano in silenzio.
 #
 # Uso:
 #   Godot_console.exe --path . --headless --script tools/build_animation_tree.gd
@@ -17,29 +32,14 @@ const SKELETON := "Armature_Character/Skeleton3D"
 
 # Deve combaciare con PlayerController: sono le coordinate dei punti del BlendSpace.
 # CharacterAnimator rilegge WALK_SPEED e CROUCH_SPEED dai bordi dei blend space a
-# runtime e segnala in console se non corrispondono ai propri, cosi' una modifica
-# fatta da una parte sola non passa inosservata.
+# runtime e segnala in console se non corrispondono ai propri.
 const WALK_SPEED := 4.0
 const RUN_SPEED := 7.0
 const CROUCH_SPEED := 2.0
 
 # Idle NEUTRA disarmata al centro degli spazi di locomozione. La posa "reggi arma"
-# non c'entra: quella la sovrappone il layer arma sul solo upper body.
+# non c'entra: quella la somma il layer additivo di impugnatura.
 const IDLE_CLIP := "idle_neutral"
-
-# Centro degli spazi ARMATI: la posa "reggi fucile" da fermi. Non e' la stessa cosa
-# della idle neutra — fermarsi col fucile in mano non vuol dire abbassarlo.
-const ARMED_IDLE_CLIP := "rifle_idle"
-
-# Maschera upper-body: busto, collo, testa e braccia. E' l'insieme di bone che la
-# posa dell'arma SOSTITUISCE, lasciando le gambe alla locomozione. Le clavicole
-# ci stanno dentro: senza, la spalla resterebbe alla posa di corsa e il braccio
-# si staccherebbe visibilmente dal busto.
-const UPPER_BODY := [
-	"Spine", "Spine1", "Spine2", "Neck", "Head", "HeadTop_End",
-	"LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand",
-	"RightShoulder", "RightArm", "RightForeArm", "RightHand",
-]
 
 
 # Costruisce uno spazio direzionale a 5 punti: idle al centro e le quattro clip
@@ -48,15 +48,13 @@ const UPPER_BODY := [
 # I cinque punti sono un ROMBO: le quattro punte formano un quadrato ruotato di 45
 # gradi e il centro sta strettamente DENTRO il loro inviluppo convesso, quindi la
 # triangolazione di Delaunay e' obbligata a produrre i quattro triangoli che coprono
-# tutto il rombo. Nessuna terna e' degenere — la condizione che mancava prima, quando
-# CrouchSpace aveva due soli punti (collineari per definizione, zero triangoli) e la
-# locomozione aveva run_fwd in linea con idle e walk_fwd.
+# tutto il rombo. Nessuna terna e' degenere.
 #
 # TRAPPOLA: i triangoli ESPLICITI (auto_triangles = false) qui non si possono usare.
 # ResourceSaver serializza `triangles` PRIMA di `blend_point_N/pos`, e al caricamento
-# add_triangle rifiuta ogni indice perche' i punti non esistono ancora ("Index p_x = 0
-# is out of bounds"). Il risultato e' uno spazio a zero triangoli, cioe' la T-pose. La
-# rete di sicurezza e' il controllo di copertura in tools/verify_godot_import.gd.
+# add_triangle rifiuta ogni indice perche' i punti non esistono ancora. Il risultato
+# e' uno spazio a zero triangoli, cioe' la T-pose. La rete di sicurezza e' il
+# controllo di copertura in tools/verify_godot_import.gd.
 func _directional_space(idle: String, prefix: String, radius: float) -> AnimationNodeBlendSpace2D:
 	var space := AnimationNodeBlendSpace2D.new()
 	space.min_space = Vector2(-radius, -radius)
@@ -72,29 +70,41 @@ func _directional_space(idle: String, prefix: String, radius: float) -> Animatio
 	return space
 
 
+# Aim offset: 5 pose DELTA (centro = identita') su assi normalizzati [-1, 1].
+# X = yaw (positivo = destra), Y = pitch (positivo = su). CharacterAnimator normalizza
+# gli angoli di mira sull'escursione con cui le pose sono state generate (AIM_YAW_DEG e
+# AIM_PITCH_DEG di tools/build_additive_clips.gd) prima di scrivere blend_position.
+func _aim_space() -> AnimationNodeBlendSpace2D:
+	var space := AnimationNodeBlendSpace2D.new()
+	space.min_space = Vector2(-1, -1)
+	space.max_space = Vector2(1, 1)
+	space.snap = Vector2(0.05, 0.05)
+	space.blend_mode = AnimationNodeBlendSpace2D.BLEND_MODE_INTERPOLATED
+	space.auto_triangles = true
+	space.add_blend_point(_anim("add/aim_center"), Vector2(0, 0), -1, "center")
+	space.add_blend_point(_anim("add/aim_up"), Vector2(0, 1), -1, "up")
+	space.add_blend_point(_anim("add/aim_down"), Vector2(0, -1), -1, "down")
+	space.add_blend_point(_anim("add/aim_left"), Vector2(-1, 0), -1, "left")
+	space.add_blend_point(_anim("add/aim_right"), Vector2(1, 0), -1, "right")
+	return space
+
+
 func _anim(clip: String) -> AnimationNodeAnimation:
 	var node := AnimationNodeAnimation.new()
 	node.animation = clip
 	return node
 
 
-func _apply_upper_body_filter(node: AnimationNode) -> void:
-	node.filter_enabled = true
-	for bone in UPPER_BODY:
-		node.set_filter_path("%s:%s" % [SKELETON, bone], true)
-
-
 func _initialize() -> void:
 	var tree := AnimationNodeBlendTree.new()
 
-	# --- Layer 1: locomozione DISARMATA --------------------------------------
+	# --- Layer 1: locomozione (unica, agnostica dall'arma) -------------------
 	# Assi in m/s nel riferimento dell'AVATAR: X = destra, Y = avanti. Sono le stesse
-	# unita' di PlayerController.SyncLocalVelocity, quindi il parametro si scrive senza
-	# conversioni.
+	# unita' di PlayerController.SyncLocalVelocity.
 	#
-	# Camminata e corsa sono DUE spazi identici a raggio diverso, non un solo spazio con
-	# la corsa come punto in piu': quel punto sarebbe collineare con idle e walk_fwd, ed
-	# e' esattamente cio' che genera triangolazioni degeneri.
+	# Camminata e corsa sono DUE spazi identici a raggio diverso, non un solo spazio
+	# con la corsa come punto in piu': quel punto sarebbe collineare con idle e
+	# walk_fwd, ed e' esattamente cio' che genera triangolazioni degeneri.
 	tree.add_node("WalkSpace", _directional_space(IDLE_CLIP, "walk", WALK_SPEED), Vector2(-1140, -80))
 	tree.add_node("RunSpace", _directional_space(IDLE_CLIP, "run", RUN_SPEED), Vector2(-1140, 160))
 
@@ -106,33 +116,9 @@ func _initialize() -> void:
 	move.sync = true
 	tree.add_node("MoveBlend", move, Vector2(-880, 20))
 
-	# --- Layer 1b: locomozione ARMATA (stance a due mani) --------------------
-	# Set completo e separato, non un override del solo upper body sopra le clip
-	# disarmate. Il motivo e' che l'override non poteva funzionare: la posa "reggi
-	# fucile" e' authored su un bacino neutro, ma le clip di strafe il bacino lo ruotano,
-	# quindi il torso restava fermo su gambe che strafavano e l'arma puntava altrove. Un
-	# set di stance e' come lo risolvono gli sparatutto veri.
-	#
-	# Vale solo per le armi a DUE MANI. La pistola resta sul set disarmato piu' la posa
-	# upper-body: per un'arma tenuta bassa e' corretto e costa zero clip.
-	tree.add_node("RifleWalkSpace",
-		_directional_space(ARMED_IDLE_CLIP, "rifle_walk", WALK_SPEED), Vector2(-1140, 640))
-	tree.add_node("RifleRunSpace",
-		_directional_space(ARMED_IDLE_CLIP, "rifle_run", RUN_SPEED), Vector2(-1140, 880))
-
-	var armed_move := AnimationNodeBlend2.new()
-	armed_move.sync = true
-	tree.add_node("ArmedMoveBlend", armed_move, Vector2(-880, 760))
-
-	# Selettore di stance, su TUTTO il corpo: e' la differenza con l'albero precedente,
-	# dove il layer arma era filtrato sull'upper body.
-	var stance := AnimationNodeBlend2.new()
-	stance.sync = true
-	tree.add_node("StanceBlend", stance, Vector2(-620, 200))
-
-	# --- Layer 2: crouch -----------------------------------------------------
-	# Anche il crouch e' direzionale a 4 assi, con le clip prese TUTTE dallo stesso set
-	# Mixamo: mischiare famiglie diverse cambia l'altezza dell'accovacciamento fra un
+	# --- Layer 1b: crouch ----------------------------------------------------
+	# Anche il crouch e' direzionale a 4 assi, con le clip prese TUTTE dallo stesso
+	# set: mischiare famiglie diverse cambia l'altezza dell'accovacciamento fra un
 	# punto di blend e l'altro, e nelle direzioni intermedie il bacino scatta.
 	tree.add_node("CrouchSpace",
 		_directional_space("crouch_idle", "crouch", CROUCH_SPEED), Vector2(-880, 400))
@@ -141,23 +127,22 @@ func _initialize() -> void:
 	crouch_blend.sync = true
 	tree.add_node("CrouchBlend", crouch_blend, Vector2(-620, 240))
 
-	# --- Layer 2b: aria ------------------------------------------------------
-	# `fall_loop` (Mixamo "Falling Idle") e' un LOOP vero, a differenza di `jump` che e'
-	# un arco completo: e' la clip che mancava per avere uno stato di caduta. Sta PRIMA
-	# del layer arma, cosi' cadendo si continua a impugnare l'arma.
+	# --- Layer 1c: aria ------------------------------------------------------
+	# `fall_idle` e' un loop vero. Sta PRIMA dei layer additivi, cosi' cadendo si
+	# continua a impugnare l'arma.
 	var air := AnimationNodeBlend2.new()
 	air.sync = true
 	tree.add_node("AirBlend", air, Vector2(-380, 120))
 	tree.add_node("FallClip", _anim("fall_idle"), Vector2(-620, 620))
 
-	# --- Layer 3: posa dell'arma (upper-body) --------------------------------
+	# --- Layer 2: impugnatura (ADDITIVO upper-body) --------------------------
 	# Transition e non BlendSpace: fra le pose d'arma non esiste una via di mezzo
-	# sensata da interpolare, si passa dall'una all'altra (xfade 0.15).
+	# sensata da interpolare, si passa dall'una all'altra (xfade 0.15, che sui DELTA
+	# interpola verso/da identita' senza artefatti).
 	#
-	# QUATTRO pose, due per famiglia: porto rilassato e mira. La mira e' uno STATO
-	# (RMB), non una conseguenza dell'essere armati: e' CharacterAnimator a chiedere
-	# la posa giusta da Aiming. Le pose *_aim_* e rifle_lowered_idle sono clip
-	# PROCEDURALI (tools/blender/build_procedural_clips.py), non Mixamo.
+	# QUATTRO delta, due per famiglia: porto rilassato e mira. La mira e' uno STATO
+	# (RMB), non una conseguenza dell'essere armati. I nomi degli ingressi restano
+	# quelli storici: CharacterAnimator non cambia contratto.
 	var pose := AnimationNodeTransition.new()
 	pose.input_count = 4
 	pose.set_input_name(0, "rifle_lowered")
@@ -166,98 +151,119 @@ func _initialize() -> void:
 	pose.set_input_name(3, "pistol_aim")
 	pose.xfade_time = 0.15
 	tree.add_node("WeaponPose", pose, Vector2(-620, 500))
-	tree.add_node("RifleLowered", _anim("rifle_lowered_idle"), Vector2(-880, 460))
-	tree.add_node("RifleAim", _anim("rifle_aim_idle"), Vector2(-880, 530))
-	tree.add_node("PistolIdle", _anim("pistol_idle"), Vector2(-880, 600))
-	tree.add_node("PistolAim", _anim("pistol_aim_idle"), Vector2(-880, 670))
+	tree.add_node("RifleLowered", _anim("add/rifle_lowered"), Vector2(-880, 460))
+	tree.add_node("RifleAim", _anim("add/rifle_aim"), Vector2(-880, 530))
+	tree.add_node("PistolIdle", _anim("add/pistol"), Vector2(-880, 600))
+	tree.add_node("PistolAim", _anim("add/pistol_aim"), Vector2(-880, 670))
 
-	# Posa d'arma sul solo upper body. NON serve piu' al fucile, che ha il suo set di
-	# stance completo: resta per i due casi che quel set non copre.
-	#   - la PISTOLA, che si tiene bassa e per cui una locomozione dedicata sarebbe
-	#     spesa male (quattro clip per un'arma che non cambia come si cammina);
-	#   - il CROUCH armato, che riusa le clip di crouch disarmate.
-	# Il peso lo calcola CharacterAnimator come "armato E (pistola OPPURE accovacciato)".
-	#
-	# Blend2 FILTRATO, non Add2: senza clip-delta un additivo sommerebbe due pose
-	# assolute e raddoppierebbe le trasformazioni. Qui la posa dell'arma SOSTITUISCE
-	# l'upper body e lascia intatte le gambe.
-	#
-	# sync = true e' l'invariante "impugnare un'arma non ferma le gambe": col peso a 1
-	# l'ingresso 0 (la locomozione) ha peso 0 pur restando VISIBILE sulle gambe, che il
-	# filtro non copre.
-	var weapon_blend := AnimationNodeBlend2.new()
-	weapon_blend.sync = true
-	_apply_upper_body_filter(weapon_blend)
-	tree.add_node("WeaponBlend", weapon_blend, Vector2(-120, 120))
+	# Add2, NON Blend2 filtrato: le clip qui sopra sono DELTA (q_rif^-1 x q_bersaglio,
+	# authorate cosi' in Blender) e portano solo le track dell'upper body. La maschera
+	# sta nella clip: un bone senza track non riceve nulla, quindi le gambe restano
+	# alla locomozione per costruzione, senza filtri da mantenere.
+	var hold := AnimationNodeAdd2.new()
+	hold.sync = true
+	tree.add_node("HoldAdd", hold, Vector2(-120, 120))
 
-	# --- Layer 4: one-shot ---------------------------------------------------
-	# Lo sparo e' filtrato sull'upper body: sparare mentre si corre non interrompe
-	# la locomozione, che continua a girare sulle gambe. Stesso motivo di sopra per
-	# sync = true.
+	# --- Layer 3: aim offset (ADDITIVO, pitch/yaw) ---------------------------
+	# Sfera di mira continua in stile aim-offset: il grosso della posa lo mette qui
+	# l'albero, l'errore residuo (dipendente dalla clip in corso) lo chiude
+	# SpineAimModifier rimisurando la posa vera di ogni frame.
+	tree.add_node("AimSpace", _aim_space(), Vector2(-380, 380))
+	var aim_add := AnimationNodeAdd2.new()
+	aim_add.sync = true
+	tree.add_node("AimAdd", aim_add, Vector2(140, 120))
+
+	# --- Layer 4: one-shot ADDITIVI (sparo, hit reaction) --------------------
+	# MIX_MODE_ADD su clip delta: il rinculo/flinch si somma a qualunque cosa stiano
+	# facendo locomozione, impugnatura e mira, e il fade scala il delta verso zero.
 	var fire := AnimationNodeOneShot.new()
-	fire.fadein_time = 0.05
-	fire.fadeout_time = 0.15
-	fire.mix_mode = AnimationNodeOneShot.MIX_MODE_BLEND
+	fire.fadein_time = 0.02
+	fire.fadeout_time = 0.10
+	fire.mix_mode = AnimationNodeOneShot.MIX_MODE_ADD
 	fire.sync = true
-	_apply_upper_body_filter(fire)
-	tree.add_node("Fire", fire, Vector2(140, 120))
+	tree.add_node("Fire", fire, Vector2(400, 120))
 
-	# La clip di sparo la sceglie l'ARMA (WeaponAnimationSet.FirePose), non l'albero:
-	# prima era cablata rifle_fire e la pistola sparava con l'animazione del fucile.
-	# I nomi degli ingressi SONO i nomi delle clip, cosi' il .tres si mappa diretto.
+	# La clip di sparo la sceglie l'ARMA (WeaponAnimationSet.FirePose), non l'albero.
+	# I nomi degli ingressi restano i nomi storici, cosi' i .tres non cambiano.
 	# xfade 0: la richiesta arriva al cambio d'arma, mai a meta' colpo.
 	var fire_pose := AnimationNodeTransition.new()
 	fire_pose.input_count = 2
 	fire_pose.set_input_name(0, "rifle_fire")
 	fire_pose.set_input_name(1, "pistol_fire")
 	fire_pose.xfade_time = 0.0
-	tree.add_node("FirePose", fire_pose, Vector2(-120, 360))
-	tree.add_node("RifleFireClip", _anim("rifle_fire"), Vector2(-380, 340))
-	tree.add_node("PistolFireClip", _anim("pistol_fire"), Vector2(-380, 410))
+	tree.add_node("FirePose", fire_pose, Vector2(140, 360))
+	tree.add_node("RifleFireClip", _anim("add/rifle_fire"), Vector2(-120, 340))
+	tree.add_node("PistolFireClip", _anim("add/pistol_fire"), Vector2(-120, 410))
 
-	# Il salto invece coinvolge tutto il corpo: nessun filtro.
+	# Hit reaction: stesso schema dello sparo, quattro direzioni. La direzione la
+	# decide l'host (contratto CLAUDE.md §3: nel payload viaggia la DIREZIONE del
+	# colpo, mai il danno) e CharacterAnimator la mappa sull'ingresso.
+	var hit := AnimationNodeOneShot.new()
+	hit.fadein_time = 0.02
+	hit.fadeout_time = 0.10
+	hit.mix_mode = AnimationNodeOneShot.MIX_MODE_ADD
+	hit.sync = true
+	tree.add_node("Hit", hit, Vector2(660, 120))
+
+	var hit_pose := AnimationNodeTransition.new()
+	hit_pose.input_count = 4
+	hit_pose.set_input_name(0, "front")
+	hit_pose.set_input_name(1, "back")
+	hit_pose.set_input_name(2, "left")
+	hit_pose.set_input_name(3, "right")
+	hit_pose.xfade_time = 0.0
+	tree.add_node("HitPose", hit_pose, Vector2(400, 380))
+	tree.add_node("HitFront", _anim("add/hit_front"), Vector2(140, 430))
+	tree.add_node("HitBack", _anim("add/hit_back"), Vector2(140, 500))
+	tree.add_node("HitLeft", _anim("add/hit_left"), Vector2(140, 570))
+	tree.add_node("HitRight", _anim("add/hit_right"), Vector2(140, 640))
+
+	# --- Layer 5: one-shot ASSOLUTI full body --------------------------------
+	# Il salto coinvolge tutto il corpo: nessun filtro, MIX blend.
 	#
 	# TimeScale davanti alla clip: `jump` e' un arco di salto completo di 1,03 s, ma
-	# la durata reale del volo la decidono JumpVelocity e Gravity di PlayerController
-	# (2 * v / g, circa 0,6 s con i valori attuali). Senza riscalare, il personaggio
-	# atterra mentre la clip e' ancora a mezz'aria. La scala la calcola
-	# CharacterAnimator, che conosce sia la durata della clip sia il tempo di volo.
+	# la durata reale del volo la decidono JumpVelocity e Gravity (2 * v / g). Senza
+	# riscalare, il personaggio atterra mentre la clip e' ancora a mezz'aria.
 	var jump := AnimationNodeOneShot.new()
 	jump.fadein_time = 0.10
 	jump.fadeout_time = 0.20
 	jump.mix_mode = AnimationNodeOneShot.MIX_MODE_BLEND
-	tree.add_node("Jump", jump, Vector2(400, 120))
-	tree.add_node("JumpScale", AnimationNodeTimeScale.new(), Vector2(140, 380))
-	tree.add_node("JumpClip", _anim("jump"), Vector2(-120, 380))
+	tree.add_node("Jump", jump, Vector2(920, 120))
+	tree.add_node("JumpScale", AnimationNodeTimeScale.new(), Vector2(660, 380))
+	tree.add_node("JumpClip", _anim("jump"), Vector2(400, 440))
 
-	# Atterraggio: one-shot su tutto il corpo, a TRE regimi decisi da CharacterAnimator.
-	# Oltre HardLandingSpeed parte land_hard; fra SoftLandingSpeed e Hard parte
-	# land_soft (clip procedurale); sotto non parte nessuna clip e resta la sola
-	# ammortizzazione del bacino. Il selettore e' un Transition con xfade 0: la
-	# richiesta arriva PRIMA del one-shot, mai a clip in corso.
+	# Atterraggio: one-shot a TRE regimi decisi da CharacterAnimator. Oltre
+	# HardLandingSpeed parte land_hard; fra Soft e Hard parte land_soft; sotto resta
+	# la sola ammortizzazione del bacino. Il selettore e' un Transition con xfade 0:
+	# la richiesta arriva PRIMA del one-shot, mai a clip in corso.
 	var land := AnimationNodeOneShot.new()
 	land.fadein_time = 0.05
 	land.fadeout_time = 0.25
 	land.mix_mode = AnimationNodeOneShot.MIX_MODE_BLEND
-	tree.add_node("Land", land, Vector2(660, 120))
+	tree.add_node("Land", land, Vector2(1180, 120))
 
 	var land_pose := AnimationNodeTransition.new()
 	land_pose.input_count = 2
 	land_pose.set_input_name(0, "land_hard")
 	land_pose.set_input_name(1, "land_soft")
 	land_pose.xfade_time = 0.0
-	tree.add_node("LandPose", land_pose, Vector2(400, 380))
-	tree.add_node("LandHardClip", _anim("land_hard"), Vector2(140, 360))
-	tree.add_node("LandSoftClip", _anim("land_soft"), Vector2(140, 430))
+	tree.add_node("LandPose", land_pose, Vector2(920, 380))
+	tree.add_node("LandHardClip", _anim("land_hard"), Vector2(660, 440))
+	tree.add_node("LandSoftClip", _anim("land_soft"), Vector2(660, 510))
+
+	# Scavalcamento: full body, root IN PLACE — la traiettoria della radice la
+	# deforma il motion warping via codice, qui c'e' solo la sequenza di pose.
+	var vault := AnimationNodeOneShot.new()
+	vault.fadein_time = 0.08
+	vault.fadeout_time = 0.20
+	vault.mix_mode = AnimationNodeOneShot.MIX_MODE_BLEND
+	tree.add_node("Vault", vault, Vector2(1440, 120))
+	tree.add_node("VaultClip", _anim("vault_low"), Vector2(1180, 380))
 
 	# --- Connessioni ---------------------------------------------------------
 	tree.connect_node("MoveBlend", 0, "WalkSpace")
 	tree.connect_node("MoveBlend", 1, "RunSpace")
-	tree.connect_node("ArmedMoveBlend", 0, "RifleWalkSpace")
-	tree.connect_node("ArmedMoveBlend", 1, "RifleRunSpace")
-	tree.connect_node("StanceBlend", 0, "MoveBlend")
-	tree.connect_node("StanceBlend", 1, "ArmedMoveBlend")
-	tree.connect_node("CrouchBlend", 0, "StanceBlend")
+	tree.connect_node("CrouchBlend", 0, "MoveBlend")
 	tree.connect_node("CrouchBlend", 1, "CrouchSpace")
 	tree.connect_node("AirBlend", 0, "CrouchBlend")
 	tree.connect_node("AirBlend", 1, "FallClip")
@@ -265,20 +271,30 @@ func _initialize() -> void:
 	tree.connect_node("WeaponPose", 1, "RifleAim")
 	tree.connect_node("WeaponPose", 2, "PistolIdle")
 	tree.connect_node("WeaponPose", 3, "PistolAim")
-	tree.connect_node("WeaponBlend", 0, "AirBlend")
-	tree.connect_node("WeaponBlend", 1, "WeaponPose")
+	tree.connect_node("HoldAdd", 0, "AirBlend")
+	tree.connect_node("HoldAdd", 1, "WeaponPose")
+	tree.connect_node("AimAdd", 0, "HoldAdd")
+	tree.connect_node("AimAdd", 1, "AimSpace")
 	tree.connect_node("FirePose", 0, "RifleFireClip")
 	tree.connect_node("FirePose", 1, "PistolFireClip")
-	tree.connect_node("Fire", 0, "WeaponBlend")
+	tree.connect_node("Fire", 0, "AimAdd")
 	tree.connect_node("Fire", 1, "FirePose")
+	tree.connect_node("HitPose", 0, "HitFront")
+	tree.connect_node("HitPose", 1, "HitBack")
+	tree.connect_node("HitPose", 2, "HitLeft")
+	tree.connect_node("HitPose", 3, "HitRight")
+	tree.connect_node("Hit", 0, "Fire")
+	tree.connect_node("Hit", 1, "HitPose")
 	tree.connect_node("JumpScale", 0, "JumpClip")
-	tree.connect_node("Jump", 0, "Fire")
+	tree.connect_node("Jump", 0, "Hit")
 	tree.connect_node("Jump", 1, "JumpScale")
 	tree.connect_node("LandPose", 0, "LandHardClip")
 	tree.connect_node("LandPose", 1, "LandSoftClip")
 	tree.connect_node("Land", 0, "Jump")
 	tree.connect_node("Land", 1, "LandPose")
-	tree.connect_node("output", 0, "Land")
+	tree.connect_node("Vault", 0, "Land")
+	tree.connect_node("Vault", 1, "VaultClip")
+	tree.connect_node("output", 0, "Vault")
 
 	var err := ResourceSaver.save(tree, OUT_PATH)
 	if err != OK:

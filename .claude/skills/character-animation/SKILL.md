@@ -1,6 +1,6 @@
 ---
 name: character-animation
-description: Sistema di animazione del personaggio — AnimationTree a stance, BlendSpace, one-shot, layer procedurali (mira sul rachide, piedi a terra, presa dell'arma, reazione ai muri). Carica questa skill quando tocchi animation/, il CharacterRig, il BlendTree, CharacterAnimator, PlayerAnimationBridge, SpineAimModifier, AimRig, FootIkRig, WeaponGripRig, WeaponSpaceProbe, WeaponAnimationSet, quando aggiungi o rinomini una clip, quando il personaggio va in T-pose o le animazioni si fermano, quando un SkeletonModifier3D "non applica", quando agganci un'arma alla mano, o quando lavori su rinculo, mira verticale, piedi a terra, scavalcamento o ragdoll.
+description: Sistema di animazione del personaggio — AnimationTree a LAYER ADDITIVI (locomozione unica agnostica dall'arma, impugnatura e aim offset additivi, one-shot), clip delta, layer procedurali (mira sul rachide, piedi a terra, presa dell'arma, mani sul bordo, reazione ai muri). Carica questa skill quando tocchi animation/, il CharacterRig, il BlendTree, le clip additive o AdditiveClips.tres, CharacterAnimator, PlayerAnimationBridge, SpineAimModifier, AimRig, FootIkRig, WeaponGripRig, VaultIkRig, WeaponSpaceProbe, WeaponAnimationSet, quando aggiungi o rinomini una clip, quando il personaggio va in T-pose o le animazioni si fermano, quando un SkeletonModifier3D "non applica", quando agganci un'arma alla mano, o quando lavori su rinculo, mira verticale, piedi a terra, reazione ai colpi, scavalcamento o ragdoll.
 ---
 
 # Animazione del personaggio
@@ -81,13 +81,34 @@ la sua riga li'** e la sua categoria in `_verify_loop_modes`, altrimenti la veri
 **Non chiamare una clip `*_loop`**: con `nodes/use_name_suffixes = true` il suffisso viene
 interpretato come comando e **strippato dal nome**, e ogni riferimento punta a un nome che non esiste.
 
-### 1.6 `AnimationNodeSync.sync = false` su un nodo filtrato → gambe congelate
+### 1.6 I delta additivi NON possono passare da glTF
+
+Il primo tentativo authorava le clip delta in Blender e le faceva viaggiare nel `.glb` della
+libreria. **Non funziona**, per due motivi indipendenti, entrambi muti e entrambi misurati:
+
+- **L'esportatore glTF con `export_bake_animation=True` campiona TUTTE le ossa dell'armatura**, non
+  solo quelle con una fcurve. Le ossa che il delta non tocca — bacino e gambe — venivano esportate
+  con la posa **residua** del pose bone, diversa da una clip all'altra. Misurato: `add_aim_up` e
+  `add_aim_center`, che devono differire solo sul rachide, differivano di **0,23 e 0,33 rad sui due
+  femori**. Un delta di mira che muove le gambe è esattamente il difetto che l'architettura a layer
+  esiste per eliminare.
+- **Il rest pose di `CharacterAnimations.glb` non coincide con quello di `Body_Base.glb`**: la
+  libreria viene esportata con un'azione assegnata, quindi il TRS dei nodi-osso non è la posa di
+  riposo. Ma il delta additivo Godot lo calcola contro il rest dello **scheletro**, che viene da
+  `Body_Base`. Misurato: una posa authorata come identità esatta arrivava a **0,07 rad** dall'identità
+  — cioè il "centro" dell'aim offset teneva il busto storto.
+
+Da qui la divisione del lavoro, che è una regola e non un dettaglio: **le pose ASSOLUTE si authorano
+in Blender** (richiedono giudizio artistico), **i DELTA si calcolano in Godot** (sono aritmetica, e
+vanno calcolati contro il rest che li consumerà). Vedi §2.1.
+
+### 1.7 `AnimationNodeSync.sync = false` su un nodo filtrato → gambe congelate
 
 `sync = false` ferma i frame dell'ingresso con peso 0. Su un nodo **filtrato** e' un bug: l'ingresso
 a peso 0 resta **visibile** sulle parti che il filtro non copre. Regola: **ogni `Blend2`/`OneShot`
 con `filter_enabled = true` deve avere `sync = true`.** E' verificato automaticamente.
 
-### 1.7 Eulero YXZ riavvolge oltre i 90 gradi
+### 1.8 Eulero YXZ riavvolge oltre i 90 gradi
 
 `Node3D.rotation` e `Basis.GetEuler()` usano l'ordine YXZ, in cui la componente X e' la rotazione di
 mezzo e vive in `[-90°, +90°]`. La presa del fucile e' gia' a **-76°**: sommarci i 55° del "port arms"
@@ -97,12 +118,12 @@ giusta, l'angolo letto no. **Misura la direzione (`basis.z`), non l'angolo.**
 Costo storico: il rinculo ruotava il muso **in basso** invece che in alto, e nessuno se n'era accorto
 perche' il controllo misurava di quanto si sposta la presa, non in che direzione punta la canna.
 
-### 1.8 Il frame in headless dura ~7 ms, non 16,7
+### 1.9 Il frame in headless dura ~7 ms, non 16,7
 
 Riguarda le sonde. Senza vsync, contare i frame per aspettare la fine di una clip da' un'attesa lunga
 meno della meta' del previsto. Dove conta la durata REALE si usa `_settle_seconds()`.
 
-### 1.9 `intersect_ray` non vede le forme da dentro
+### 1.10 `intersect_ray` non vede le forme da dentro
 
 `hit_from_inside` e' false di default: un raggio che parte dentro un collider non riporta nulla. In
 una sonda che parte dal petto o dalla presa e' facilissimo finirci dentro, e il sintomo — nessun
@@ -120,55 +141,66 @@ Modificalo **solo** in `tools/build_animation_tree.gd`. Editare il `.tres` si pe
 rigenerazione, e i path delle track scritti a mano si sbagliano in silenzio.
 
 ```
-WalkSpace     ──┐                          (disarmato, rombo WalkSpeed)
-                ├─ MoveBlend ──────┐
-RunSpace      ──┘                  │
-                                   ├─ StanceBlend ──┐   (Blend2 sync, FULL BODY)
-RifleWalkSpace ─┐                  │                │
-                ├─ ArmedMoveBlend ─┘                │
-RifleRunSpace ──┘                                   ├─ CrouchBlend ──┐
-CrouchSpace ────────────────────────────────────────┘                │
-                                                                     ├─ AirBlend ──┐
-FallClip (fall_idle) ────────────────────────────────────────────────┘             │
-                       AirBlend ──┐                                                │
-RifleLowered ─┐                   ├─ WeaponBlend (FILTRATO upper-body, sync) ──────┘
-RifleAim     ─┤                   │
-PistolIdle   ─┼─ WeaponPose ──────┘
-PistolAim    ─┘  (Transition a 4)
-RifleFireClip ─┐
-               ├─ FirePose (Transition) ─┐
-PistolFireClip ┘                         │
-                    ... ─ Fire (OneShot FILTRATO) ─ Jump (OneShot) ─ Land (OneShot) ─ output
-LandHardClip ─┐                                                        │
-              ├─ LandPose (Transition) ────────────────────────────────┘
-LandSoftClip ─┘
+WalkSpace ─┐                                    (rombo WalkSpeed)
+           ├─ MoveBlend ─┐                      (Blend2 sync)
+RunSpace ──┘             ├─ CrouchBlend ─┐
+CrouchSpace ─────────────┘               ├─ AirBlend ─┐
+FallClip (fall_idle) ────────────────────┘            │
+                                                      ├─ HoldAdd (Add2) ─┐
+RifleLowered ─┐                                       │                  │
+RifleAim     ─┤                                       │                  │
+PistolIdle   ─┼─ WeaponPose (Transition a 4) ─────────┘                  │
+PistolAim    ─┘  [clip add/*]                                            │
+                                                                         │
+AimSpace (BlendSpace2D di 5 pose add/aim_*) ──── AimAdd (Add2) ──────────┘
+                                                      │
+RifleFireClip ─┐                                      │
+               ├─ FirePose (Transition) ── Fire (OneShot ADD) ────┐
+PistolFireClip ┘  [clip add/*]                                    │
+                                                                  │
+HitFront/Back/Left/Right ─ HitPose (Transition a 4) ─ Hit (OneShot ADD) ─┐
+  [clip add/*]                                                          │
+                                                                        │
+JumpClip ─ JumpScale ─── Jump (OneShot BLEND) ──────────────────────────┤
+LandHardClip ─┐                                                         │
+              ├─ LandPose (Transition) ─ Land (OneShot BLEND) ──────────┤
+LandSoftClip ─┘                                                         │
+VaultClip ────────────────── Vault (OneShot BLEND) ─────────────────────┴─ output
 ```
 
-**La mira e' uno STATO (`Aiming`, da RMB), non una conseguenza dell'essere armati.** E' il cambiamento
-piu' importante rispetto alla versione precedente, dove il corpo armato inseguiva sempre il cursore:
-- **`StanceBlend` = mira a due mani.** Il set di locomozione armato full-body si accende SOLO in mira
-  (`twoHanded && Aiming`), perche' e' in mira che il corpo punta al bersaglio e si strafa davvero.
-- **`WeaponBlend` = armato, sempre.** L'overlay upper-body e' acceso con qualunque arma in mano; la
-  POSA la sceglie il `Transition` `WeaponPose` a 4 ingressi: `rifle_lowered` / `rifle_aim` /
-  `pistol` / `pistol_aim`, da arma + stato di mira.
-- **`FirePose` e `LandPose`** sono `Transition` a xfade 0 davanti ai one-shot: la clip di sparo la
-  dichiara l'ARMA (`WeaponAnimationSet.FirePose` — prima era cablata `rifle_fire` e la pistola
-  sparava con l'animazione del fucile), la clip d'atterraggio la sceglie `TriggerLand` dai regimi.
-  La richiesta va impostata PRIMA di far partire il one-shot.
+**La locomozione e' UNA SOLA e non sa nulla delle armi.** E' il cambiamento piu' importante rispetto
+alla versione precedente, che aveva due set completi di clip armate (otto clip) piu' un
+`StanceBlend` full-body per sceglierli. Reggere un fucile non cambia come si cammina: cambia cosa
+fanno busto e braccia, e quello e' un **delta additivo**.
 
-Il motivo storico del set armato completo resta valido: la posa "reggi fucile" e' authored su un
-bacino neutro, ma le clip di strafe il bacino lo ruotano di decine di gradi (misurato:
-`rifle_walk_left` **49°**, `pistol_idle` **54°**). L'overlay di mira sopra il set armato in movimento
-funziona perche' `SpineAimModifier` rimisura e chiude l'errore residuo sulla mira vera, ogni frame.
+- **`HoldAdd` = impugnatura**, `Add2` acceso con qualunque arma in mano. La posa la sceglie il
+  `Transition` `WeaponPose` a 4 ingressi (`rifle_lowered` / `rifle_aim` / `pistol` / `pistol_aim`),
+  da arma + stato di mira. **La mira e' uno STATO (`Aiming`, da RMB)**, non una conseguenza
+  dell'essere armati.
+- **`AimAdd` + `AimSpace` = aim offset**, la sfera di mira continua a 5 pose additive
+  (centro/su/giu'/sinistra/destra) pilotata da yaw e pitch della mira **relativi al corpo**,
+  normalizzati su `AimYawRangeDeg`/`AimPitchRangeDeg`. Mette il grosso della posa; l'errore residuo
+  — che dipende da quale clip sta girando e con che peso — lo chiude `SpineAimModifier` rimisurando
+  ogni frame (§4).
+- **`Fire` e `Hit` sono `OneShot` in `MIX_MODE_ADD`** su clip delta: rinculo e flinch si sommano a
+  qualunque cosa stiano facendo locomozione, impugnatura e mira. Un colpo incassato si vede identico
+  in piedi, accovacciati, in corsa o mentre si mira, e sparare mirando in alto non riabbassa l'arma.
+- **`Jump`, `Land`, `Vault` restano `MIX_MODE_BLEND` full body**: sono movimenti che coinvolgono
+  tutto il corpo e sostituiscono la locomozione, non la modificano.
+- **`FirePose`, `HitPose`, `LandPose`** sono `Transition` a xfade 0 davanti ai one-shot: la clip di
+  sparo la dichiara l'ARMA (`WeaponAnimationSet.FirePose`), la direzione del flinch la mappa
+  `TriggerHitReaction`, la clip d'atterraggio la sceglie `TriggerLand` dai regimi. **La richiesta va
+  impostata PRIMA di far partire il one-shot.**
 
-Chi usa cosa:
-- **fucile IN MIRA, in piedi** → `StanceBlend = 1` (set armato full body) + overlay `rifle_aim`;
-- **fucile SENZA mira** → set disarmato + overlay `rifle_lowered` (porto basso). Come per la
-  pistola: un'arma portata rilassata non cambia come si cammina;
-- **pistola** → set disarmato + overlay (`pistol` o `pistol_aim`);
-- **accovacciato, con qualunque arma** → clip di crouch disarmate + overlay. Il "crouch armato" e'
-  RISOLTO cosi', via overlay + SpineAim: un set di clip dedicato e' stato valutato e scartato
-  (cicli di passo fragili per un guadagno marginale in isometrica).
+**Niente filtri sui nodi additivi, e non e' una dimenticanza.** La maschera upper-body vive nelle
+CLIP: quelle delta hanno solo le 13 track del busto e delle braccia, quindi un bone senza track non
+riceve nulla, qualunque cosa faccia l'albero. E' piu' robusto di un filtro (che si mantiene a mano e
+si sbaglia in silenzio) ed e' verificato da due lati — strutturale, "nessuna track sotto il bacino",
+e comportamentale, "accendere il layer non muove le gambe".
+
+Chi usa cosa: **qualunque arma, qualunque postura** → la stessa locomozione + `HoldAdd` con la posa
+giusta. Il crouch armato, che prima era un caso speciale, e' semplicemente il crouch con un delta
+sopra. Il turn-in-place resta il passo sintetico di `UpdateLocomotion` (§3).
 
 Il resto delle scelte:
 - **camminata e corsa sono due spazi**, non uno: la corsa messa come punto in piu' sull'asse Y
@@ -176,12 +208,46 @@ Il resto delle scelte:
 - **le diagonali non hanno clip proprie e non devono averne**: cadono dentro i triangoli e vengono
   sintetizzate. Mixamo non ha diagonali affidabili e il blend delle cardinali e' lo standard.
 - **`WeaponPose` e' un `Transition`**: fra "reggi fucile" e "reggi pistola" non c'e' una via di mezzo.
-- **`WeaponBlend` e' un `Blend2` filtrato, non un `Add2`**: senza clip-delta un additivo sommerebbe
-  due pose assolute.
+  Sui DELTA l'xfade di 0,15 s interpola verso/da identita' senza artefatti.
 - **la maschera upper-body include le clavicole**: senza, la spalla resta alla posa di corsa.
-- **`AirBlend` sta prima del layer arma**, cosi' cadendo si continua a impugnare.
+- **`AirBlend` sta prima dei layer additivi**, cosi' cadendo si continua a impugnare e a mirare.
 - **`JumpScale`**: `jump` e' un arco di 1,03 s ma il volo vero dura `2·v/g` (~0,6 s). Senza
   riscalare, si atterra a clip ancora in aria.
+
+### 2.1 Le clip delta: due librerie, due sorgenti
+
+L'`AnimationTree` monta **due** `AnimationLibrary`, ed e' una divisione di responsabilita', non un
+dettaglio di packaging:
+
+| Libreria | Contenuto | Generata da |
+|---|---|---|
+| `""` (senza prefisso) | clip **assolute**: Mixamo + procedurali (`walk_fwd`, `rifle_idle`, `vault_low`, …) | Blender → `.glb` |
+| `"add"` | clip **delta** additive (`add/aim_up`, `add/rifle_aim`, `add/hit_front`, …) | `tools/build_additive_clips.gd`, **in Godot** |
+
+I delta non passano da Blender: il perche' e' §1.6, ed e' stato misurato. Il tool li calcola contro
+il rest pose vero di `Body_Base.glb` usando la semantica additiva di Godot, anch'essa **misurata**
+con una sonda headless:
+
+> **`risultato = Base × (Rest⁻¹ × Chiave)`** — riferimento = rest pose, composizione
+> post-moltiplicata in spazio locale, per-track.
+
+Da cui la formula di authoring: per ottenere `Target` quando la base vale `Riferimento`, la chiave e'
+`Chiave = Rest × Riferimento⁻¹ × Target`. E' quello che fa `_key_for()`.
+
+Ne discendono due proprieta' che valgono solo perche' i delta sono calcolati e non disegnati:
+- il **centro** dell'aim offset e' l'identita' **esatta**, quindi mirare dritto davanti non storce il
+  busto di qualche grado;
+- l'impugnatura sommata sull'idle riproduce **esattamente** la posa assoluta da cui e' derivata —
+  quella su cui sono misurati `GripRotationDegrees` e il polo del gomito (§7).
+
+**Ordine di rigenerazione, quando cambiano le clip:**
+```
+python tools/blender/blender_client.py tools/blender/build_procedural_clips.py   # pose assolute
+Godot --path . --headless --import                                               # reimport del .glb
+Godot --path . --headless --script tools/build_additive_clips.gd                 # delta
+Godot --path . --headless --script tools/build_animation_tree.gd                 # albero
+```
+Saltare il reimport in mezzo e' il modo tipico di generare delta contro clip vecchie.
 
 ## 3. Parametri esposti
 
@@ -190,21 +256,32 @@ rinomini un nodo, i `const` in cima a quel file vanno aggiornati (e cosi' i due 
 
 | Parametro | Significato |
 |---|---|
-| `WalkSpace` / `RunSpace` / `RifleWalkSpace` / `RifleRunSpace` / `CrouchSpace` `blend_position` | la **stessa** velocita' locale (X = destra, Y = avanti), proiettata sul rombo di ciascuno; da fermi in mira ci si somma il **passo sintetico del turn-in-place** (`TurnRate · TurnStepScale` su X) |
-| `MoveBlend` / `ArmedMoveBlend` `blend_amount` | peso della corsa: `clamp01((‖v‖−Walk)/(Run−Walk))` |
-| `StanceBlend/blend_amount` | mira a due mani (`twoHanded && Aiming`), spenta accovacciati |
+| `WalkSpace` / `RunSpace` / `CrouchSpace` `blend_position` | la **stessa** velocita' locale (X = destra, Y = avanti), proiettata sul rombo di ciascuno; da fermi in mira ci si somma il **passo sintetico del turn-in-place** (`TurnRate · TurnStepScale` su X) |
+| `MoveBlend/blend_amount` | peso della corsa: `clamp01((‖v‖−Walk)/(Run−Walk))` |
 | `CrouchBlend` · `AirBlend` `blend_amount` | accovacciato, in aria — smorzati |
-| `WeaponBlend/blend_amount` | overlay upper-body: acceso con qualunque arma in mano |
+| `HoldAdd/add_amount` | peso del delta di impugnatura: acceso con qualunque arma in mano |
 | `WeaponPose/transition_request` | `"rifle_lowered"` / `"rifle_aim"` / `"pistol"` / `"pistol_aim"` |
+| `AimSpace/blend_position` | aim offset **normalizzato** in `[-1, 1]`: X = yaw (positivo = destra), Y = pitch (positivo = su), da `AimDirection` portata nel riferimento del rig e divisa per `AimYawRangeDeg` / `AimPitchRangeDeg` |
+| `AimAdd/add_amount` | peso dell'aim offset: acceso in mira, spento fuori |
 | `FirePose/transition_request` | `"rifle_fire"` / `"pistol_fire"` — da `WeaponAnimationSet.FirePose`, al cambio d'arma |
+| `HitPose/transition_request` | `"front"` / `"back"` / `"left"` / `"right"` — da `TriggerHitReaction`, prima del one-shot |
 | `LandPose/transition_request` | `"land_hard"` / `"land_soft"` — impostata da `TriggerLand` prima del one-shot |
-| `Fire/request` · `Jump/request` · `Land/request` | one-shot |
+| `Fire/request` · `Hit/request` · `Jump/request` · `Land/request` · `Vault/request` | one-shot |
 | `JumpScale/scale` | `durata clip / JumpFlightTime` |
 
-Stato in ingresso rilevante oltre alla velocita': `Aiming` (stance di mira, da `SyncAiming`) e
-`TurnRate` (rad/s, derivata smorzata di `SyncFacing` calcolata dai bridge — positiva = sinistra).
+**`AimYawRangeDeg` (60) e `AimPitchRangeDeg` (45) di `CharacterAnimator` devono combaciare con
+`AIM_YAW_DEG` e `AIM_PITCH_DEG` di `tools/build_additive_clips.gd`**: le pose additive sono generate
+a quegli angoli e la `blend_position` e' normalizzata su di essi. Se divergono, la mira e' scalata
+male — sintomo muto, perche' il busto si muove comunque, solo della quantita' sbagliata.
+
+Stato in ingresso rilevante oltre alla velocita': `Aiming` (stance di mira, da `SyncAiming`),
+`AimDirection` (mondo, da `AimVector(SyncAimYaw, SyncAimPitch)`) e `TurnRate` (rad/s, derivata
+smorzata di `SyncFacing` calcolata dai bridge — positiva = sinistra).
 `TriggerLand` ha TRE regimi alternativi: `>= HardLandingSpeed` → `land_hard`; `>= SoftLandingSpeed`
 (default 6.5, sopra l'impatto di un salto normale) → `land_soft`; sotto → solo dip procedurale.
+`TriggerHitReaction(Vector3)` riceve la direzione di **volo** del proiettile in coordinate mondo e la
+mappa su uno dei quattro ingressi nel riferimento del rig (che guarda +Z, sinistra +X).
+`TriggerVault(Vector3)` riceve il punto del bordo e avvia insieme il one-shot e `VaultIkRig`.
 
 Lo smorzamento e' **esponenziale** (`1 − exp(−k·dt)`), non `clamp(k·dt)`: `CharacterAnimator` gira in
 `_Process` (render) mentre il movimento gira in `_PhysicsProcess` (tick fisso), e con la forma ingenua
@@ -223,6 +300,7 @@ autorita' e non vanno replicati.
 | `FootIkRig` | ogni piede cerca il suolo con un raggio, l'IK ce lo porta, il bacino scende verso il piede piu' basso | dipende dalla geometria sotto i piedi in quell'istante |
 | `WeaponGripRig` | aggancio dell'arma alla mano, IK della mano di supporto, rinculo, "port arms" | idem |
 | `WeaponSpaceProbe` | misura lo spazio davanti alla canna | idem |
+| `VaultIkRig` | durante lo scavalcamento porta le mani sul bordo VERO, dentro la finestra di contatto della clip | l'altezza e la distanza dell'ostacolo le conosce solo il raycast di quell'istante: e' cio' che permette **una sola** clip di vault |
 | lean (dentro `AimRig`) | inclina il busto contro l'accelerazione laterale | dipende da come si sta guidando il personaggio |
 
 Note che costano se ignorate:
@@ -284,13 +362,25 @@ turn-in-place non hanno una clip: e' il passo sintetico di `UpdateLocomotion` (v
 
 **Il contratto degli assi e' "X = destra" e va difeso.** Il Visual guarda +Z e la sua sinistra e'
 +X: `CharacterMotor.WorldToLocalVelocity` NEGA la X locale, e senza quella negazione lo strafe
-risulta specchiato in tutti e cinque i blend space e il lean si inclina dal lato sbagliato — e'
-successo, senza un solo errore, perche' nessuna sonda misurava la DIREZIONE. Ora la misurano:
+risulta specchiato in tutti i blend space e il lean si inclina dal lato sbagliato — e' successo,
+senza un solo errore, perche' nessuna sonda misurava la DIREZIONE. Ora la misurano:
 `_verify_strafe_direction` (albero) e i test di `WorldToLocalVelocity` (motore) nella suite runtime.
+Lo stesso contratto vale per l'aim offset e per la direzione del flinch, che `CharacterAnimator`
+porta nel riferimento del rig con `GlobalTransform.Basis.Inverse()`.
 
-Gli eventi one-shot (`Jumped`, `Landed`, `ShotResolved`) arrivano da RPC che ogni peer riemette come
-segnale **locale**. Nel payload non viaggia mai un esito di gioco (CLAUDE.md §3): `Landed` porta la
-velocita' d'impatto, che e' una grandezza fisica e decide solo quanto flette il bacino.
+Gli eventi one-shot (`Jumped`, `Landed`, `Vaulted`, `ShotResolved`, `HitReaction`) arrivano da RPC
+che ogni peer riemette come segnale **locale**. Nel payload non viaggia mai un esito di gioco
+(CLAUDE.md §3), solo **grandezze fisiche o geometriche**:
+
+| Evento | Payload | Emesso da |
+|---|---|---|
+| `Landed` | velocita' d'impatto (m/s) — decide solo quanto flette il bacino | `CharacterMotor` → RPC del derivato |
+| `Vaulted` | punto del bordo (mondo) — misurato dai raycast, alimenta l'IK delle mani | `CharacterMotor` → RPC del derivato |
+| `HitReaction` | direzione di **volo** del proiettile (mondo) — **mai** l'ammontare di danno | `HealthComponent.BroadcastHitReaction`, host → tutti |
+
+`HitReaction` parte **dopo** che il danno e' stato applicato, dentro `ApplyDamage`: cosi' un colpo
+rifiutato dalla validazione non produce mai una reazione. E' `Unreliable` di proposito — un flinch
+perso non desincronizza nulla, lo stato vero e' la salute replicata.
 
 ## 6. Verifiche automatiche
 
@@ -302,14 +392,30 @@ Godot --path . --headless --script tools/verify_animation_runtime.gd  # comporta
 `verify_godot_import.gd`: scheletro, skin, scala, track, **`loop_mode` per categoria**, esistenza dei
 parametri, **copertura a triangoli di ogni BlendSpace2D**, **`sync` su ogni nodo filtrato**.
 
-`verify_animation_runtime.gd` fa girare l'albero e misura le ossa: le combinazioni che non devono
-essere la T-pose (disarmato, corsa, crouch, aria, pistola, e i quattro assi del set armato), dieci
-secondi di camminata che non deve congelarsi, le gambe che non si fermano ne' con la pistola ne' col
-fucile, la stance armata che deve produrre una posa **diversa** da quella disarmata, i one-shot che
-rientrano, la presa che segue la mano, il rinculo che **alza** il muso, la mano di supporto che
-raggiunge l'astina, l'asse dell'arma che passa fra le due mani, il busto che punta sulla mira anche
-in strafe, i piedi che riproducono un dislivello di 12 cm, l'arma che si alza contro un muro, e
-l'NPC che si anima sullo stesso rig.
+`verify_animation_runtime.gd` fa girare l'albero e misura le ossa (**138 controlli**): le
+combinazioni che non devono essere la T-pose (ogni asse di camminata, corsa e crouch, aria, gli
+stessi assi con l'impugnatura additiva accesa, i cinque estremi dell'aim offset), dieci secondi di
+camminata che non deve congelarsi, le gambe che continuano a muoversi con impugnatura e mira accese
+e sotto una raffica, **l'isolamento dei layer additivi** (§ sotto), le quattro direzioni del flinch
+distinte a coppie opposte, il vault che e' full body e rientra, i one-shot che rientrano, la presa
+che segue la mano, il rinculo che **alza** il muso, la mano di supporto che raggiunge l'astina,
+l'asse dell'arma che passa fra le due mani, il busto che punta sulla mira anche in strafe, i piedi
+che riproducono un dislivello di 12 cm, l'arma che si alza contro un muro, e l'NPC che si anima
+sullo stesso rig.
+
+**L'isolamento dei layer additivi e' l'invariante centrale** e va verificato da due lati, perche' un
+solo lato non basta:
+- *strutturale* (`_verify_delta_clips`): nessuna clip `add/*` ha track sotto il bacino, e il centro
+  dell'aim offset e' l'identita' esatta. Legge le track, non le pose.
+- *comportamentale* (`_verify_additive_isolation`): accendere un layer cambia il busto e **non** le
+  gambe. Misurato: impugnatura 1,23 rad sul busto contro 0,0007 sulle gambe, cioe' esattamente la
+  deriva della clip di base.
+
+*Trappola di misura*: l'effetto di un layer si misura sul suo **scatto**, non a regime. Confrontare
+pose lontane nel tempo non funziona perche' la clip di base avanza, e la sua deriva **dipende dalla
+fase del ciclo** — misurato: 0,034 rad in una finestra e 0,064 in un'altra, senza che nulla fosse
+cambiato. I pesi si scrivono diretti sull'albero (senza lo smorzamento di `CharacterAnimator`),
+quindi l'effetto e' immediato: si confronta lo scatto col drift di **due frame** nella stessa fase.
 
 Nota d'ambiente: su questa macchina `~/.dotnet` contiene un SDK 2.2 rotto che ha la precedenza nel
 PATH e fa **crashare** Godot mono al caricamento di hostfxr. Lanciare con
@@ -335,24 +441,37 @@ congiungente fra le due mani e misura la loro distanza:
 | `two_handed.tres` (da `rifle_idle`) | `(-76.2, 37.1, 0)` | `(0, 0, 0.391)` |
 | `one_handed.tres` (da `pistol_idle`) | `(-61.8, 17.3, 0)` | `(0, 0, 0)` |
 
-Allineare l'arma al **corpo** invece che alle mani sarebbe sbagliato: le pose armate ruotano il
-bacino (§2) e l'arma finirebbe di traverso. Il placeholder in `WeaponVisual` e' costruito **attorno
-alla presa** — calcio dietro, canna avanti, astina esattamente su `SupportGripOffset` — proprio
-perche' un disallineamento si veda a colpo d'occhio.
+Allineare l'arma al **corpo** invece che alle mani sarebbe sbagliato: sotto l'impugnatura c'e' una
+locomozione qualsiasi, che il bacino lo ruota di decine di gradi (misurato: `pistol_idle` **54°**),
+e l'arma finirebbe di traverso. Il placeholder in `WeaponVisual` e' costruito **attorno alla presa**
+— calcio dietro, canna avanti, astina esattamente su `SupportGripOffset` — proprio perche' un
+disallineamento si veda a colpo d'occhio.
+
+Le misure restano valide dopo il passaggio ai layer additivi **perche' il delta e' costruito proprio
+da quelle pose**: `add/rifle_aim` sommato sull'idle riproduce `rifle_aim_idle` esattamente (§2.1),
+che e' la posa su cui presa e polo del gomito sono stati misurati.
 
 ## 8. Lacune volute e lavoro aperto
 
 Sono scelte, non dimenticanze. Non "sistemarle" senza leggere il motivo.
 
-**Budget clip: 33.** 28 Mixamo + 5 **procedurali** (`rifle_aim_idle`, `rifle_lowered_idle`,
-`pistol_aim_idle`, `pistol_fire`, `land_soft`), generate da
-`tools/blender/build_procedural_clips.py` (skill `blender-pipeline`): Mixamo non e' piu' una
-sorgente disponibile, le clip nuove si costruiscono campionando pose da clip esistenti.
-**Mancano ancora**: scavalcamento, 4 reazioni direzionali ai colpi, posa iniziale di morte,
-clip di turn-in-place (oggi passo sintetico; da rivalutare se non legge bene a schermo). Il crouch
-armato e l'atterraggio morbido NON mancano piu' (risolti via overlay e via `land_soft`). Mai una
-clip per combinazione arma × movimento: se un'arma "richiede" una locomozione nuova, la risposta
-e' quasi sempre una posa upper-body in piu'.
+**Budget clip: 34 assolute + 15 delta.** Le assolute stanno nel `.glb`: 28 Mixamo + 6
+**procedurali** (`rifle_aim_idle`, `rifle_lowered_idle`, `pistol_aim_idle`, `pistol_fire`,
+`land_soft`, `vault_low`), generate da `tools/blender/build_procedural_clips.py` (skill
+`blender-pipeline`) — Mixamo non e' piu' una sorgente disponibile, le clip nuove si costruiscono
+campionando pose da clip esistenti. I 15 delta stanno in `AdditiveClips.tres` e sono **calcolati**
+(§2.1), non authorati.
+
+Le **otto clip di locomozione armata** (`rifle_walk_*`, `rifle_run_*`) sono ancora nel `.glb` ma
+**l'albero non le usa piu'**: le ha sostituite il delta di impugnatura. Restano perche' cancellarle
+dal `.glb` e' irreversibile (le FBX non sono nel repo) e non costano nulla se non referenziate. Non
+ricablarle: se una posa armata in movimento non convince, la risposta e' un delta migliore, non un
+set di clip per arma.
+
+**Mancano ancora**: posa iniziale di morte, clip di turn-in-place (oggi passo sintetico; da
+rivalutare se non legge bene a schermo). Il crouch armato, l'atterraggio morbido, lo scavalcamento e
+le reazioni direzionali ai colpi NON mancano piu'. **Mai una clip per combinazione arma × movimento**:
+se un'arma "richiede" una locomozione nuova, la risposta e' quasi sempre un delta upper-body in piu'.
 
 **Le FBX Mixamo non stanno nel repo.** Di conseguenza `build_animation_library.py` e' **additivo**:
 le clip la cui FBX manca vengono **recuperate dalla libreria gia' esportata** reimportando il `.glb`.
@@ -369,23 +488,34 @@ nello spazio locale di `Hips` e' su **X e Z**, non su Y.
 *Trappola del modulo*: Blender tiene i moduli in `sys.modules` fra un'esecuzione e l'altra. Senza
 `importlib.reload(mx)`, una modifica a `mixamo_common.py` verrebbe ignorata senza il minimo segnale.
 
-**Atterraggio a due regimi.** Oltre `HardLandingSpeed` parte `land_hard`; sotto, resta la sola
-flessione procedurale del bacino. Sono **alternativi**, non sommati: la clip contiene gia' la propria
-flessione. Manca ancora la clip di atterraggio morbido.
+**Atterraggio a TRE regimi.** Oltre `HardLandingSpeed` parte `land_hard`; fra `SoftLandingSpeed` e
+Hard parte `land_soft`; sotto resta la sola flessione procedurale del bacino. Sono **alternativi**,
+non sommati: la clip contiene gia' la propria flessione, e sommarci quella procedurale farebbe
+sprofondare il personaggio nel pavimento.
 
 **Fase di camminata e corsa non allineate.** `walk_fwd` dura 1,067 s e `run_fwd` 0,667 s: nel
 crossfade i piedi possono risultare fuori fase per un istante. `sync = true` li fa avanzare ma **non**
 li mette in fase — servirebbe un ritaglio delle clip. Accettato.
 
-**Ancora da fare**: motion warping per lo scavalcamento (Godot non ha un nodo nativo: `ShapeCast3D`
-misura altezza e bordo, il codice deforma la traiettoria della radice, mani in IK sul bordo durante
-la finestra di contatto — **una sola clip generica**, intervallo dichiarato 0,5–1,2 m).
+**Scavalcamento: una clip, il resto e' codice.** `CharacterMotor.TryStartVault` aggancia il vault a
+partire dalla richiesta di SALTO — stesso tasto, decide la geometria — con tre raycast: parete
+davanti entro `VaultReach`, sommita' dentro `[VaultMinHeight, VaultMaxHeight]` (0,5–1,2 m), e un
+punto d'atterraggio oltre il bordo. Se una qualunque delle tre misure manca, non e' un vault ed e' un
+salto normale. Poi `StepVault` **scrive** la posizione (movimento scriptato: `MoveAndSlide`
+combatterebbe contro l'ostacolo che si sta scavalcando) su una traiettoria start → bordo →
+atterraggio, e `VaultIkRig` mette le mani sul bordo vero.
 
-**Fase E non iniziata.** Danno direzionale e morte. Il contratto e' gia' deciso:
-`HealthComponent.ApplyDamage` acquisisce la **direzione** del colpo, calcolata host-side in
-`WeaponController.RequestFire`; RPC one-shot separate dalla validazione, `BroadcastHitReaction(Vector3)`
-e `BroadcastDeath(Vector3)`, sul modello di `BroadcastShot`; **nessun ammontare di danno nel payload**.
-Morte: disattivare l'`AnimationTree`, attivare `PhysicalBoneSimulator3D`, applicare l'impulso;
+**`VaultDuration` (0,9 s) deve combaciare con la durata di `vault_low`**: e' il tempo su cui il
+warping distribuisce la traiettoria, e se diverge dalla clip le pose arrivano prima o dopo i punti di
+contatto. La suite lo verifica.
+
+**Danno direzionale: FATTO.** `HealthComponent.ApplyDamage` acquisisce la **direzione** del colpo,
+calcolata host-side in `WeaponController.RequestFire` (e' `shotDir`, dopo la dispersione);
+`BroadcastHitReaction(Vector3)` e' una RPC estetica separata dalla validazione, sul modello di
+`BroadcastShot`; **nessun ammontare di danno nel payload**.
+
+**Morte: non iniziata.** Il contratto resta quello deciso: `BroadcastDeath(Vector3)` con la sola
+direzione; disattivare l'`AnimationTree`, attivare `PhysicalBoneSimulator3D`, applicare l'impulso;
 **nessun bone sincronizzato via rete**. `PhysicalBoneSimulator3D` **non espone un peso di blend**
 animato→fisico: la transizione senza scatti si ottiene inizializzando i `PhysicalBone3D` sulla posa
 animata corrente. Serve anche generare la catena di physical bone per `Body_Base`, che non esiste.

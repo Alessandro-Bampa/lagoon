@@ -19,6 +19,7 @@ public partial class PlayerAnimationBridge : Node
     private PlayerController _controller = null!;
     private CharacterAnimator _animator = null!;
     private WeaponController? _weapon;
+    private HealthComponent? _health;
 
     /// Ultima arma vista, per non risolvere il <c>.tres</c> a ogni frame.
     private string _lastHeldItemId = "";
@@ -38,9 +39,17 @@ public partial class PlayerAnimationBridge : Node
         // su OGNI peer: qui basta ascoltare, senza sapere da dove sono partiti.
         _controller.Jumped += OnJumped;
         _controller.Landed += OnLanded;
+        _controller.Vaulted += OnVaulted;
 
         if (_weapon != null)
             _weapon.ShotResolved += OnShotResolved;
+
+        // La hit reaction arriva dalla RPC estetica di HealthComponent, riemessa come segnale
+        // locale su ogni peer: stesso schema di Jumped/Landed. Nel payload viaggia la sola
+        // direzione del colpo (CLAUDE.md §3).
+        _health = GetParent().GetNodeOrNull<HealthComponent>("Health");
+        if (_health != null)
+            _health.HitReaction += OnHitReaction;
 
         // Le grandezze del movimento arrivano DA QUI, non sono duplicate nell'animatore: le velocita'
         // definiscono la geometria dello spazio di blend, la soglia d'impatto duro l'ampiezza
@@ -60,8 +69,11 @@ public partial class PlayerAnimationBridge : Node
     {
         _controller.Jumped -= OnJumped;
         _controller.Landed -= OnLanded;
+        _controller.Vaulted -= OnVaulted;
         if (_weapon != null)
             _weapon.ShotResolved -= OnShotResolved;
+        if (_health != null)
+            _health.HitReaction -= OnHitReaction;
     }
 
     public override void _Process(double delta)
@@ -120,6 +132,9 @@ public partial class PlayerAnimationBridge : Node
     /// </summary>
     private void OnLanded(float impactSpeed) => _animator.TriggerLand(impactSpeed);
 
+    /// Scavalcamento: il punto del bordo (misura geometrica) alimenta l'IK delle mani.
+    private void OnVaulted(Vector3 ledgePoint) => _animator.TriggerVault(ledgePoint);
+
     /// <summary>
     /// Lo sparo riusa il segnale gia' esistente di <see cref="WeaponController"/>, che l'host
     /// trasmette a tutti: non serve una RPC nuova per l'animazione, e soprattutto non va aggiunta —
@@ -129,4 +144,9 @@ public partial class PlayerAnimationBridge : Node
     {
         _animator.TriggerFire();
     }
+
+    /// Flinch del colpo incassato: la direzione e' quella di volo del proiettile, in mondo.
+    /// E' l'animatore a mapparla su front/back/left/right nel riferimento del rig.
+    private void OnHitReaction(Vector3 worldDirection) =>
+        _animator.TriggerHitReaction(worldDirection);
 }

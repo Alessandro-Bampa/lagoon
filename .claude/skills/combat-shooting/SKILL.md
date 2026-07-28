@@ -21,9 +21,21 @@ La realizzazione reale separa i ruoli:
 |---|---|---|
 | Intento | client | `WeaponController.RequestFire(Vector3 aimPoint)` — RPC `AnyPeer`. Il client invia **solo il punto verso cui sta mirando**. Mai un bersaglio, mai un'origine, mai un ammontare di danno. |
 | Calcolo | host | Ricava l'origine da `PlayerController.ResolvedSyncPosition` (lo stato *replicato* del tiratore, non `GlobalPosition`), tira il dado della dispersione, ri-traccia il raggio, applica il falloff. Dalla Fase 4 **non** si usa `SyncPosition` grezza: può essere in coordinate locali a un'imbarcazione (skill `vehicles-boats` §1). |
-| Applicazione | host | `HealthComponent.ApplyDamage(...)` — metodo **normale, non RPC**. Non è raggiungibile dalla rete per costruzione. |
+| Applicazione | host | `HealthComponent.ApplyDamage(amount, attacker, hitDirection)` — metodo **normale, non RPC**. Non è raggiungibile dalla rete per costruzione. |
 | Propagazione | rete | La salute è una proprietà replicata da un `MultiplayerSynchronizer` a **tutti** i peer. |
-| Estetica | host → tutti | `WeaponController.BroadcastShot(...)` — RPC `Authority`, `Unreliable`. Traccianti e vampe, nessun effetto sullo stato. |
+| Estetica | host → tutti | `WeaponController.BroadcastShot(...)` e `HealthComponent.BroadcastHitReaction(...)` — RPC `Authority`, `Unreliable`. Traccianti, vampe e flinch: nessun effetto sullo stato. |
+
+**La direzione del colpo viaggia, l'ammontare del danno no.** `ApplyDamage` prende un terzo
+parametro `hitDirection` — la direzione di *volo* del proiettile in coordinate mondo, calcolata
+host-side in `RequestFire` (è `shotDir`, quindi **dopo** la dispersione) — e da lì parte
+`BroadcastHitReaction`, che alimenta la reazione animata su ogni peer. È una grandezza **geometrica**,
+non un esito di gioco: decide solo da che lato il busto incassa il colpo, esattamente come la
+velocità d'impatto di `Landed` decide solo quanto flette il bacino (CLAUDE.md §3).
+
+La RPC parte **dopo** che il danno è stato applicato, dentro `ApplyDamage`, e dopo i guard di
+autorità: un colpo rifiutato dalla validazione non produce mai una reazione. È `Unreliable` di
+proposito — un flinch perso non desincronizza nulla, lo stato vero è la salute replicata. Il consumo
+è nei bridge di animazione (skill `character-animation` §5).
 
 ---
 

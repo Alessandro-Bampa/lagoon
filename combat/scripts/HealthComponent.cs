@@ -36,6 +36,15 @@ public partial class HealthComponent : Node
     [Signal]
     public delegate void DiedEventHandler(int attackerPeerId);
 
+    /// <summary>
+    /// Emesso su TUTTI i peer quando l'entita' incassa un colpo, con la direzione di VOLO del
+    /// proiettile in coordinate mondo. E' l'evento estetico per la hit reaction animata: nel
+    /// payload di rete viaggia SOLO la direzione — mai l'ammontare di danno, che resta un calcolo
+    /// host-side propagato dalla salute replicata (CLAUDE.md §3).
+    /// </summary>
+    [Signal]
+    public delegate void HitReactionEventHandler(Vector3 worldDirection);
+
     // Stato replicato dal MultiplayerSynchronizer figlio (vedi le .tscn che montano il componente).
     [Export] public int MaxHealth { get; set; } = 100;
     [Export] public int CurrentHealth { get; set; } = 100;
@@ -71,7 +80,7 @@ public partial class HealthComponent : Node
     /// Applica danno. No-op se questo peer non e' l'host: e' il punto in cui si concentra tutta la
     /// logica di danno del gioco (§3.2).
     /// </summary>
-    public void ApplyDamage(int amount, int attackerPeerId)
+    public void ApplyDamage(int amount, int attackerPeerId, Vector3 hitDirection = default)
     {
         if (!IsMultiplayerAuthority() || IsDead || amount <= 0)
             return;
@@ -79,12 +88,27 @@ public partial class HealthComponent : Node
         CurrentHealth = Mathf.Max(0, CurrentHealth - amount);
         EmitSignal(SignalName.Damaged, amount, attackerPeerId);
 
+        // Estetica del colpo incassato: host -> tutti, sul modello di BroadcastShot. Parte DOPO
+        // l'applicazione del danno, cosi' un colpo rifiutato non produce mai una reazione.
+        if (hitDirection.LengthSquared() > 0.0001f)
+            Rpc(MethodName.BroadcastHitReaction, hitDirection);
+
         if (CurrentHealth > 0)
             return;
 
         IsDead = true;
         EmitSignal(SignalName.Died, attackerPeerId);
     }
+
+    /// <summary>
+    /// Estetica: host -> tutti (§3.3). Ogni peer riemette l'evento come segnale LOCALE; i bridge di
+    /// animazione lo trasformano in <c>CharacterAnimator.TriggerHitReaction</c>. Unreliable di
+    /// proposito: un flinch perso non desincronizza nulla, lo stato vero e' la salute replicata.
+    /// </summary>
+    [Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = true,
+        TransferMode = MultiplayerPeer.TransferModeEnum.Unreliable)]
+    public void BroadcastHitReaction(Vector3 worldDirection) =>
+        EmitSignal(SignalName.HitReaction, worldDirection);
 
     /// Imposta salute e stato di morte lato host (respawn, cure, debug). No-op sui client.
     public void HostSetHealth(int value)

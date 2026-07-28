@@ -130,25 +130,24 @@ func _diamond(v: Vector2, radius: float) -> Vector2:
 
 # Replica cio' che fa CharacterAnimator, perche' qui il suo script e' stato tolto.
 #
-# `weapon` e' l'override upper-body (pistola, o fucile da accovacciato); `stance` accende
-# il set di locomozione ARMATO su tutto il corpo. Sono due meccanismi distinti: vedi
-# CharacterAnimator.UpdateWeapon.
-func _drive(local_velocity: Vector2, crouch: float, weapon: float, stance: float = 0.0) -> void:
+# `hold` e' il peso del layer ADDITIVO di impugnatura (HoldAdd): la posa la sceglie il
+# Transition WeaponPose. La locomozione e' unica e agnostica dall'arma: non esistono piu'
+# spazi armati ne' StanceBlend. `aim` e `aim_amount` pilotano l'aim offset additivo.
+func _drive(local_velocity: Vector2, crouch: float, hold: float,
+		aim := Vector2.ZERO, aim_amount := 0.0) -> void:
 	var walk := _diamond(local_velocity, WALK_SPEED)
 	var run := _diamond(local_velocity, RUN_SPEED)
 	_tree.set("parameters/WalkSpace/blend_position", walk)
 	_tree.set("parameters/RunSpace/blend_position", run)
-	_tree.set("parameters/RifleWalkSpace/blend_position", walk)
-	_tree.set("parameters/RifleRunSpace/blend_position", run)
 	_tree.set("parameters/CrouchSpace/blend_position", _diamond(local_velocity, CROUCH_SPEED))
 	_tree.set("parameters/CrouchBlend/blend_amount", crouch)
-	_tree.set("parameters/WeaponBlend/blend_amount", weapon)
-	_tree.set("parameters/StanceBlend/blend_amount", stance)
+	_tree.set("parameters/HoldAdd/add_amount", hold)
+	_tree.set("parameters/AimSpace/blend_position", aim)
+	_tree.set("parameters/AimAdd/add_amount", aim_amount)
 	_tree.set("parameters/AirBlend/blend_amount", 0.0)
 	var band: float = maxf(RUN_SPEED - WALK_SPEED, 0.001)
 	var run_weight: float = clampf((local_velocity.length() - WALK_SPEED) / band, 0.0, 1.0)
 	_tree.set("parameters/MoveBlend/blend_amount", run_weight)
-	_tree.set("parameters/ArmedMoveBlend/blend_amount", run_weight)
 
 
 func _settle(frames: int) -> void:
@@ -187,6 +186,11 @@ func _initialize() -> void:
 	# --- Nessuna posa deve essere la T-pose ---------------------------------
 	# Ogni combinazione qui sotto deve produrre una posa VERA. Una qualunque che
 	# ricada sulla rest pose e' un blend space senza triangoli.
+	# I casi sono [etichetta, velocita' locale, crouch, hold additivo, aim offset, peso aim].
+	# La locomozione e' UNICA e agnostica dall'arma: le combinazioni "armate" si ottengono
+	# alzando il peso del delta di impugnatura sopra la stessa locomozione, non cambiando
+	# set di clip. Il caso ARMATO va comunque provato su ogni asse: un additivo sbagliato
+	# (delta calcolato contro il riferimento sbagliato) rompe la posa senza dare errori.
 	var casi := [
 		["fermo in piedi", Vector2.ZERO, 0.0, 0.0],
 		["camminata avanti", Vector2(0, WALK_SPEED), 0.0, 0.0],
@@ -206,28 +210,36 @@ func _initialize() -> void:
 		["accovacciato sinistra", Vector2(-CROUCH_SPEED, 0), 1.0, 0.0],
 		["accovacciato destra", Vector2(CROUCH_SPEED, 0), 1.0, 0.0],
 		["accovacciato diagonale", Vector2(1.41, 1.41), 1.0, 0.0],
-		["pistola in piedi", Vector2.ZERO, 1.0, 0.0],
-		["pistola in camminata", Vector2(0, WALK_SPEED), 1.0, 0.0],
-		["accovacciato armato", Vector2.ZERO, 1.0, 0.0, 1.0],
-		# Stance ARMATA a due mani: e' il set di locomozione nuovo, quattro assi per
-		# camminata e corsa. Sono i punti di blend che prima non esistevano affatto.
-		["fucile fermo", Vector2.ZERO, 0.0, 0.0, 1.0],
-		["fucile avanti", Vector2(0, WALK_SPEED), 0.0, 0.0, 1.0],
-		["fucile indietro", Vector2(0, -WALK_SPEED), 0.0, 0.0, 1.0],
-		["fucile strafe sinistra", Vector2(-WALK_SPEED, 0), 0.0, 0.0, 1.0],
-		["fucile strafe destra", Vector2(WALK_SPEED, 0), 0.0, 0.0, 1.0],
-		["fucile diagonale", Vector2(2.83, 2.83), 0.0, 0.0, 1.0],
-		["fucile corsa avanti", Vector2(0, RUN_SPEED), 0.0, 0.0, 1.0],
-		["fucile corsa indietro", Vector2(0, -RUN_SPEED), 0.0, 0.0, 1.0],
-		["fucile corsa sinistra", Vector2(-RUN_SPEED, 0), 0.0, 0.0, 1.0],
-		["fucile corsa destra", Vector2(RUN_SPEED, 0), 0.0, 0.0, 1.0],
-		["fucile corsa diagonale", Vector2(4.95, 4.95), 0.0, 0.0, 1.0],
+		["accovacciato armato", Vector2.ZERO, 1.0, 1.0],
+		# Impugnatura ADDITIVA sopra ogni asse della locomozione unica: sono le
+		# combinazioni che prima richiedevano un set di clip armato dedicato.
+		["armato fermo", Vector2.ZERO, 0.0, 1.0],
+		["armato avanti", Vector2(0, WALK_SPEED), 0.0, 1.0],
+		["armato indietro", Vector2(0, -WALK_SPEED), 0.0, 1.0],
+		["armato strafe sinistra", Vector2(-WALK_SPEED, 0), 0.0, 1.0],
+		["armato strafe destra", Vector2(WALK_SPEED, 0), 0.0, 1.0],
+		["armato diagonale", Vector2(2.83, 2.83), 0.0, 1.0],
+		["armato corsa avanti", Vector2(0, RUN_SPEED), 0.0, 1.0],
+		["armato corsa indietro", Vector2(0, -RUN_SPEED), 0.0, 1.0],
+		["armato corsa sinistra", Vector2(-RUN_SPEED, 0), 0.0, 1.0],
+		["armato corsa destra", Vector2(RUN_SPEED, 0), 0.0, 1.0],
+		["armato corsa diagonale", Vector2(4.95, 4.95), 0.0, 1.0],
+		# Aim offset: i quattro estremi della sfera di mira piu' il centro. Sono i punti
+		# del BlendSpace2D additivo, dove una triangolazione degenere darebbe T-pose.
+		["mira al centro", Vector2.ZERO, 0.0, 1.0, Vector2.ZERO, 1.0],
+		["mira in alto", Vector2.ZERO, 0.0, 1.0, Vector2(0, 1), 1.0],
+		["mira in basso", Vector2.ZERO, 0.0, 1.0, Vector2(0, -1), 1.0],
+		["mira a sinistra", Vector2.ZERO, 0.0, 1.0, Vector2(-1, 0), 1.0],
+		["mira a destra", Vector2.ZERO, 0.0, 1.0, Vector2(1, 0), 1.0],
+		["mira diagonale in camminata", Vector2(0, WALK_SPEED), 0.0, 1.0, Vector2(0.5, 0.5), 1.0],
 	]
-	# La posa d'arma del layer upper-body: "rifle_aim" e' l'ingresso di mira del
+	# La posa d'arma del layer additivo: "rifle_aim" e' l'ingresso di mira del
 	# Transition a 4 pose (rifle_lowered / rifle_aim / pistol / pistol_aim).
 	_tree.set("parameters/WeaponPose/transition_request", "rifle_aim")
 	for caso in casi:
-		_drive(caso[1], caso[2], caso[3], caso[4] if caso.size() > 4 else 0.0)
+		_drive(caso[1], caso[2], caso[3],
+			caso[4] if caso.size() > 4 else Vector2.ZERO,
+			caso[5] if caso.size() > 5 else 0.0)
 		await _settle(12)
 		var d := _rest_distance()
 		_check("'%s' non e' in T-pose" % caso[0], d > TPOSE_EPSILON,
@@ -242,39 +254,36 @@ func _initialize() -> void:
 	_check("camminata: le gambe si muovono per 10 s", m > MOTION_EPSILON,
 		"finestra piu' quieta = %.5f rad" % m)
 
-	# Con la PISTOLA il layer upper-body ha peso 1 e la locomozione peso 0, ma le gambe
-	# restano visibili perche' il filtro copre solo il busto: e' il caso in cui
-	# AnimationNodeSync.sync = false congelava tutto.
+	# Con l'impugnatura additiva a peso 1 le gambe devono continuare a camminare: e' il
+	# caso in cui AnimationNodeSync.sync = false congelava tutto.
 	_drive(Vector2(0, WALK_SPEED), 0.0, 1.0)
 	await _settle(30)
 	m = await _legs_motion(10, 30)
-	_check("camminata con pistola: le gambe si muovono", m > MOTION_EPSILON,
+	_check("camminata armata: le gambe si muovono", m > MOTION_EPSILON,
 		"finestra piu' quieta = %.5f rad" % m)
 
-	# Stessa verifica sul set armato: qui le gambe vengono da clip diverse, quindi un
-	# errore nei nomi delle clip nuove si vedrebbe come locomozione ferma.
-	_drive(Vector2(0, WALK_SPEED), 0.0, 0.0, 1.0)
+	# E con l'aim offset acceso sopra: due Add2 in cascata sono il punto in cui un peso
+	# sbagliato spegnerebbe la locomozione senza dare errori.
+	_drive(Vector2(0, WALK_SPEED), 0.0, 1.0, Vector2(0.6, 0.4), 1.0)
 	await _settle(30)
 	m = await _legs_motion(10, 30)
-	_check("camminata col fucile: le gambe si muovono", m > MOTION_EPSILON,
+	_check("camminata armata in mira: le gambe si muovono", m > MOTION_EPSILON,
 		"finestra piu' quieta = %.5f rad" % m)
 
-	# E la stance armata deve dare una posa DIVERSA da quella disarmata: se i due set
-	# producessero la stessa cosa, vorrebbe dire che StanceBlend non e' collegato.
-	_drive(Vector2(0, WALK_SPEED), 0.0, 0.0, 0.0)
-	await _settle(40)
-	var unarmed_pose := _legs_snapshot()
-	_drive(Vector2(0, WALK_SPEED), 0.0, 0.0, 1.0)
-	await _settle(40)
-	var armed_pose := _legs_snapshot()
-	var spread := 0.0
-	for i in unarmed_pose.size():
-		spread = maxf(spread, unarmed_pose[i].angle_to(armed_pose[i]))
-	_check("la stance armata cambia davvero la locomozione", spread > 0.02,
-		"scarto massimo sulle gambe = %.4f rad" % spread)
+	# --- L'invariante dei layer additivi -------------------------------------
+	# E' la ragione per cui il set di locomozione armato non serve piu': il delta di
+	# impugnatura deve cambiare il BUSTO e lasciare intatte le GAMBE. Le clip delta
+	# portano solo le track dell'upper body, quindi le gambe non ricevono nulla per
+	# costruzione — un delta authorato con le gambe dentro si vedrebbe qui, e sarebbe
+	# esattamente il difetto che rimetterebbe in gioco l'esplosione delle clip.
+	await _verify_additive_isolation()
 
-	# Sparare mentre si cammina non deve fermare le gambe: e' l'invariante del
-	# filtro upper-body.
+	# Sparare mentre si cammina non deve fermare le gambe: il delta di sparo tocca il
+	# solo upper body. Si RIMETTE la camminata: la verifica qui sopra termina da fermo,
+	# e misurare "le gambe si muovono" su un personaggio immobile misura il respiro
+	# della clip di idle, non la locomozione.
+	_drive(Vector2(0, WALK_SPEED), 0.0, 1.0)
+	await _settle(30)
 	for raffica in 10:
 		_tree.set("parameters/Fire/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
 		await _settle(8)
@@ -324,6 +333,8 @@ func _initialize() -> void:
 	_check("l'atterraggio morbido rientra", not _tree.get("parameters/Land/active"),
 		"ancora attivo dopo 2 s")
 
+	await _verify_hit_reaction()
+	await _verify_vault_clip()
 	await _verify_strafe_direction()
 	await _verify_procedural_clips(rig)
 	await _verify_grip(rig)
@@ -335,6 +346,196 @@ func _initialize() -> void:
 	print("")
 	print("%d controlli falliti" % _failures)
 	quit(1 if _failures > 0 else 0)
+
+
+# Reazione ai colpi: quattro direzioni, additive, che rientrano.
+#
+# Sono one-shot in MIX_MODE_ADD su clip delta, quindi devono sommarsi a QUALUNQUE cosa
+# stia girando sotto — qui si prova durante una camminata, che e' il caso in cui un
+# flinch implementato come override fermerebbe le gambe. E devono essere distinguibili
+# fra loro: quattro ingressi che producono la stessa posa vorrebbero dire che il
+# Transition HitPose non e' cablato, e il colpo da destra si vedrebbe come da sinistra.
+func _verify_hit_reaction() -> void:
+	print("")
+	print("== reazione ai colpi ==")
+
+	var torso := ["Spine", "Spine1", "Spine2", "Head"]
+	_drive(Vector2(0, WALK_SPEED), 0.0, 1.0)
+	await _settle(30)
+
+	var peaks := {}
+	for direction in ["front", "back", "left", "right"]:
+		_tree.set("parameters/HitPose/transition_request", direction)
+		_tree.set("parameters/Hit/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+		await _settle(4)
+		_check("il flinch '%s' parte" % direction, _tree.get("parameters/Hit/active"))
+
+		# Il picco della clip sta a 0,08 s: si campiona li', non a caso.
+		await _settle_seconds(0.08)
+		peaks[direction] = _pose_snapshot(torso)
+
+		# 0,40 s di clip + 0,10 di dissolvenza: dopo un secondo deve essere finita, o il
+		# personaggio resterebbe piegato per sempre.
+		await _settle_seconds(1.0)
+		_check("il flinch '%s' rientra" % direction, not _tree.get("parameters/Hit/active"),
+			"ancora attivo dopo 1 s")
+
+	# Le quattro direzioni devono essere distinte a coppie opposte: fronte/retro si
+	# piegano su assi opposti, e cosi' sinistra/destra.
+	var front_back: float = _max_pose_delta(peaks["front"], peaks["back"])
+	var left_right: float = _max_pose_delta(peaks["left"], peaks["right"])
+	_check("il colpo frontale differisce da quello alle spalle", front_back > 0.10,
+		"scarto = %.4f rad" % front_back)
+	_check("il colpo da sinistra differisce da quello da destra", left_right > 0.10,
+		"scarto = %.4f rad" % left_right)
+
+	# E le gambe devono aver continuato a camminare per tutto il tempo.
+	var m: float = await _legs_motion(6, 30)
+	_check("sotto i colpi le gambe continuano a camminare", m > MOTION_EPSILON,
+		"finestra piu' quieta = %.5f rad" % m)
+
+
+# Scavalcamento: la clip esiste, e' full body, parte e rientra.
+#
+# La traiettoria della radice NON si verifica qui — la fa il motion warping di
+# CharacterMotor, che e' codice C# senza scheletro di mezzo. Qui si verifica la META'
+# animata: che il one-shot sia cablato, che copra il corpo intero (a differenza dei
+# layer additivi) e che non resti appeso, perche' un vault che non rientra
+# congelerebbe il personaggio in posa da scavalcamento per il resto della partita.
+func _verify_vault_clip() -> void:
+	print("")
+	print("== scavalcamento ==")
+
+	_check("la clip vault_low e' in libreria", _tree.has_animation("vault_low"))
+	if not _tree.has_animation("vault_low"):
+		return
+
+	var length: float = _tree.get_animation("vault_low").length
+	_check("vault_low dura quanto dichiarato dal motore (0,9 s)",
+		absf(length - 0.9) < 0.15, "%.3f s" % length)
+
+	_drive(Vector2.ZERO, 0.0, 0.0)
+	await _settle(30)
+	var before := _pose_snapshot(["Hips", "LeftUpLeg", "RightUpLeg", "Spine2", "RightArm"])
+
+	_tree.set("parameters/Vault/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
+	await _settle(4)
+	_check("lo scavalcamento parte", _tree.get("parameters/Vault/active"))
+
+	# A meta' clip il corpo INTERO deve essersi mosso: e' la differenza con i layer
+	# additivi, che lasciano le gambe alla locomozione.
+	await _settle_seconds(length * 0.4)
+	var mid := _pose_snapshot(["Hips", "LeftUpLeg", "RightUpLeg", "Spine2", "RightArm"])
+	var legs_moved: float = _max_pose_delta(
+		{"LeftUpLeg": before["LeftUpLeg"], "RightUpLeg": before["RightUpLeg"]},
+		{"LeftUpLeg": mid["LeftUpLeg"], "RightUpLeg": mid["RightUpLeg"]})
+	var arms_moved: float = _max_pose_delta(
+		{"RightArm": before["RightArm"]}, {"RightArm": mid["RightArm"]})
+	_check("lo scavalcamento muove le gambe (e' full body)", legs_moved > 0.15,
+		"scarto sulle gambe = %.4f rad" % legs_moved)
+	_check("lo scavalcamento protende le braccia", arms_moved > 0.15,
+		"scarto sul braccio destro = %.4f rad" % arms_moved)
+
+	await _settle_seconds(length + 0.5)
+	_check("lo scavalcamento rientra", not _tree.get("parameters/Vault/active"),
+		"ancora attivo dopo la durata della clip piu' la dissolvenza")
+
+
+# Isolamento dei layer additivi: il delta di impugnatura tocca il busto, non le gambe.
+#
+# E' l'invariante su cui poggia tutta l'architettura a layer. Se cadesse, servirebbe di
+# nuovo un set di locomozione per arma (quattro clip per camminata e quattro per corsa,
+# per OGNI famiglia d'arma) — cioe' l'esplosione combinatoria che i layer esistono per
+# evitare. La maschera non e' un filtro dell'albero ma una proprieta' delle CLIP: quelle
+# delta portano solo le track dell'upper body, quindi un bone senza track non riceve
+# nulla. Un delta authorato per sbaglio con le gambe dentro passerebbe ogni altro
+# controllo (non e' T-pose, le gambe si muovono) e si vedrebbe solo qui.
+#
+# Si misura a IDLE e non in camminata: da fermi la clip di base e' quasi statica, quindi
+# la differenza fra le due misure e' attribuibile al layer e non alla fase del passo. Il
+# rumore residuo della clip di idle viene misurato e usato come riferimento, invece di
+# fidarsi di una soglia scelta a occhio.
+func _verify_additive_isolation() -> void:
+	print("")
+	print("== isolamento dei layer additivi ==")
+
+	var legs := ["LeftUpLeg", "LeftLeg", "RightUpLeg", "RightLeg", "LeftFoot", "RightFoot"]
+	var torso := ["Spine1", "Spine2", "RightArm", "RightForeArm", "LeftArm", "LeftForeArm"]
+
+	# L'effetto di un layer si misura sul suo SCATTO, non a regime.
+	#
+	# Confrontare due pose lontane nel tempo non funziona: la clip di base continua ad
+	# avanzare, e il respiro dell'idle sul busto vale qualche grado — lo stesso ordine
+	# del segnale. Peggio, sulle gambe la deriva DIPENDE DALLA FASE del ciclo, quindi un
+	# "rumore" misurato su una finestra non vale per la finestra dopo (misurato: respiro
+	# 0,034 rad in una finestra, deriva 0,064 in un'altra, senza che nulla cambiasse).
+	#
+	# Qui i pesi si scrivono diretti sull'albero, senza lo smorzamento di
+	# CharacterAnimator: l'effetto del layer e' quindi IMMEDIATO, mentre la base in due
+	# frame non fa in tempo a muoversi. Si confronta lo scatto col drift di due frame
+	# misurato subito prima, nella stessa fase di clip.
+	var settle := 2
+
+	_drive(Vector2.ZERO, 0.0, 0.0)
+	await _settle(40)
+	var legs_before := _pose_snapshot(legs)
+	var torso_before := _pose_snapshot(torso)
+	await _settle(settle)
+	var legs_drift: float = _max_pose_delta(legs_before, _pose_snapshot(legs))
+	var torso_drift: float = _max_pose_delta(torso_before, _pose_snapshot(torso))
+
+	# Scatto del solo delta di impugnatura.
+	legs_before = _pose_snapshot(legs)
+	torso_before = _pose_snapshot(torso)
+	_drive(Vector2.ZERO, 0.0, 1.0)
+	await _settle(settle)
+	var legs_delta: float = _max_pose_delta(legs_before, _pose_snapshot(legs))
+	var torso_delta: float = _max_pose_delta(torso_before, _pose_snapshot(torso))
+
+	_check("l'impugnatura additiva cambia il busto", torso_delta > torso_drift + 0.15,
+		"busto %.4f rad, deriva della base %.4f" % [torso_delta, torso_drift])
+	# Sulle gambe non deve succedere NULLA oltre la deriva: e' la maschera, che qui e'
+	# una proprieta' delle CLIP (nessuna track sotto il bacino), non un filtro
+	# dell'albero. Un delta generato con le gambe dentro si vede solo qui.
+	_check("l'impugnatura additiva NON tocca le gambe", legs_delta < legs_drift + 0.01,
+		"gambe %.4f rad, deriva della base %.4f" % [legs_delta, legs_drift])
+
+	# Stessa cosa per l'aim offset, che e' il secondo Add2 della catena.
+	legs_before = _pose_snapshot(legs)
+	torso_before = _pose_snapshot(torso)
+	_drive(Vector2.ZERO, 0.0, 1.0, Vector2(0, 1), 1.0)
+	await _settle(settle)
+	legs_delta = _max_pose_delta(legs_before, _pose_snapshot(legs))
+	torso_delta = _max_pose_delta(torso_before, _pose_snapshot(torso))
+
+	# Margine piu' stretto dell'impugnatura: l'aim offset a fondo corsa distribuisce
+	# AIM_PITCH_DEG su cinque ossa, quindi il singolo osso si muove meno di quanto
+	# faccia un braccio che cambia presa.
+	_check("l'aim offset cambia il busto", torso_delta > torso_drift + 0.06,
+		"busto %.4f rad, deriva della base %.4f" % [torso_delta, torso_drift])
+	_check("l'aim offset NON tocca le gambe", legs_delta < legs_drift + 0.01,
+		"gambe %.4f rad, deriva della base %.4f" % [legs_delta, legs_drift])
+
+	# E la mira in ALTO deve dare una posa diversa da quella in BASSO: se i due estremi
+	# coincidessero, il BlendSpace2D additivo starebbe restituendo sempre il centro.
+	_drive(Vector2.ZERO, 0.0, 1.0, Vector2(0, 1), 1.0)
+	await _settle(settle)
+	var up := _pose_snapshot(torso)
+	_drive(Vector2.ZERO, 0.0, 1.0, Vector2(0, -1), 1.0)
+	await _settle(settle)
+	var span: float = _max_pose_delta(up, _pose_snapshot(torso))
+	_check("gli estremi dell'aim offset sono distinti", span > 0.25,
+		"scarto fra mira alta e bassa = %.4f rad" % span)
+
+	_drive(Vector2.ZERO, 0.0, 0.0)
+	await _settle(20)
+
+
+func _max_pose_delta(a: Dictionary, b: Dictionary) -> float:
+	var worst := 0.0
+	for bone_name in a:
+		worst = maxf(worst, (a[bone_name] as Quaternion).angle_to(b[bone_name]))
+	return worst
 
 
 # Direzione dello strafe (anti-specchiamento).
@@ -350,18 +551,24 @@ func _verify_strafe_direction() -> void:
 	print("")
 	print("== direzione dello strafe ==")
 
+	# Due suite sulla STESSA locomozione: disarmata e con l'impugnatura additiva sopra.
+	# La seconda non e' ridondante — verifica che il layer additivo non ribalti le gambe,
+	# che e' il modo in cui uno strafe specchiato potrebbe rientrare dalla finestra.
+	# Si campionano le sole ossa delle GAMBE piu' il bacino: sono quelle che il delta
+	# upper-body non tocca, quindi il confronto con la clip di locomozione resta valido
+	# anche a impugnatura accesa.
 	var suites := [
-		["camminata", "walk_right", "walk_left", 0.0],
-		["fucile", "rifle_walk_right", "rifle_walk_left", 1.0],
+		["disarmato", 0.0],
+		["armato", 1.0],
 	]
 	for suite in suites:
-		_drive(Vector2(WALK_SPEED, 0), 0.0, 0.0, suite[3])
+		_drive(Vector2(WALK_SPEED, 0), 0.0, suite[1])
 		await _settle(60)
 		var pose := _pose_snapshot(["Hips", "LeftUpLeg", "RightUpLeg"])
-		var to_right: float = _min_clip_distance(suite[1], pose)
-		var to_left: float = _min_clip_distance(suite[2], pose)
+		var to_right: float = _min_clip_distance("walk_right", pose)
+		var to_left: float = _min_clip_distance("walk_left", pose)
 		_check("%s: blend a +X riproduce la clip DESTRA" % suite[0], to_right < to_left,
-			"distanza da %s=%.3f, da %s=%.3f rad" % [suite[1], to_right, suite[2], to_left])
+			"distanza da walk_right=%.3f, da walk_left=%.3f rad" % [to_right, to_left])
 
 
 func _pose_snapshot(bones: Array) -> Dictionary:
@@ -402,6 +609,67 @@ func _find_rotation_track(anim: Animation, bone_name: String) -> int:
 	return -1
 
 
+# Clip DELTA additive: la maschera sta nella CLIP, non nel filtro dell'albero.
+#
+# E' il controllo strutturale che rende vero per costruzione l'isolamento misurato in
+# _verify_additive_isolation: una clip delta che non ha track sulle gambe non puo'
+# toccarle, qualunque cosa faccia l'albero. Il rischio concreto e' un builder Blender
+# che keyframa l'intera armatura per distrazione (bake_clip lo farebbe volentieri):
+# passerebbe ogni controllo di posa e ricomparirebbe come locomozione sovrascritta
+# dall'arma, cioe' il difetto da cui e' nata l'architettura a layer.
+#
+# Si verifica anche che il CENTRO dell'aim offset sia l'identita': se non lo fosse, il
+# personaggio starebbe con la mira "storta" ogni volta che punta dritto davanti a se'.
+func _verify_delta_clips() -> void:
+	var lower_body := ["Hips", "LeftUpLeg", "LeftLeg", "LeftFoot", "LeftToeBase",
+		"RightUpLeg", "RightLeg", "RightFoot", "RightToeBase"]
+
+	var deltas := [
+		"add/rifle_lowered", "add/rifle_aim", "add/pistol", "add/pistol_aim",
+		"add/aim_center", "add/aim_up", "add/aim_down", "add/aim_left", "add/aim_right",
+		"add/rifle_fire", "add/pistol_fire",
+		"add/hit_front", "add/hit_back", "add/hit_left", "add/hit_right",
+	]
+
+	var leaking: PackedStringArray = []
+	for clip in deltas:
+		if not _tree.has_animation(clip):
+			_check("'%s' presente in libreria" % clip, false)
+			continue
+		var anim: Animation = _tree.get_animation(clip)
+		for bone_name in lower_body:
+			if _find_rotation_track(anim, bone_name) >= 0:
+				leaking.append("%s tocca %s" % [clip, bone_name])
+				break
+
+	_check("le clip delta non hanno track sulla parte bassa del corpo", leaking.is_empty(),
+		"; ".join(leaking))
+
+	# Il centro dell'aim offset e' per definizione il delta NULLO.
+	if _tree.has_animation("add/aim_center"):
+		var center: Animation = _tree.get_animation("add/aim_center")
+		var track := _find_rotation_track(center, "Spine2")
+		if track >= 0:
+			var q: Quaternion = center.rotation_track_interpolate(track, 0.0)
+			var off: float = q.angle_to(Quaternion.IDENTITY)
+			_check("il centro dell'aim offset e' il delta nullo", off < 0.02,
+				"scarto dall'identita' = %.4f rad" % off)
+
+	# E gli estremi NON devono esserlo, o la sfera di mira sarebbe piatta.
+	for clip in ["add/aim_up", "add/aim_down", "add/aim_left", "add/aim_right"]:
+		if not _tree.has_animation(clip):
+			continue
+		var anim: Animation = _tree.get_animation(clip)
+		var track := _find_rotation_track(anim, "Spine2")
+		if track < 0:
+			_check("'%s' anima il rachide" % clip, false, "nessuna track su Spine2")
+			continue
+		var q: Quaternion = anim.rotation_track_interpolate(track, 0.0)
+		var off: float = q.angle_to(Quaternion.IDENTITY)
+		_check("'%s' e' un delta non nullo" % clip, off > 0.03,
+			"scarto dall'identita' = %.4f rad" % off)
+
+
 # Clip procedurali (build_procedural_clips.py): esistono, non sono la T-pose, e la
 # posa di mira e' DIVERSA dal porto rilassato.
 #
@@ -419,7 +687,7 @@ func _verify_procedural_clips(rig: Node) -> void:
 	_tree.active = false
 
 	for clip in ["rifle_aim_idle", "rifle_lowered_idle", "pistol_aim_idle",
-			"pistol_fire", "land_soft"]:
+			"pistol_fire", "land_soft", "vault_low"]:
 		var ok: bool = player.has_animation(clip)
 		_check("'%s' presente in libreria" % clip, ok)
 		if not ok:
@@ -429,6 +697,8 @@ func _verify_procedural_clips(rig: Node) -> void:
 		var d := _rest_distance()
 		_check("'%s' non e' in T-pose" % clip, d > TPOSE_EPSILON,
 			"scarto dalla rest pose = %.4f rad" % d)
+
+	_verify_delta_clips()
 
 	# La mira alza le mani, il porto le abbassa: se le due pose coincidessero, il
 	# Transition della Fase 4 non mostrerebbe alcuna differenza fra RMB premuto e no.
@@ -727,7 +997,7 @@ func _verify_muzzle(rig: Node) -> void:
 		return
 
 	grip_rig.call("ApplyWeapon", load("res://animation/resources/two_handed.tres"))
-	_drive(Vector2.ZERO, 0.0, 0.0, 1.0)
+	_drive(Vector2.ZERO, 0.0, 1.0)
 	await _settle(60)
 
 	# Si misura la DIREZIONE della canna, non l'angolo di Eulero della presa: con la presa

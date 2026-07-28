@@ -47,9 +47,9 @@ public partial class HitboxComponent : Area3D
 
     /// Applica il danno gia' calcolato dall'host, includendo il moltiplicatore di zona.
     /// Il guard di autorita' vero e proprio vive in <see cref="HealthComponent.ApplyDamage"/>.
-    public void ApplyDamage(float baseDamage, int attackerPeerId)
+    public void ApplyDamage(float baseDamage, int attackerPeerId, Vector3 hitDirection = default)
     {
         int amount = Mathf.RoundToInt(baseDamage * DamageMultiplier);
-        Health?.ApplyDamage(amount, attackerPeerId);
+        Health?.ApplyDamage(amount, attackerPeerId, hitDirection);
     }
 }

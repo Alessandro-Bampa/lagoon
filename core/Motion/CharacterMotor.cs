@@ -81,6 +81,29 @@ public partial class CharacterMotor : CharacterBody3D
     [Export] public float MaxStepHeight { get; set; } = 0.35f;
 
     // ====================================================================================
+    //  Scavalcamento (vault): UNA clip generica + motion warping, niente clip per altezza
+    // ====================================================================================
+
+    /// Altezza minima di un ostacolo scavalcabile, in metri. Sotto ci pensa TryStepUp.
+    [Export] public float VaultMinHeight { get; set; } = 0.5f;
+
+    /// Altezza massima scavalcabile, in metri (intervallo dichiarato della clip: 0,5-1,2).
+    [Export] public float VaultMaxHeight { get; set; } = 1.2f;
+
+    /// Distanza massima dall'ostacolo perche' il vault si agganci, in metri.
+    [Export] public float VaultReach { get; set; } = 1.0f;
+
+    /// <summary>
+    /// Durata del vault, in secondi. DEVE combaciare con la durata della clip <c>vault_low</c>
+    /// (0,9 s): e' il tempo su cui il motion warping distribuisce la traiettoria della radice,
+    /// e se diverge dalla clip le pose arrivano prima o dopo i punti di contatto.
+    /// </summary>
+    [Export] public float VaultDuration { get; set; } = 0.9f;
+
+    /// Quanto OLTRE il bordo si atterra, in metri (misurato dal punto di aggancio).
+    [Export] public float VaultLandingDepth { get; set; } = 0.9f;
+
+    // ====================================================================================
     //  Stato replicato, comune a tutti i personaggi
     // ====================================================================================
 
@@ -144,6 +167,14 @@ public partial class CharacterMotor : CharacterBody3D
     [Signal]
     public delegate void LandedEventHandler(float impactSpeed);
 
+    /// <summary>
+    /// Scavalcamento: evento estetico con il punto del bordo in coordinate mondo. Il punto e' una
+    /// grandezza GEOMETRICA misurata dai raycast (come la velocita' d'impatto di Landed), non un
+    /// esito di gioco: serve solo all'IK delle mani sul bordo (CLAUDE.md §3).
+    /// </summary>
+    [Signal]
+    public delegate void VaultedEventHandler(Vector3 ledgePoint);
+
     /// Nodo che ruota con l'avatar. Il corpo NON ruota mai: cosi' la camera figlia resta stabile.
     protected Node3D Visual = null!;
 
@@ -158,6 +189,15 @@ public partial class CharacterMotor : CharacterBody3D
 
     /// Stato dell'isteresi del turn-in-place (vedi <see cref="PlanAimFacing"/>).
     private bool _turningInPlace;
+
+    // Stato del vault in corso: tempo trascorso (< 0 = inattivo) e i tre punti della traiettoria.
+    private float _vaultTime = -1f;
+    private Vector3 _vaultStart;
+    private Vector3 _vaultLedge;
+    private Vector3 _vaultEnd;
+
+    /// Vault in corso: il movimento e' scriptato e l'input di locomozione viene ignorato.
+    public bool Vaulting => _vaultTime >= 0f;
 
     public override void _Ready()
     {
@@ -183,6 +223,15 @@ public partial class CharacterMotor : CharacterBody3D
     protected void StepMotion(Vector3 worldDirection, float speed, bool wantJump, bool wantCrouch, double delta)
     {
         float dt = (float)delta;
+
+        // Vault in corso: la radice segue la traiettoria warpata e l'input non conta. E' il
+        // "motion warping": la clip e' in place e generica, la geometria vera la mette il codice.
+        if (Vaulting)
+        {
+            StepVault(dt);
+            return;
+        }
+
         bool grounded = IsOnFloor();
 
         UpdateCrouch(dt, grounded, wantCrouch);
@@ -220,6 +269,11 @@ public partial class CharacterMotor : CharacterBody3D
             velocity.Y = planar.Y;
             if (wantJump && !SyncCrouching)
             {
+                // Saltare CONTRO un ostacolo scavalcabile diventa un vault: stesso tasto, la
+                // geometria decide. Se non c'e' niente da scavalcare, e' un salto normale.
+                if (TryStartVault(worldDirection))
+                    return;
+
                 velocity.Y = JumpVelocity;
                 OnJumpTriggered();
             }
@@ -238,6 +292,107 @@ public partial class CharacterMotor : CharacterBody3D
         MoveAndSlide();
         TryStepUp(dt);
         DetectLanding();
+    }
+
+    /// <summary>
+    /// Prova ad agganciare uno scavalcamento nella direzione voluta (o del facing, da fermi).
+    ///
+    /// Tre misure, tutte raycast sul mondo statico: (1) c'e' una parete davanti entro
+    /// <see cref="VaultReach"/>; (2) la sua sommita' sta nell'intervallo scavalcabile; (3) oltre il
+    /// bordo esiste un punto d'atterraggio. Se una qualsiasi manca, niente vault — e chi ha chiesto
+    /// il salto salta. NON genera clip per altezza: la stessa clip viene warpata sui punti misurati.
+    /// </summary>
+    private bool TryStartVault(Vector3 worldDirection)
+    {
+        Vector3 forward = worldDirection.LengthSquared() > 0.01f
+            ? worldDirection.Normalized()
+            : new Vector3(Mathf.Sin(SyncFacing), 0f, Mathf.Cos(SyncFacing));
+
+        float feetY = GlobalPosition.Y - _standHeight * 0.5f;
+        var space = GetWorld3D().DirectSpaceState;
+
+        // (1) La parete, sondata a meta' della fascia scavalcabile.
+        Vector3 chest = GlobalPosition + Vector3.Up * (VaultMinHeight + VaultMaxHeight) * 0.5f
+            - Vector3.Up * _standHeight * 0.5f;
+        var wallQuery = PhysicsRayQueryParameters3D.Create(
+            chest, chest + forward * VaultReach, CollisionLayers.World | CollisionLayers.VehicleDeck);
+        wallQuery.Exclude = new Godot.Collections.Array<Rid> { GetRid() };
+        Godot.Collections.Dictionary wall = space.IntersectRay(wallQuery);
+        if (wall.Count == 0)
+            return false;
+
+        var wallPoint = (Vector3)wall["position"];
+
+        // (2) La sommita': raggio in giu' da sopra il bordo, appena OLTRE la parete.
+        Vector3 overLedge = wallPoint + forward * 0.15f;
+        overLedge.Y = feetY + VaultMaxHeight + 0.3f;
+        var topQuery = PhysicsRayQueryParameters3D.Create(
+            overLedge, overLedge + Vector3.Down * (VaultMaxHeight + 0.4f),
+            CollisionLayers.World | CollisionLayers.VehicleDeck);
+        Godot.Collections.Dictionary top = space.IntersectRay(topQuery);
+        if (top.Count == 0)
+            return false;
+
+        var ledgeTop = (Vector3)top["position"];
+        float height = ledgeTop.Y - feetY;
+        if (height < VaultMinHeight || height > VaultMaxHeight)
+            return false;
+
+        // (3) L'atterraggio, oltre l'ostacolo. Senza suolo di la', non si scavalca alla cieca.
+        Vector3 beyond = wallPoint + forward * VaultLandingDepth;
+        beyond.Y = ledgeTop.Y + 0.3f;
+        var landQuery = PhysicsRayQueryParameters3D.Create(
+            beyond, beyond + Vector3.Down * (height + 1.2f),
+            CollisionLayers.World | CollisionLayers.VehicleDeck);
+        Godot.Collections.Dictionary landing = space.IntersectRay(landQuery);
+        if (landing.Count == 0)
+            return false;
+
+        var landPoint = (Vector3)landing["position"];
+
+        _vaultStart = GlobalPosition;
+        _vaultLedge = new Vector3(wallPoint.X, ledgeTop.Y, wallPoint.Z);
+        _vaultEnd = landPoint + Vector3.Up * _standHeight * 0.5f;
+        _vaultTime = 0f;
+        Velocity = Vector3.Zero;
+        OnVaultTriggered(_vaultLedge);
+        return true;
+    }
+
+    /// <summary>
+    /// Un tick di vault: la radice segue il warp start -> bordo -> atterraggio.
+    ///
+    /// L'orizzontale avanza con uno smoothstep unico; la verticale sale sul bordo entro meta'
+    /// clip (la fase di appoggio/raccolta di <c>vault_low</c>) e ridiscende nella seconda meta'.
+    /// La posizione si SCRIVE (movimento kinematico scriptato): MoveAndSlide combatterebbe
+    /// contro l'ostacolo che si sta appunto scavalcando.
+    /// </summary>
+    private void StepVault(float dt)
+    {
+        _vaultTime += dt;
+        float t = Mathf.Clamp(_vaultTime / Mathf.Max(VaultDuration, 0.01f), 0f, 1f);
+        float horizontal = Mathf.SmoothStep(0f, 1f, t);
+
+        Vector3 flat = _vaultStart.Lerp(_vaultEnd, horizontal);
+        float apexY = _vaultLedge.Y + _standHeight * 0.5f + 0.08f;
+        float y = t < 0.5f
+            ? Mathf.Lerp(_vaultStart.Y, apexY, Mathf.SmoothStep(0f, 1f, t / 0.5f))
+            : Mathf.Lerp(apexY, _vaultEnd.Y, Mathf.SmoothStep(0f, 1f, (t - 0.5f) / 0.5f));
+
+        GlobalPosition = new Vector3(flat.X, y, flat.Z);
+
+        // Per l'animazione si e' "a terra" per tutta la durata: la posa la mette la clip di
+        // vault, non il layer di caduta. Le gambe sotto il one-shot sono comunque coperte.
+        SyncGrounded = true;
+        SyncLocalVelocity = Vector2.Zero;
+        Velocity = Vector3.Zero;
+
+        if (t >= 1f)
+        {
+            _vaultTime = -1f;
+            _wasGrounded = true;
+            _fallSpeed = 0f;
+        }
     }
 
     /// <summary>
@@ -411,6 +566,10 @@ public partial class CharacterMotor : CharacterBody3D
     /// Come sopra per l'atterraggio. La velocita' d'impatto e' una grandezza fisica, non un esito di
     /// gioco: decide soltanto quanto flette il bacino (CLAUDE.md §3).
     protected virtual void OnLandTriggered(float impactSpeed) => EmitSignal(SignalName.Landed, impactSpeed);
+
+    /// Come sopra per lo scavalcamento: il bordo e' una misura geometrica per l'IK delle mani.
+    protected virtual void OnVaultTriggered(Vector3 ledgePoint) =>
+        EmitSignal(SignalName.Vaulted, ledgePoint);
 
     /// Smorzamento esponenziale, indipendente dal frame rate.
     protected static float Damp(float speed, float dt) => 1.0f - Mathf.Exp(-speed * dt);

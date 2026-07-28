@@ -263,7 +263,10 @@ public partial class WeaponController : Node
         if (target != null)
         {
             float distance = origin.DistanceTo(end);
-            target.ApplyDamage(weapon.Damage * weapon.DamageFactorAt(distance), _ownerPeerId);
+            // La DIREZIONE del colpo (di volo, mondo) viaggia col danno: e' cio' che alimenta la
+            // hit reaction animata del bersaglio. E' un dato calcolato QUI, host-side — mai
+            // qualcosa che arriva dal client.
+            target.ApplyDamage(weapon.Damage * weapon.DamageFactorAt(distance), _ownerPeerId, shotDir);
         }
 
         MagazineAmmo--;

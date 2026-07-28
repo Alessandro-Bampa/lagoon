@@ -282,9 +282,15 @@ l'oggetto sbagliato va a rimuovere dalla scena l'armatura di base.
 ## Clip procedurali (Mixamo non e' piu' una sorgente)
 
 `tools/blender/build_procedural_clips.py` genera le clip che non hanno (e mai avranno) un FBX:
-`rifle_aim_idle`, `rifle_lowered_idle`, `pistol_aim_idle`, `pistol_fire`, `land_soft`. Rieseguirlo
-e' idempotente: recupera TUTTE le azioni dal `.glb` (stessa tecnica di `recover_from_library`),
-ricrea le procedurali e riesporta l'intera libreria. `lost` non vuoto = fermarsi, come sempre.
+`rifle_aim_idle`, `rifle_lowered_idle`, `pistol_aim_idle`, `pistol_fire`, `land_soft`, `vault_low`.
+Rieseguirlo e' idempotente: recupera TUTTE le azioni dal `.glb` (stessa tecnica di
+`recover_from_library`), ricrea le procedurali e riesporta l'intera libreria. `lost` non vuoto =
+fermarsi, come sempre.
+
+> **Qui si generano solo pose ASSOLUTE.** Le clip **delta additive** del sistema di animazione a
+> layer non passano da Blender: vivono in `animation/resources/AdditiveClips.tres` e le genera
+> `tools/build_additive_clips.gd` dentro Godot. Non e' una preferenza — la via glTF e' stata
+> provata e **non funziona**, vedi la sezione qui sotto.
 
 Le regole che lo tengono robusto:
 
@@ -310,6 +316,37 @@ Le regole che lo tengono robusto:
   che le fa recuperare dal `.glb` a ogni rebuild Mixamo. Clip procedurale nuova = riga li', builder
   in `build_procedural_clips.py`, categoria di loop in `_verify_loop_modes`, `loop_mode` nel
   `.import` se cicla.
+- **Le clip che non appartengono piu' alla libreria vanno scartate ESPLICITAMENTE.** Il recupero le
+  ripescherebbe dal `.glb` a ogni rebuild, tenendole in vita per sempre: c'e' un filtro dichiarato
+  (oggi `n.startswith("add_")`, residuo del tentativo additivo) e il log riporta quante ne toglie.
+
+## Perche' i delta additivi NON possono passare da glTF
+
+Vale la pena saperlo prima di riprovarci: authorare in Blender clip "delta" (pose espresse come
+scarto da un riferimento, per `AnimationNodeAdd2`) e farle viaggiare nel `.glb` **non funziona**, per
+due motivi indipendenti, entrambi muti e entrambi misurati.
+
+**1. L'export bakea TUTTE le ossa, non solo quelle con una fcurve.** Con
+`export_bake_animation=True` — che serve, perche' senza le azioni non escono — l'esportatore campiona
+l'intera armatura a ogni frame. Le ossa che il delta non tocca (bacino, gambe) finiscono nella clip
+con la **posa residua** del pose bone, cioe' quello che ci aveva lasciato l'ultima `apply_pose`.
+Misurato: due clip di aim offset che dovevano differire solo sul rachide differivano di **0,23 e
+0,33 rad sui due femori**.
+
+Corollario generale, valido anche fuori dal caso additivo: **non esiste un modo di esportare una
+clip "parziale" via glTF.** Una clip che deve toccare solo una parte del corpo va mascherata a
+destinazione (filtro nell'albero) o costruita a destinazione.
+
+**2. Il rest pose del `.glb` della libreria non e' quello di `Body_Base.glb`.** La libreria viene
+esportata con un'azione assegnata all'armatura, quindi il TRS dei nodi-osso e' la posa di
+quell'azione, non la posa di riposo. Non e' un problema per le clip assolute — le track sono
+comunque pose assolute e il rig che le consuma ha il proprio rest — ma lo e' per qualunque cosa
+dipenda dalla differenza fra clip e rest. Misurato: una posa authorata come identita' esatta
+arrivava a **0,07 rad** dall'identita'.
+
+La divisione che ne discende: **pose assolute in Blender** (richiedono giudizio artistico e il
+contesto della mesh), **delta in Godot** (sono aritmetica, e vanno calcolati contro il rest che li
+consumera'). Dettagli in `character-animation` §1.6 e §2.1.
 
 ## Asset delle armi (frame della presa)
 

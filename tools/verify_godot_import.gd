@@ -141,12 +141,17 @@ func _verify_rig() -> void:
 		"parameters/AirBlend/blend_amount",
 		"parameters/Land/request",
 		"parameters/CrouchBlend/blend_amount",
-		"parameters/WeaponBlend/blend_amount",
+		"parameters/HoldAdd/add_amount",
+		"parameters/AimAdd/add_amount",
+		"parameters/AimSpace/blend_position",
 		"parameters/WeaponPose/transition_request",
 		"parameters/FirePose/transition_request",
+		"parameters/HitPose/transition_request",
 		"parameters/LandPose/transition_request",
 		"parameters/Fire/request",
+		"parameters/Hit/request",
 		"parameters/Jump/request",
+		"parameters/Vault/request",
 		"parameters/JumpScale/scale",
 	]:
 		var found := false
@@ -251,9 +256,13 @@ func _inside_any_triangle(bs: AnimationNodeBlendSpace2D, p: Vector2) -> bool:
 # L'invariante "sparare o impugnare un'arma non ferma le gambe".
 #
 # AnimationNodeSync.sync == false ferma i frame dell'ingresso con peso 0. Su un nodo
-# FILTRATO e' un bug: da armato WeaponBlend ha peso 1, quindi la locomozione ha peso 0
-# — ma resta VISIBILE sulle gambe, che il filtro upper-body non copre. Senza sync la
-# locomozione smetterebbe di avanzare pur essendo a schermo.
+# FILTRATO e' un bug: l'ingresso a peso 0 resta VISIBILE sulle parti che il filtro non
+# copre, quindi la locomozione smetterebbe di avanzare pur essendo a schermo.
+#
+# Con l'albero a layer additivi nessun nodo e' piu' filtrato — la maschera vive nelle
+# clip delta, che hanno solo le track dell'upper body — quindi oggi questo controllo non
+# trova nulla da controllare. Resta come rete: se qualcuno reintroducesse un filtro,
+# sarebbe di nuovo esposto alla trappola.
 func _verify_no_frozen_layer(root: AnimationRootNode) -> void:
 	if not (root is AnimationNodeBlendTree):
 		return
@@ -329,7 +338,15 @@ func _verify_loop_modes(library: AnimationLibrary, clips: Array[StringName]) -> 
 		"rifle_aim_idle", "rifle_lowered_idle", "pistol_aim_idle",
 	]
 	# Clip a colpo singolo: devono finire, altrimenti il one-shot non rientra mai.
-	var must_not_loop := ["jump", "rifle_fire", "land_hard", "pistol_fire", "land_soft"]
+	# vault_low e' fra queste: uno scavalcamento che ciclasse terrebbe il personaggio
+	# in posa da vault per il resto della partita.
+	var must_not_loop := ["jump", "rifle_fire", "land_hard", "pistol_fire", "land_soft",
+		"vault_low"]
+
+	# NOTA: le clip DELTA additive non compaiono qui perche' non stanno in questo .glb.
+	# Vivono in animation/resources/AdditiveClips.tres, generate da
+	# tools/build_additive_clips.gd, che imposta il loop_mode direttamente sulla
+	# risorsa Animation — quindi non passano nemmeno dal .import.
 
 	var wrong: PackedStringArray = []
 	for clip_name in clips:

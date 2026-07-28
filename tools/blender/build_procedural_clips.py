@@ -20,6 +20,18 @@ Clip prodotte (vedi PROCEDURAL_CLIPS in fondo):
   land_soft          atterraggio morbido: caduta -> assorbimento (gambe da
                      crouch_idle) -> idle. No loop.
 
+  vault_low          scavalcamento basso, full-body, IN PLACE: la traiettoria della
+                     radice la deforma il motion warping di CharacterMotor, qui c'e'
+                     solo la sequenza di pose. No loop.
+
+I DELTA ADDITIVI NON SI GENERANO QUI. Sono in `tools/build_additive_clips.gd`, che
+gira in Godot: authorarli in Blender e farli passare per glTF non funziona, per due
+motivi misurati (l'export bakea anche le ossa senza fcurve con la posa residua, e il
+rest pose del .glb della libreria non coincide con quello di Body_Base.glb). Il
+dettaglio sta nell'intestazione di quel tool. Qui restano le pose ASSOLUTE, che
+richiedono giudizio artistico; il delta e' aritmetica e si calcola dove viene
+consumato.
+
 Inoltre RILASSA le braccia delle 5 clip crouch_*: il set Mixamo "Crouching" e' in
 posa da combattimento (braccia alzate come se si mirasse), che da DISARMATI e'
 sbagliato. Le braccia vengono sostituite con la posa di idle_neutral; da ARMATI non
@@ -302,16 +314,26 @@ ours = bpy.data.objects[mx.ARMATURE_NAME]
 fps = bpy.context.scene.render.fps
 
 library = recover_all_actions()
+
+# Le clip DELTA additive vissero brevemente qui dentro, prima di scoprire che glTF non
+# puo' trasportarle (vedi la docstring). Il recupero le ripescherebbe dal .glb a ogni
+# rebuild, tenendole in vita per sempre: si scartano esplicitamente. Chi le cerca le
+# trova in animation/resources/AdditiveClips.tres.
+obsolete = sorted(n for n in library if n.startswith("add_"))
+for name in obsolete:
+    bpy.data.actions.remove(library.pop(name))
+log["obsolete_rimosse"] = obsolete
 log["recovered"] = sorted(library.keys())
 
 REQUIRED_SOURCES = ["rifle_idle", "rifle_fire", "pistol_idle",
-                    "fall_idle", "crouch_idle", "idle_neutral"]
+                    "fall_idle", "crouch_idle", "idle_neutral", "jump"]
 missing_sources = [n for n in REQUIRED_SOURCES if n not in library]
 if missing_sources:
     raise RuntimeError("clip sorgente mancanti nel .glb: %s" % missing_sources)
 
 FORWARD = Vector((0, -1, 0))    # il personaggio guarda -Y in Blender
 LATERAL = Vector((1, 0, 0))     # la sua sinistra e' +X
+VERTICAL = Vector((0, 0, 1))    # Blender e' Z-up (Godot no: la conversione la fa l'export)
 
 # --- pose sorgente -----------------------------------------------------------
 rifle_idle = sample_pose(ours, library["rifle_idle"], 1)
@@ -408,6 +430,50 @@ for crouch_name in ("crouch_idle", "crouch_fwd", "crouch_back",
                     "crouch_left", "crouch_right"):
     removed = relax_arms(ours, library[crouch_name], relaxed_arms)
     log["relaxed_crouch"].append({"clip": crouch_name, "curve_rimosse": removed})
+
+# ============================================================================
+#  vault_low: scavalcamento basso, full-body, IN PLACE
+# ============================================================================
+# Una sola clip generica (skill: 0,5-1,2 m): la traiettoria della RADICE la deforma il
+# motion warping via codice, le mani le mette l'IK sul bordo. Qui c'e' solo la
+# sequenza di pose del corpo: appoggio -> raccolta -> discesa -> idle. Le pose sono
+# CAMPIONATE da clip esistenti (gambe da crouch/jump/fall), mai keyframate a occhio.
+jump_action = library["jump"]
+jump_mid = sample_pose(ours, jump_action,
+                       int((jump_action.frame_range[0] + jump_action.frame_range[1]) / 2))
+
+LEG_BONES = {"Hips", "LeftUpLeg", "LeftLeg", "LeftFoot", "LeftToeBase",
+             "RightUpLeg", "RightLeg", "RightFoot", "RightToeBase"}
+
+# Appoggio: gambe accovacciate, busto in avanti, braccia protese avanti-basso verso
+# il bordo (le porta a bersaglio l'IK, qui basta la direzione giusta).
+plant = merge_pose(idle_neutral, crouch_idle, LEG_BONES)
+apply_pose(ours, plant)
+rotate_bone_world(ours, "Spine", LATERAL, 20.0)
+reach_dir = (FORWARD * 0.8 - VERTICAL * 0.6).normalized()
+for side in ("Right", "Left"):
+    aim_bone_at(ours, side + "Arm", reach_dir)
+    aim_bone_at(ours, side + "ForeArm", reach_dir)
+plant = snapshot_pose(ours)
+
+# Raccolta: gambe dal culmine del salto, busto ancora in avanti, braccia come sopra.
+tuck = merge_pose(plant, jump_mid, LEG_BONES - {"Hips"})
+
+# Discesa: gambe in estensione dalla caduta, poi rientro sulla idle.
+descend = blend_pose(merge_pose(idle_neutral, fall_end, LEG_BONES), idle_neutral, 0.35)
+
+V_PLANT = max(int(round(0.18 * fps)), 1)
+V_TUCK = max(int(round(0.45 * fps)), V_PLANT + 2)
+V_DOWN = max(int(round(0.70 * fps)), V_TUCK + 2)
+V_END = max(int(round(0.90 * fps)), V_DOWN + 2)
+_, n = bake_clip(ours, "vault_low", {
+    0: idle_neutral,
+    V_PLANT: plant,
+    V_TUCK: tuck,
+    V_DOWN: descend,
+    V_END: idle_neutral,
+})
+log["created"].append({"clip": "vault_low", "fcurves": n, "loop": False})
 
 # ============================================================================
 #  Export: tutte le azioni insieme (recuperate + procedurali)

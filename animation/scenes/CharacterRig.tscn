@@ -1,49 +1,71 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene format=3 uid="uid://csgvakdfxnyuu"]
 
-[ext_resource type="PackedScene" path="res://assets/models/Body_Base.glb" id="1"]
-[ext_resource type="AnimationLibrary" path="res://assets/models/animations/CharacterAnimations.glb" id="2"]
+[ext_resource type="PackedScene" uid="uid://b8dysxxkw363s" path="res://assets/models/Body_Base.glb" id="1"]
+[ext_resource type="AnimationLibrary" uid="uid://cmondojgti2pg" path="res://assets/models/animations/CharacterAnimations.glb" id="2"]
 [ext_resource type="AnimationNodeBlendTree" path="res://animation/resources/CharacterBlendTree.tres" id="3"]
-[ext_resource type="Script" path="res://animation/scripts/CharacterAnimator.cs" id="4"]
-[ext_resource type="Script" path="res://animation/scripts/WeaponGripRig.cs" id="5"]
-[ext_resource type="Script" path="res://animation/scripts/AimRig.cs" id="6"]
-[ext_resource type="Script" path="res://animation/scripts/FootIkRig.cs" id="7"]
+[ext_resource type="Script" uid="uid://xfvi81bg4fdp" path="res://animation/scripts/CharacterAnimator.cs" id="4"]
+[ext_resource type="Script" uid="uid://d0bnl4v6pd0v6" path="res://animation/scripts/WeaponGripRig.cs" id="5"]
+[ext_resource type="Script" uid="uid://c5dudu57wx04q" path="res://animation/scripts/AimRig.cs" id="6"]
+[ext_resource type="Script" uid="uid://fkw2asqcjvew" path="res://animation/scripts/FootIkRig.cs" id="7"]
+[ext_resource type="Script" uid="uid://b3e0rh3wjrcbp" path="res://animation/scripts/VaultIkRig.cs" id="8"]
+[ext_resource type="AnimationLibrary" path="res://animation/resources/AdditiveClips.tres" id="9"]
 
-; Rig del personaggio, condiviso da player e (in futuro) NPC: nessun riferimento a
-; PlayerController qui dentro, il pilotaggio arriva dall'esterno via CharacterAnimator.
-[node name="CharacterRig" type="Node3D"]
+[node name="CharacterRig" type="Node3D" unique_id=751520220]
 script = ExtResource("4")
 
-[node name="Body" parent="." instance=ExtResource("1")]
+[node name="Body" parent="." unique_id=1323743300 instance=ExtResource("1")]
 
-; AnimationTree senza AnimationPlayer: da Godot 4.2 l'AnimationTree e' un AnimationMixer
-; e puo' tenere le librerie direttamente, quindi un AnimationPlayer intermedio sarebbe
-; solo un nodo in piu' da tenere allineato.
-;
-; root_node DEVE puntare al nodo istanziato dal .glb: i path delle track sono
-; "Armature_Character/Skeleton3D:<Bone>", relativi a quella radice. Puntandolo altrove
-; le track non risolvono e l'animazione non si vede, senza alcun errore a runtime.
-[node name="AnimationTree" type="AnimationTree" parent="."]
+[node name="AnimationTree" type="AnimationTree" parent="." unique_id=394766290]
 root_node = NodePath("../Body")
+libraries/ = ExtResource("2")
+libraries/add = ExtResource("9")
 tree_root = ExtResource("3")
-libraries = {
-&"": ExtResource("2")
-}
-active = true
+parameters/WalkSpace/blend_position = Vector2(0, 0)
+parameters/RunSpace/blend_position = Vector2(0, 0)
+parameters/MoveBlend/blend_amount = 0.0
+parameters/CrouchSpace/blend_position = Vector2(0, 0)
+parameters/CrouchBlend/blend_amount = 0.0
+parameters/AirBlend/blend_amount = 0.0
+parameters/WeaponPose/current_state = ""
+parameters/WeaponPose/transition_request = ""
+parameters/WeaponPose/current_index = -1
+parameters/HoldAdd/add_amount = 0.0
+parameters/AimSpace/blend_position = Vector2(0, 0)
+parameters/AimAdd/add_amount = 0.0
+parameters/Fire/active = false
+parameters/Fire/internal_active = false
+parameters/Fire/request = 0
+parameters/FirePose/current_state = ""
+parameters/FirePose/transition_request = ""
+parameters/FirePose/current_index = -1
+parameters/Hit/active = false
+parameters/Hit/internal_active = false
+parameters/Hit/request = 0
+parameters/HitPose/current_state = ""
+parameters/HitPose/transition_request = ""
+parameters/HitPose/current_index = -1
+parameters/Jump/active = false
+parameters/Jump/internal_active = false
+parameters/Jump/request = 0
+parameters/JumpScale/scale = 1.0
+parameters/Land/active = false
+parameters/Land/internal_active = false
+parameters/Land/request = 0
+parameters/LandPose/current_state = ""
+parameters/LandPose/transition_request = ""
+parameters/LandPose/current_index = -1
+parameters/Vault/active = false
+parameters/Vault/internal_active = false
+parameters/Vault/request = 0
 
-; Aggancio dell'arma alla mano destra. Crea da codice il BoneAttachment3D e l'IK della
-; mano di supporto: sono figli dello Skeleton3D, che vive dentro Body_Base.glb e si
-; rigenera, quindi metterli qui nella scena li esporrebbe a sparire a ogni reimport.
-[node name="GripRig" type="Node3D" parent="."]
+[node name="GripRig" type="Node3D" parent="." unique_id=305130680]
 script = ExtResource("5")
 
-; Mira procedurale: corregge il busto perche' l'arma punti dove punta il cursore, qualunque
-; cosa stia facendo la clip di locomozione al bacino. E' il layer che rende leggibile il
-; movimento armato, e l'unico posto da cui passa l'inclinazione verticale della mira.
-[node name="AimRig" type="Node3D" parent="."]
+[node name="AimRig" type="Node3D" parent="." unique_id=537606765]
 script = ExtResource("6")
 
-; Piedi a terra: ogni piede cerca il suolo col proprio raggio e l'IK ce lo porta, col bacino
-; che scende quanto basta. E' la parte che reagisce al TERRENO — rampe, scalini, il ponte
-; inclinato di una barca — dove le clip metterebbero i piedi tutti alla stessa quota.
-[node name="FootIkRig" type="Node3D" parent="."]
+[node name="FootIkRig" type="Node3D" parent="." unique_id=1160144812]
 script = ExtResource("7")
+
+[node name="VaultRig" type="Node3D" parent="." unique_id=1797090024]
+script = ExtResource("8")
