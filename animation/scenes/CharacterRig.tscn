@@ -1,10 +1,12 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/models/Body_Base.glb" id="1"]
 [ext_resource type="AnimationLibrary" path="res://assets/models/animations/CharacterAnimations.glb" id="2"]
 [ext_resource type="AnimationNodeBlendTree" path="res://animation/resources/CharacterBlendTree.tres" id="3"]
 [ext_resource type="Script" path="res://animation/scripts/CharacterAnimator.cs" id="4"]
 [ext_resource type="Script" path="res://animation/scripts/WeaponGripRig.cs" id="5"]
+[ext_resource type="Script" path="res://animation/scripts/AimRig.cs" id="6"]
+[ext_resource type="Script" path="res://animation/scripts/FootIkRig.cs" id="7"]
 
 ; Rig del personaggio, condiviso da player e (in futuro) NPC: nessun riferimento a
 ; PlayerController qui dentro, il pilotaggio arriva dall'esterno via CharacterAnimator.
@@ -33,3 +35,15 @@ active = true
 ; rigenera, quindi metterli qui nella scena li esporrebbe a sparire a ogni reimport.
 [node name="GripRig" type="Node3D" parent="."]
 script = ExtResource("5")
+
+; Mira procedurale: corregge il busto perche' l'arma punti dove punta il cursore, qualunque
+; cosa stia facendo la clip di locomozione al bacino. E' il layer che rende leggibile il
+; movimento armato, e l'unico posto da cui passa l'inclinazione verticale della mira.
+[node name="AimRig" type="Node3D" parent="."]
+script = ExtResource("6")
+
+; Piedi a terra: ogni piede cerca il suolo col proprio raggio e l'IK ce lo porta, col bacino
+; che scende quanto basta. E' la parte che reagisce al TERRENO — rampe, scalini, il ponte
+; inclinato di una barca — dove le clip metterebbero i piedi tutti alla stessa quota.
+[node name="FootIkRig" type="Node3D" parent="."]
+script = ExtResource("7")

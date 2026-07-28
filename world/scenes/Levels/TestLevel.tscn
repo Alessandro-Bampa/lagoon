@@ -1,8 +1,9 @@
-[gd_scene load_steps=21 format=3]
+[gd_scene load_steps=22 format=3]
 
 [ext_resource type="PackedScene" path="res://combat/scenes/TargetDummy.tscn" id="1"]
 [ext_resource type="Script" path="res://vehicles/scripts/WaterVolume.cs" id="2"]
 [ext_resource type="PackedScene" path="res://vehicles/scenes/Boat.tscn" id="3"]
+[ext_resource type="PackedScene" path="res://ai/scenes/NpcCharacter.tscn" id="4"]
 
 [sub_resource type="BoxShape3D" id="Shape_1"]
 size = Vector3(40, 1, 40)
@@ -92,6 +93,14 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, 10)
 
 [node name="TargetDummyC" parent="." instance=ExtResource("1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0, 10)
+
+; NPC di prova: cammina avanti e indietro sul pavimento. Serve a guardare la locomozione
+; condivisa da fuori — un personaggio animato che non sei tu e' l'unico modo per accorgersi
+; di scatti e scivolamenti che sul proprio avatar, con la camera addosso, non si notano.
+; Non ha IA: percorre waypoint e basta (skill ai-npc).
+[node name="NpcWalker" parent="." instance=ExtResource("4")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 1, -2)
+Waypoints = [Vector3(0, 0, 0), Vector3(0, 0, 12), Vector3(6, 0, 12), Vector3(6, 0, 0)]
 
 ; --- Laguna (Fase 4) -----------------------------------------------------------------------------
 ; Il Floor esistente (x,z in [-20,20], superficie y=0) NON e' stato toccato: la laguna e' adiacente

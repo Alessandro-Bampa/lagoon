@@ -13,6 +13,7 @@ Convenzioni geometriche:
 
 import math
 import os
+import tempfile
 
 import bmesh
 import bpy
@@ -26,11 +27,12 @@ HEIGHT = 1.78            # Altezza totale in metri.
 TRI_BUDGET = (6000, 10000)
 SUBSURF_LEVELS = 2
 
-PROJECT_DIR = "c:/repositories/lagoon"
+# Dichiarata da blender_client.py in testa allo script.
 EXPORT_PATH = PROJECT_DIR + "/assets/models/Body_Base.glb"
 BLEND_PATH = PROJECT_DIR + "/assets/models/source/Body_Base.blend"
-RENDER_DIR = ("C:/Users/BAMPU/AppData/Local/Temp/claude/c--repositories-lagoon/"
-              "bd4ddf0d-2e58-4c67-8b8a-d05fd9536231/scratchpad")
+# Cartella dei render di controllo. Era il percorso di scratch di UNA sessione, ormai
+# inesistente: si usa la temp di sistema, che c'e' sempre e ovunque.
+RENDER_DIR = os.environ.get("LAGOON_RENDER_DIR") or tempfile.gettempdir().replace("\\", "/")
 
 MESH_NAME = "Body_Base"
 ARMATURE_NAME = "Armature_Character"

@@ -1,7 +1,8 @@
-[gd_resource type="Resource" script_class="WeaponDefinition" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="WeaponDefinition" load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://combat/scripts/WeaponDefinition.cs" id="1"]
 [ext_resource type="Resource" path="res://animation/resources/two_handed.tres" id="2"]
+[ext_resource type="PackedScene" path="res://assets/models/weapons/W_Rifle.glb" id="3"]
 
 [resource]
 script = ExtResource("1")
@@ -37,3 +38,4 @@ ReloadSeconds = 2.2
 AmmoItemId = "ammo"
 ProjectileSpeed = 400.0
 AnimationSet = ExtResource("2")
+VisualScene = ExtResource("3")

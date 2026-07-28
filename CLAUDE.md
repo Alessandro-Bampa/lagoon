@@ -100,13 +100,14 @@ I nomi delle cartelle in `scenes/` e `scripts/` sono **per sistema di gameplay**
 ├── autoload/        # Singleton globali (GameManager, NetworkManager, EventBus, SettingsService)
 ├── core/            # Codice condiviso, non specifico di un sistema
 │   ├── Authority/   # Helper per pattern server-authoritative
+│   ├── Motion/      # CharacterMotor: movimento a piedi condiviso player/NPC
 │   └── Utils/       # NetworkConstants, CollisionLayers
 ├── animation/       # Rig, AnimationTree, IK e procedurale       -> skill `character-animation`
-├── player/          # Movimento, input locale, camera isometrica
+├── player/          # Input locale, camera isometrica, veicoli
 ├── combat/          # Armi, tiro, salute, hitbox        -> skill `combat-shooting`
 ├── inventory/       # Griglia, item, equipaggiamento, HUD -> skill `inventory-tarkov`
 ├── vehicles/        # Barche, acqua, galleggiamento           -> skill `vehicles-boats`
-├── ai/              # Nemici, navigazione (non ancora implementato)
+├── ai/              # NPC umani e navigazione                          -> skill `ai-npc`
 ├── world/           # Livelli, spawn di giocatori e oggetti
 ├── quests/          # Riservato, non implementare ora (post-prototipo)
 ├── building/        # Riservato, non implementare ora (post-prototipo)
@@ -170,6 +171,7 @@ La documentazione d'ambito vive in `.claude/skills/<nome>/SKILL.md`. **Carica la
 | `vehicles-boats` | `vehicles/` — barche, acqua, galleggiamento, timone, passeggeri, ponte calpestabile, piattaforme mobili, coordinate locali a un veicolo (`SyncAnchorId`) |
 | `i18n-localization` | `locales/`, `Loc`, **qualunque testo visibile all'utente**: nuove label, nuovi item, dialoghi, cambio lingua, chiavi grezze a video |
 | `blender-pipeline` | `assets/models/`, `tools/blender/` — pipeline Blender→`.glb`→Godot, `Body_Base`, `Armature_Character`, rig e animazioni Mixamo, scala/unità di un modello importato, dialogo con Blender via MCP |
-| `character-animation` | `animation/` — AnimationTree e BlendSpace, layer e filtri, clip e loop, aggancio dell'arma alla mano, IK, rinculo e procedurale, T-pose o animazioni ferme |
+| `character-animation` | `animation/` — AnimationTree e BlendSpace, stance armata, layer e filtri, clip e loop, aggancio dell'arma alla mano, IK e modificatori di scheletro, mira e piedi procedurali, T-pose o animazioni ferme |
+| `ai-npc` | `ai/` — NPC umani, navigazione, waypoint, autorita' host sui personaggi non giocanti |
 
-Ambiti ancora senza skill perché non implementati: IA/nemici, quest, base building. Quando uno di questi viene prototipato, la sua documentazione va in una skill nuova, non qui.
+Ambiti ancora senza skill perché non implementati: quest, base building. Quando uno di questi viene prototipato, la sua documentazione va in una skill nuova, non qui.

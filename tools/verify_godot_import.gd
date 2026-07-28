@@ -143,6 +143,8 @@ func _verify_rig() -> void:
 		"parameters/CrouchBlend/blend_amount",
 		"parameters/WeaponBlend/blend_amount",
 		"parameters/WeaponPose/transition_request",
+		"parameters/FirePose/transition_request",
+		"parameters/LandPose/transition_request",
 		"parameters/Fire/request",
 		"parameters/Jump/request",
 		"parameters/JumpScale/scale",
@@ -319,11 +321,15 @@ func _verify_loop_modes(library: AnimationLibrary, clips: Array[StringName]) -> 
 	var must_loop := [
 		"walk_fwd", "walk_back", "walk_left", "walk_right",
 		"run_fwd", "run_back", "run_left", "run_right",
+		"rifle_walk_fwd", "rifle_walk_back", "rifle_walk_left", "rifle_walk_right",
+		"rifle_run_fwd", "rifle_run_back", "rifle_run_left", "rifle_run_right",
 		"crouch_idle", "crouch_fwd", "crouch_back", "crouch_left", "crouch_right",
 		"idle_neutral", "rifle_idle", "pistol_idle", "fall_idle",
+		# Pose procedurali (build_procedural_clips.py): idle respiranti, ciclano.
+		"rifle_aim_idle", "rifle_lowered_idle", "pistol_aim_idle",
 	]
 	# Clip a colpo singolo: devono finire, altrimenti il one-shot non rientra mai.
-	var must_not_loop := ["jump", "rifle_fire", "land_hard"]
+	var must_not_loop := ["jump", "rifle_fire", "land_hard", "pistol_fire", "land_soft"]
 
 	var wrong: PackedStringArray = []
 	for clip_name in clips:

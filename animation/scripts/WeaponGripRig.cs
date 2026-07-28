@@ -16,8 +16,8 @@ namespace Lagoon;
 /// istanziata da un <c>.glb</c> si perdono o si sdoppiano a ogni reimport. Costruirli qui li lega ai
 /// NOMI dei bone, che sono stabili, invece che alla struttura del file importato.
 ///
-/// Come per <see cref="TwoBoneIkModifier"/>: e' pura resa, gira identico su ogni peer a partire da
-/// stato gia' replicato e non produce niente da sincronizzare (CLAUDE.md §3).
+/// E' pura resa: gira identico su ogni peer a partire da stato gia' replicato e non produce niente
+/// da sincronizzare (CLAUDE.md §3).
 /// </summary>
 public partial class WeaponGripRig : Node3D
 {
@@ -30,14 +30,46 @@ public partial class WeaponGripRig : Node3D
     [Export] public float SupportBlendSpeed { get; set; } = 8.0f;
 
     /// <summary>
-    /// IK della mano di supporto sull'astina. FALSE per ora: <see cref="TwoBoneIkModifier"/> viene
-    /// eseguito ma la posa che calcola non arriva allo scheletro (vedi la nota di stato in quella
-    /// classe). Tenerlo spento evita di pagare il costo di un modificatore che non produce nulla e,
-    /// soprattutto, di far credere che la presa a due mani sia gia' attiva.
-    ///
-    /// L'aggancio dell'arma alla mano destra NON passa di qui: e' il BoneAttachment3D, e funziona.
+    /// Lunghezza presunta dell'arma davanti alla presa, in metri: e' la portata della sonda che
+    /// cerca i muri. Approssimata apposta — serve a decidere QUANDO alzare la canna, non a
+    /// misurare l'arma.
     /// </summary>
-    [Export] public bool EnableSupportHandIk { get; set; }
+    [Export] public float MuzzleReach { get; set; } = 0.75f;
+
+    /// Margine oltre la volata entro cui si comincia gia' ad alzare l'arma, in metri.
+    [Export] public float MuzzleClearance { get; set; } = 0.15f;
+
+    /// Di quanto si alza la canna quando l'arma e' del tutto ostruita, in gradi.
+    [Export] public float PortArmsPitchDegrees { get; set; } = 55.0f;
+
+    /// Di quanto si ritrae l'arma verso il corpo quando e' del tutto ostruita, in metri.
+    [Export] public float PortArmsPullBack { get; set; } = 0.18f;
+
+    /// Velocita' con cui si entra e si esce dal "port arms", in frazione al secondo.
+    [Export] public float PortArmsSpeed { get; set; } = 9.0f;
+
+    /// <summary>
+    /// IK della mano di supporto sull'astina.
+    ///
+    /// Era spento finche' l'IK era un modificatore scritto in casa che sembrava non applicare la
+    /// posa. In realta' applicava: era la MISURA a essere sbagliata (vedi la skill
+    /// <c>character-animation</c>). Ora la catena la risolve <see cref="TwoBoneIK3D"/>, nativo di
+    /// Godot 4.7, che converge a zero purche' gli si dia un <c>pole_node</c> (vedi
+    /// <see cref="SupportElbowHint"/>).
+    ///
+    /// L'aggancio dell'arma alla mano destra NON passa di qui: e' il BoneAttachment3D.
+    /// </summary>
+    [Export] public bool EnableSupportHandIk { get; set; } = true;
+
+    /// <summary>
+    /// Dove punta il GOMITO sinistro, in coordinate locali al punto di presa.
+    ///
+    /// Non e' un dettaglio estetico: senza un <c>pole_node</c> <see cref="TwoBoneIK3D"/> non risolve
+    /// affatto la catena — misurato, lo spostamento della mano resta sotto i 4 mm e l'errore al
+    /// bersaglio non cala. Dichiarare la sola <c>pole_direction</c> non basta. Il valore di default
+    /// tiene il gomito basso e leggermente arretrato, che e' la presa naturale su un'astina.
+    /// </summary>
+    [Export] public Vector3 SupportElbowHint { get; set; } = new(-0.15f, -0.45f, -0.20f);
 
     /// <summary>
     /// Punto di presa: qui va messa l'arma. E' figlio del <see cref="BoneAttachment3D"/> sulla mano
@@ -45,9 +77,28 @@ public partial class WeaponGripRig : Node3D
     /// </summary>
     public Node3D? GripPoint { get; private set; }
 
+    /// <summary>
+    /// La mano di supporto insegue l'astina SOLO quando questo e' vero: lo scrive
+    /// <see cref="CharacterAnimator"/> con lo stato di mira. Nel porto rilassato l'arma e'
+    /// inclinata verso terra e il bersaglio dell'IK (solidale alla presa) ruota con lei: il
+    /// polo del gomito, misurato sulla posa di mira, li' puo' flippare e portare il gomito
+    /// SOPRA la canna. Fuori mira la mano sinistra resta dov'e' nella clip, che le sta gia'
+    /// addosso per costruzione (il porto e' derivato da rifle_idle).
+    /// </summary>
+    public bool SupportActive { get; set; } = true;
+
+    /// <summary>
+    /// Quanto la canna e' ostruita, da 0 a 1. Lo legge <see cref="CharacterAnimator"/> per abbassare
+    /// la mira procedurale — un'arma alzata contro un muro non sta piu' puntando il bersaglio — e in
+    /// prospettiva lo puo' leggere l'host per rifiutare il colpo.
+    /// </summary>
+    public float MuzzleBlocked => _probe?.Blocked ?? 0f;
+
+    private WeaponSpaceProbe? _probe;
     private Skeleton3D? _skeleton;
     private Node3D? _supportTarget;
-    private TwoBoneIkModifier? _supportIk;
+    private Node3D? _supportElbow;
+    private TwoBoneIK3D? _supportIk;
     private WeaponAnimationSet? _weapon;
     private float _supportWeight;
 
@@ -57,7 +108,8 @@ public partial class WeaponGripRig : Node3D
 
     public override void _Ready()
     {
-        _skeleton = FindSkeleton(this);
+        _probe = new WeaponSpaceProbe(this);
+        _skeleton = SkeletonLocator.Find(this);
         if (_skeleton == null)
         {
             GD.PushWarning("[WeaponGripRig] nessuno Skeleton3D sotto il rig: l'arma restera' scollegata.");
@@ -75,45 +127,46 @@ public partial class WeaponGripRig : Node3D
         _supportTarget = new Node3D { Name = "SupportGripTarget" };
         GripPoint.AddChild(_supportTarget);
 
-        _supportIk = new TwoBoneIkModifier
-        {
-            Name = "SupportHandIk",
-            RootBone = SupportRootBone,
-            MidBone = SupportMidBone,
-            TipBone = SupportTipBone,
-            MatchTargetRotation = true,
-            Influence = 0f,
-            TargetNode = _supportTarget,
-        };
+        // Indicazione del gomito, anch'essa solidale all'arma: girando l'arma gira il piano di
+        // piegatura del braccio, che e' il comportamento voluto.
+        _supportElbow = new Node3D { Name = "SupportElbowHint", Position = SupportElbowHint };
+        GripPoint.AddChild(_supportElbow);
+
+        // Il modificatore si costruisce DIFFERITO, non qui.
+        //
+        // Costruire un TwoBoneIK3D mentre lo scheletro sta ancora entrando nell'albero blocca il
+        // processo: nessun errore, nessun crash, si pianta e basta (riprodotto in headless, e'
+        // costato l'unico blocco di questa fase). Un frame di ritardo lo evita, e non ha alcun
+        // costo visibile: finche' l'IK non c'e', il braccio resta alla posa animata.
+        CallDeferred(MethodName.BuildSupportIk);
+    }
+
+    /// <summary>
+    /// Costruisce la catena IK del braccio sinistro. Separato da <c>_Ready</c> apposta: vedi la nota
+    /// sul blocco in <c>_Ready</c>.
+    /// </summary>
+    private void BuildSupportIk()
+    {
+        if (_skeleton == null || _supportTarget == null || _supportElbow == null)
+            return;
+
+        _supportIk = new TwoBoneIK3D { Name = "SupportHandIk", Influence = 0f };
         _skeleton.AddChild(_supportIk);
-    }
 
-    private static Skeleton3D? FindSkeleton(Node node)
-    {
-        foreach (Node child in node.GetParent().GetChildren())
-        {
-            if (child is Skeleton3D found)
-                return found;
+        // Le impostazioni si dichiarano DOPO AddChild: il modificatore risolve gli indici di osso
+        // contro lo scheletro padre, e prima di essere nell'albero non ne ha uno.
+        _supportIk.SetSettingCount(1);
+        _supportIk.SetRootBoneName(0, SupportRootBone);
+        _supportIk.SetMiddleBoneName(0, SupportMidBone);
+        _supportIk.SetEndBoneName(0, SupportTipBone);
 
-            Skeleton3D? deeper = SearchDown(child);
-            if (deeper != null)
-                return deeper;
-        }
-        return null;
-    }
-
-    private static Skeleton3D? SearchDown(Node node)
-    {
-        if (node is Skeleton3D skeleton)
-            return skeleton;
-
-        foreach (Node child in node.GetChildren())
-        {
-            Skeleton3D? found = SearchDown(child);
-            if (found != null)
-                return found;
-        }
-        return null;
+        // Bersaglio e polo si dichiarano come NodePath RELATIVI al modificatore, calcolabili solo
+        // quando tutti i nodi sono gia' nell'albero. TwoBoneIK3D li risolve a ogni passata.
+        //
+        // Il POLO non e' opzionale: senza, il modificatore non risolve la catena (misurato: la mano
+        // si sposta di 3 mm e l'errore al bersaglio non cala). Con il polo l'errore va a zero.
+        _supportIk.SetTargetNode(0, _supportIk.GetPathTo(_supportTarget));
+        _supportIk.SetPoleNode(0, _supportIk.GetPathTo(_supportElbow));
     }
 
     /// <summary>
@@ -149,25 +202,42 @@ public partial class WeaponGripRig : Node3D
             _kickUp = Mathf.Lerp(_kickUp, 0f, recovery);
         }
 
-        // Presa: offset dichiarato dall'arma, piu' il rinculo. L'arma punta verso +Z locale, quindi
-        // il rinculo arretra lungo -Z e alza il muso ruotando attorno a X.
+        // Spazio davanti alla canna. Si misura PRIMA di scrivere la presa, usando la trasformata del
+        // frame precedente: un frame di ritardo su una reazione smorzata non si vede, e misurare
+        // dopo aver gia' alzato l'arma vorrebbe dire misurare la propria reazione.
+        if (_weapon != null)
+            _probe?.Update(GripPoint, MuzzleReach, MuzzleClearance, PortArmsSpeed, dt);
+
+        // Presa: offset dichiarato dall'arma, piu' il rinculo, piu' il "port arms". L'arma punta
+        // verso +Z locale, quindi rinculo e ritrazione arretrano lungo -Z e la canna si alza
+        // ruotando attorno a X.
+        //
+        // SEGNO: la rotazione attorno a X va SOMMATA per alzare il muso. Sottraendola lo si
+        // abbassa — che e' quello che faceva il rinculo, silenziosamente, da sempre: nessuno se
+        // ne era accorto perche' i controlli misuravano di quanto si sposta la presa, non in che
+        // direzione punta la canna.
         Vector3 grip = _weapon?.GripOffset ?? Vector3.Zero;
         Vector3 gripRotation = _weapon?.GripRotationDegrees ?? Vector3.Zero;
+        float blocked = MuzzleBlocked;
 
         var basis = Basis.FromEuler(new Vector3(
-            Mathf.DegToRad(gripRotation.X) - _kickUp,
+            Mathf.DegToRad(gripRotation.X) + _kickUp + Mathf.DegToRad(PortArmsPitchDegrees) * blocked,
             Mathf.DegToRad(gripRotation.Y),
             Mathf.DegToRad(gripRotation.Z)));
 
-        GripPoint.Transform = new Transform3D(basis, grip - new Vector3(0f, 0f, _kickBack));
+        GripPoint.Transform = new Transform3D(
+            basis, grip - new Vector3(0f, 0f, _kickBack + PortArmsPullBack * blocked));
 
         // Mano di supporto: solo per le armi a due mani, e con una transizione — accenderla di colpo
         // farebbe scattare il braccio sinistro nel frame in cui si cambia arma.
         if (_supportIk == null || _supportTarget == null)
             return;
 
-        bool twoHanded = EnableSupportHandIk && _weapon is { IsTwoHanded: true };
+        bool twoHanded = EnableSupportHandIk && SupportActive && _weapon is { IsTwoHanded: true };
         _supportTarget.Position = _weapon?.SupportGripOffset ?? Vector3.Zero;
+        if (_supportElbow != null)
+            _supportElbow.Position = SupportElbowHint;
+
         _supportWeight = Mathf.Lerp(_supportWeight, twoHanded ? 1f : 0f, 1f - Mathf.Exp(-SupportBlendSpeed * dt));
         _supportIk.Influence = _supportWeight;
     }

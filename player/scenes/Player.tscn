@@ -42,6 +42,15 @@ properties/4/replication_mode = 1
 properties/5/path = NodePath(".:SyncGrounded")
 properties/5/spawn = true
 properties/5/replication_mode = 1
+properties/6/path = NodePath(".:SyncAimPitch")
+properties/6/spawn = true
+properties/6/replication_mode = 1
+properties/7/path = NodePath(".:SyncAimYaw")
+properties/7/spawn = true
+properties/7/replication_mode = 1
+properties/8/path = NodePath(".:SyncAiming")
+properties/8/spawn = true
+properties/8/replication_mode = 1
 
 [sub_resource type="SceneReplicationConfig" id="Repl_2"]
 properties/0/path = NodePath(".:CurrentHealth")

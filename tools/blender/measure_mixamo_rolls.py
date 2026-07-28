@@ -19,7 +19,7 @@ import bpy
 from mathutils import Vector
 
 PREFIX = re.compile(r"^mixamorig\d*:")
-BLEND_PATH = "c:/repositories/lagoon/assets/models/source/Body_Base.blend"
+BLEND_PATH = PROJECT_DIR + "/assets/models/source/Body_Base.blend"
 ARMATURE_NAME = "Armature_Character"
 
 

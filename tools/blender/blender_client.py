@@ -17,12 +17,35 @@ Gli argomenti extra arrivano allo script come lista `ARGV`.
 """
 
 import json
+import os
 import socket
 import sys
 
 HOST = "127.0.0.1"
 PORT = 9876
 TIMEOUT = 600.0  # Alcune operazioni (subdivision, weight, export) sono lente.
+
+# Radice del progetto, ricavata da dove sta QUESTO file (tools/blender/ -> su di due).
+#
+# Gli script vengono spediti a Blender come sorgente, non come file: dentro Blender non
+# esiste __file__ e non c'e' modo di dedurre dove stia il progetto. Prima il percorso era
+# scritto a mano in ogni script ("c:/repositories/lagoon"), quindi la pipeline funzionava
+# su una sola macchina e su un solo sistema operativo. Ora lo inietta il client.
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))).replace("\\", "/")
+
+
+def preamble(project_dir, argv):
+    """Righe iniettate in testa a ogni script spedito a Blender."""
+    return (
+        "import os as _os, sys as _sys\n"
+        "PROJECT_DIR = {project!r}\n"
+        "_os.environ['LAGOON_PROJECT_DIR'] = PROJECT_DIR\n"
+        "_tools = PROJECT_DIR + '/tools/blender'\n"
+        "if _tools not in _sys.path:\n"
+        "    _sys.path.append(_tools)\n"
+        "ARGV = {argv!r}\n"
+    ).format(project=project_dir, argv=list(argv))
 
 
 def execute(code, host=HOST, port=PORT, timeout=TIMEOUT):
@@ -56,8 +79,9 @@ def main(argv):
         with open(argv[1], "r", encoding="utf-8") as handle:
             code = handle.read()
 
-    # Gli argomenti extra diventano una lista ARGV dentro lo script remoto.
-    code = "ARGV = {!r}\n".format(list(argv[2:])) + code
+    # Radice del progetto, sys.path dei moduli condivisi e argomenti extra: tutto iniettato
+    # in testa, cosi' gli script remoti non contengono un solo percorso assoluto.
+    code = preamble(PROJECT_DIR, argv[2:]) + code
 
     try:
         response = execute(code)

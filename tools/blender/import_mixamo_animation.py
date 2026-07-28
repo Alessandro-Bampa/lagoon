@@ -26,7 +26,7 @@ import bpy
 
 PREFIX = re.compile(r"^mixamorig\d*:")
 
-PROJECT_DIR = "c:/repositories/lagoon"
+# Dichiarata da blender_client.py in testa allo script.
 BLEND_PATH = PROJECT_DIR + "/assets/models/source/Body_Base.blend"
 ANIM_DIR = PROJECT_DIR + "/assets/models/animations"
 

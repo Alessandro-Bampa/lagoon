@@ -57,8 +57,16 @@ Qualunque nuova UI modale deve alzare `GameManager.UiModalOpen`, mai `GetTree().
 | `quick_slot_4…0` | 4 5 6 7 8 9 0 | `PlayerHud._Input` | Hotbar consumabili |
 | `weapon_slot_1/2/3` | 1 2 3 | `WeaponInput` | Impugna WeaponPrimary / WeaponSecondary / Sidearm; ripremere rinfodera |
 | `fire` | Mouse sinistro | `WeaponInput` | Automatico in `_Process`, semiauto in `_UnhandledInput` |
+| `aim` | **Mouse destro** (tenuto) | `PlayerInput.ReadAim` | Stance di mira: busto sul mirino, turn-in-place, strafe armato (skill `character-animation`) |
+| `jump` | Spazio | `PlayerInput.ReadJumpPressed` | Evento (`IsActionJustPressed`), vietato da accovacciati |
+| `sprint` | Shift (tenuto) | `PlayerInput.ReadSprint` | |
+| `crouch` | Ctrl (tenuto) | `PlayerInput.ReadCrouch` | A pressione mantenuta, non interruttore |
 | `quick_drop` | Backspace | `PlayerHud._Input` | |
 | `toggle_menu` | Esc | `PauseMenu` | |
+
+**Il mouse destro nel MONDO e' `aim`; nell'INVENTARIO e' il menu contestuale.** Non confliggono:
+`GridPanelView`/`EquipmentSlotView` sono `Control` che gestiscono il click grezzo, e con una UI
+modale aperta `PlayerInput.ReadAim` e' comunque azzerato da `UiModalOpen`.
 
 **R è legato di proposito a due azioni.** La disambiguazione non è un `if` sparso ma la pipeline di input di Godot: `PlayerHud` usa `_Input` e consuma `rotate_item` **solo se la schermata inventario è visibile** (`PlayerHud.InventoryOpen`); altrimenti l'evento resta *unhandled* e arriva a `WeaponInput._UnhandledInput` come `reload`.
 

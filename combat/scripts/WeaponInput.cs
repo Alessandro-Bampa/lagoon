@@ -49,14 +49,18 @@ public partial class WeaponInput : Node
 
     public override void _Process(double delta)
     {
-        if (Suppressed)
-            return;
-
+        // Il punto di mira si aggiorna SEMPRE, anche a inventario aperto: e' resa locale, non
+        // un'azione. Congelarlo lasciava PlayerController.UpdateAiming puntato su un punto
+        // stantio, e alla chiusura della UI il corpo scattava verso dove il mouse ERA.
         AimPoint = AimResolver.ResolveAimPoint(
             _camera, GetViewport().GetMousePosition(), _ownHitbox?.GetRid() ?? default);
 
         Vector3 muzzle = GetParent<Node3D>().GlobalPosition + Vector3.Up * WeaponController.MuzzleHeight;
         AimDistance = muzzle.DistanceTo(AimPoint);
+
+        // Le AZIONI invece restano soppresse: sparare attraverso l'inventario no.
+        if (Suppressed)
+            return;
 
         // Fuoco automatico: il rateo locale evita di inondare la rete di richieste che l'host
         // scarterebbe comunque per cooldown.

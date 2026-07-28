@@ -50,6 +50,9 @@ public partial class PlayerInput : Node
     /// Corsa (Shift tenuto). Come il movimento, e' soppressa al timone.
     public bool ReadSprint() => ReadHeld("sprint");
 
+    /// Mira (tasto destro del mouse, tenuto). Stesse guardie della corsa.
+    public bool ReadAim() => ReadHeld("aim");
+
     /// Accovacciamento (Ctrl tenuto): a pressione mantenuta, non a interruttore.
     public bool ReadCrouch() => ReadHeld("crouch");
 

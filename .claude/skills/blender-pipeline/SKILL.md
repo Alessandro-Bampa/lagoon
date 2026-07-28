@@ -254,3 +254,69 @@ l'export.
   cosmetica, come gli effetti di sparo.
 - Non e' uno sculpt anatomico: proporzioni corrette (canone 7.5 teste) e silhouette credibile, senza
   dettaglio muscolare.
+
+## Percorsi e rebuild parziale (aggiornato)
+
+**Niente percorsi assoluti negli script.** Gli script vengono spediti a Blender come sorgente, non
+come file: dentro Blender non esiste `__file__`. Prima ogni script conteneva
+`PROJECT_DIR = "c:/repositories/lagoon"`, quindi la pipeline girava su una macchina e un sistema
+operativo soli. Ora e' **`blender_client.py`** a iniettare, in testa a ogni script, `PROJECT_DIR`
+(ricavato da dove sta il client), `LAGOON_PROJECT_DIR` nell'ambiente, `tools/blender` nel `sys.path`
+remoto e `ARGV`. Gli script non devono dichiarare percorsi propri.
+
+**`build_animation_library.py` e' ADDITIVO.** Le FBX Mixamo non stanno nel repo (sono grosse e si
+riscaricano), quindi la cartella sorgente e' quasi sempre parziale: chi aggiunge due clip ha in mano
+quelle due, non tutte. Le clip la cui FBX manca vengono **recuperate reimportando il `.glb` gia'
+esportato** — le sue azioni sono state esportate da questa stessa armatura, quindi i data path
+puntano gia' ai nostri nomi di osso e si riusano senza ritargeting.
+
+Senza quel recupero, un rebuild con cartella parziale cancellerebbe in silenzio tutto il resto. Il
+log riporta `recovered` e `lost`: **`lost` non vuoto significa clip perse per sempre** — fermarsi e
+recuperare le FBX prima di committare il `.glb`.
+
+**Trappola del contesto.** `bpy.ops.import_scene.gltf` legge `bpy.context.object` aspettandosi
+l'armatura che ha appena creato lui. Va avvolto in `mx.view3d_override()` **senza** passare
+`object=`: senza override esplode a meta' (`'Context' object has no attribute 'object'`), con
+l'oggetto sbagliato va a rimuovere dalla scena l'armatura di base.
+
+## Clip procedurali (Mixamo non e' piu' una sorgente)
+
+`tools/blender/build_procedural_clips.py` genera le clip che non hanno (e mai avranno) un FBX:
+`rifle_aim_idle`, `rifle_lowered_idle`, `pistol_aim_idle`, `pistol_fire`, `land_soft`. Rieseguirlo
+e' idempotente: recupera TUTTE le azioni dal `.glb` (stessa tecnica di `recover_from_library`),
+ricrea le procedurali e riesporta l'intera libreria. `lost` non vuoto = fermarsi, come sempre.
+
+Le regole che lo tengono robusto:
+
+- **Si campionano pose da clip esistenti, non si animano cicli a mano.** La posa di mira del fucile
+  E' `rifle_idle` tale e quale (+respiro): e' la posa su cui sono stati misurati presa e polo IK, e
+  campionare altro (provato con `rifle_fire` a meta' colpo) cambia la distanza fra le mani e fa
+  flippare il gomito della mano di supporto SOPRA la canna. Il porto basso e' `rifle_idle` con le
+  braccia ruotate; l'assorbimento di `land_soft` prende le gambe da `crouch_idle`. Un ciclo di
+  passo keyframato a mano e' l'asset piu' fragile che esista: non farlo.
+- **Lo script rilassa anche le braccia delle 5 clip `crouch_*`** (il set Mixamo "Crouching" e' in
+  guardia da combattimento, sbagliato da disarmati): fcurve delle braccia sostituite con una chiave
+  costante da `idle_neutral`. Da armati non cambia nulla (overlay upper-body). Le versioni combat
+  originali vivono solo nella storia git del `.glb`.
+- **Niente angoli a occhio.** Le rotazioni si costruiscono in spazio MONDO su `pb.matrix`
+  (`rotate_bone_world`) o con la rotazione minima fra direzioni misurate (`aim_bone_at`, via
+  `rotation_difference`). Il personaggio guarda **-Y** in Blender: rotazione POSITIVA attorno a +X
+  = pitch in giu'.
+- **Keyframe via `pb.keyframe_insert`, mai fcurve a mano**: con le azioni a slot di Blender 5.x e'
+  lui a creare layer/strip/channelbag. `bake_clip` verifica che le fcurve esistano davvero.
+- **`sample_pose` richiede `mx.assign_action` + `frame_set`**: senza assegnare azione E slot i pose
+  bone restano alla posa precedente, senza errori.
+- Le clip procedurali sono elencate in **`PROCEDURAL`** dentro `build_animation_library.py`: e' cio'
+  che le fa recuperare dal `.glb` a ogni rebuild Mixamo. Clip procedurale nuova = riga li', builder
+  in `build_procedural_clips.py`, categoria di loop in `_verify_loop_modes`, `loop_mode` nel
+  `.import` se cicla.
+
+## Asset delle armi (frame della presa)
+
+`tools/blender/build_weapon_assets.py` genera `assets/models/weapons/W_Rifle.glb` e `W_Pistol.glb`
+(<150 tris l'uno), referenziati da `WeaponDefinition.VisualScene`. Sono costruiti nel **frame della
+presa**: origine sull'impugnatura della mano destra, canna lungo il **+Z di Godot** (in Blender si
+modella con la canna lungo **-Y** e l'export `export_yup=True` converte), calcio dietro, e l'astina
+del fucile ESATTAMENTE a `SupportGripOffset.Z = 0.391` di `two_handed.tres` — valore MISURATO dalla
+posa: se cambia la posa va rimisurato, non ritoccato a occhio. Cosi' `WeaponVisual` li aggancia al
+`GripPoint` senza offset e un disallineamento presa/posa si vede subito.

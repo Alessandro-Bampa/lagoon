@@ -20,11 +20,12 @@ aggiungi la riga qui.
 
 import importlib
 import os
-import sys
 
 import bpy
 
-sys.path.append("c:/repositories/lagoon/tools/blender")
+# `tools/blender` e' gia' nel sys.path remoto: lo mette blender_client.py insieme a
+# PROJECT_DIR. Prima qui c'era un percorso assoluto Windows, e la pipeline girava su
+# una macchina sola.
 import mixamo_common as mx  # noqa: E402
 
 # Blender resta aperto fra un'esecuzione e l'altra e tiene i moduli in sys.modules: senza
@@ -65,6 +66,23 @@ CLIPS = {
     "Jump": "jump",
     "Falling Idle": "fall_idle",
     "Hard Landing": "land_hard",
+    # --- locomozione ARMATA: 4 assi per camminata e corsa ---
+    #
+    # Non e' un lusso. Il layer arma era un override del solo upper body sopra le clip
+    # disarmate: il torso restava una posa FISSA mentre le gambe strafavano, e la posa
+    # "reggi fucile" era authored su un bacino neutro mentre lo strafe il bacino lo ruota.
+    # Un set di stance completo e' come lo risolvono gli sparatutto veri.
+    #
+    # Vale solo per le armi a DUE MANI: la pistola resta sul set disarmato con la posa
+    # upper-body, che per un'arma tenuta bassa e' corretto e costa zero clip.
+    "Rifle Walk": "rifle_walk_fwd",
+    "Backwards Rifle Walk": "rifle_walk_back",
+    "Strafe Left": "rifle_walk_left",
+    "Strafe Right": "rifle_walk_right",
+    "Rifle Run": "rifle_run_fwd",
+    "Backwards Rifle Run": "rifle_run_back",
+    "Run Left": "rifle_run_left",
+    "Run Right": "rifle_run_right",
 }
 
 # Clip da APPIATTIRE invece che scartare quando portano root motion.
@@ -75,10 +93,70 @@ CLIPS = {
 # (CLAUDE.md §3). Vedi mx.flatten_root_motion per i limiti.
 FORCE_IN_PLACE = {"land_hard"}
 
+# Clip PROCEDURALI: non hanno un FBX e non l'avranno mai, per costruzione — le genera
+# tools/blender/build_procedural_clips.py con keyframe da codice. Sono diverse dalle
+# clip "con FBX fuori repo" (che una FBX ce l'hanno, solo non versionata): queste vanno
+# SEMPRE recuperate dal .glb precedente, altrimenti un rebuild Mixamo le cancellerebbe
+# in silenzio. Aggiungendo una clip procedurale, aggiungila anche qui.
+PROCEDURAL = {"rifle_aim_idle", "rifle_lowered_idle", "pistol_aim_idle",
+              "pistol_fire", "land_soft"}
+
 OUT_PATH = mx.ANIM_DIR + "/CharacterAnimations.glb"
 
+
+def recover_from_library(names):
+    """Recupera dalla libreria gia' esportata le azioni la cui FBX non c'e' piu'.
+
+    Le FBX Mixamo non stanno nel repo (sono grosse e si riscaricano), quindi la cartella
+    sorgente e' quasi sempre PARZIALE: chi aggiunge due clip ha in mano quelle due, non
+    tutte e ventotto. Senza questo recupero un rebuild "additivo" cancellerebbe in
+    silenzio tutto cio' che non ha piu' un FBX accanto — che e' esattamente il modo in cui
+    si perde una libreria intera senza un solo errore.
+
+    Le azioni dentro il .glb sono state esportate da QUESTA armatura, quindi i loro data
+    path puntano gia' ai nostri nomi di osso e si possono riusare senza ritargeting.
+    """
+    if not names or not os.path.exists(OUT_PATH):
+        return {}, []
+
+    before = set(bpy.data.actions.keys())
+    before_objects = set(bpy.context.scene.objects)
+
+    # Serve un'area VIEW_3D, ma NON si deve forzare l'oggetto attivo: l'importatore glTF
+    # legge bpy.context.object aspettandosi l'armatura che ha appena creato lui. Dargli la
+    # nostra lo manda a rimuovere dalla scena l'oggetto sbagliato.
+    with mx.view3d_override():
+        bpy.ops.import_scene.gltf(filepath=OUT_PATH)
+
+    imported = [o for o in bpy.context.scene.objects if o not in before_objects]
+
+    # L'importatore glTF puo' anteporre il nome dell'oggetto ("Armature|walk_fwd"):
+    # si indicizza per suffisso, non per uguaglianza.
+    fresh = {}
+    for key in bpy.data.actions.keys():
+        if key in before:
+            continue
+        action = bpy.data.actions[key]
+        fresh[key.split("|")[-1]] = action
+
+    recovered = {}
+    still_missing = []
+    for name in names:
+        action = fresh.get(name)
+        if action is None:
+            still_missing.append(name)
+            continue
+        action.name = name
+        action.use_fake_user = True
+        recovered[name] = action
+
+    mx.discard(imported)
+    return recovered, still_missing
+
+
 source_dir = ARGV[0].replace("\\", "/")
-log = {"source": source_dir, "clips": [], "skipped": [], "flattened": [], "missing": []}
+log = {"source": source_dir, "clips": [], "skipped": [], "flattened": [],
+       "missing": [], "recovered": [], "lost": []}
 
 bpy.ops.wm.open_mainfile(filepath=mx.BLEND_PATH)
 ours = bpy.data.objects[mx.ARMATURE_NAME]
@@ -113,6 +191,15 @@ for file_stem, clip_name in sorted(CLIPS.items(), key=lambda kv: kv[1]):
         "horizontal_m": info["horizontal_span_m"],
         "vertical_m": info["vertical_span_m"],
     })
+
+# Cio' che non aveva una FBX si recupera dalla libreria precedente, cosi' aggiungere due
+# clip non ne cancella ventisei. Le procedurali si recuperano SEMPRE da li': un FBX loro
+# non esiste.
+missing_clips = [CLIPS[stem] for stem in log["missing"]] + sorted(PROCEDURAL)
+recovered, lost = recover_from_library(missing_clips)
+log["recovered"] = sorted(recovered.keys())
+log["lost"] = sorted(lost)
+actions.extend(recovered[name] for name in sorted(recovered))
 
 # Tutte le azioni vanno esportate insieme: l'esportatore glTF prende quelle presenti
 # nel file (use_fake_user le tiene in vita) quando export_animation_mode = "ACTIONS".

@@ -5,8 +5,8 @@ namespace Lagoon;
 /// <summary>
 /// Configura la "presentazione locale" dell'avatar in base all'autorita' di rete:
 ///  - attiva la camera isometrica SOLO per il player locale;
-///  - colora il placeholder (verde = tu, rosso = altri) per rendere evidente il criterio di
-///    completamento della Fase 1 durante il test multi-istanza (CLAUDE.md §6).
+///  - tinge il personaggio (verde = tu, rosso = altri) per distinguere gli avatar a colpo d'occhio
+///    durante il test multi-istanza (CLAUDE.md §6).
 /// Non tocca la logica di movimento: quella vive in <see cref="PlayerController"/>.
 /// </summary>
 public partial class PlayerNetworkSync : Node
@@ -23,11 +23,30 @@ public partial class PlayerNetworkSync : Node
         var camera = parent.GetNode<Camera3D>("PlayerCamera");
         camera.Current = isLocal;
 
-        // Colore placeholder per distinguere a colpo d'occhio locale vs remoto.
-        var mesh = parent.GetNode<MeshInstance3D>("Visual/MeshInstance3D");
-        mesh.MaterialOverride = new StandardMaterial3D
-        {
-            AlbedoColor = isLocal ? LocalColor : RemoteColor,
-        };
+        // Tinta di riconoscimento.
+        //
+        // Cercava "Visual/MeshInstance3D", il cubo placeholder che non esiste piu' da quando sotto
+        // Visual c'e' il CharacterRig: GetNode falliva a ogni spawn. Ora si tinge la mesh del
+        // personaggio, ovunque sia nel sottoalbero del rig — che arriva da un .glb rigenerabile,
+        // quindi il percorso esatto non e' un appiglio stabile.
+        var material = new StandardMaterial3D { AlbedoColor = isLocal ? LocalColor : RemoteColor };
+        foreach (MeshInstance3D mesh in FindMeshes(parent.GetNode<Node3D>("Visual")))
+            mesh.MaterialOverride = material;
+    }
+
+    private static Godot.Collections.Array<MeshInstance3D> FindMeshes(Node root)
+    {
+        var found = new Godot.Collections.Array<MeshInstance3D>();
+        Collect(root, found);
+        return found;
+    }
+
+    private static void Collect(Node node, Godot.Collections.Array<MeshInstance3D> into)
+    {
+        if (node is MeshInstance3D mesh)
+            into.Add(mesh);
+
+        foreach (Node child in node.GetChildren())
+            Collect(child, into);
     }
 }

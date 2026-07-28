@@ -112,6 +112,14 @@ public partial class WeaponDefinition : ItemDefinition
     /// </summary>
     [Export] public WeaponAnimationSet? AnimationSet { get; set; }
 
+    /// <summary>
+    /// Modello 3D dell'arma (una scena, tipicamente un <c>.glb</c> di
+    /// <c>assets/models/weapons/</c>), costruito nel FRAME DELLA PRESA: origine
+    /// sull'impugnatura, canna lungo +Z. Null = placeholder geometrico di
+    /// <see cref="WeaponVisual"/>, cosi' un'arma nuova compare comunque.
+    /// </summary>
+    [Export] public PackedScene? VisualScene { get; set; }
+
     // ====================================================================================
     //  Formule condivise
     // ====================================================================================

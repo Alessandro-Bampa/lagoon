@@ -5,20 +5,26 @@ Usato sia da `import_mixamo_animation.py` (una clip -> un .glb) sia da
 delicata — prefisso, scala del bacino, verifica "in place" — vive qui una volta
 sola: sono le tre cose su cui e' facile sbagliare, vedi la skill blender-pipeline.
 
-Gli script eseguiti dentro Blender lo importano cosi':
+Gli script eseguiti dentro Blender lo importano e basta:
 
-    import sys
-    sys.path.append("c:/repositories/lagoon/tools/blender")
     import mixamo_common
+
+E' `blender_client.py` a mettere `tools/blender` nel sys.path remoto e a dichiarare
+`LAGOON_PROJECT_DIR`, quindi qui non compare nessun percorso assoluto.
 """
 
+import os
 import re
 
 import bpy
 
 PREFIX = re.compile(r"^mixamorig\d*:")
 
-PROJECT_DIR = "c:/repositories/lagoon"
+# Radice del progetto. Prima era scritta a mano ("c:/repositories/lagoon"), quindi la
+# pipeline girava su una macchina sola. La dichiara blender_client.py; il ripiego su
+# __file__ vale quando questo modulo viene importato da fuori Blender (test, tooling).
+PROJECT_DIR = os.environ.get("LAGOON_PROJECT_DIR") or os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))).replace("\\", "/")
 BLEND_PATH = PROJECT_DIR + "/assets/models/source/Body_Base.blend"
 ANIM_DIR = PROJECT_DIR + "/assets/models/animations"
 

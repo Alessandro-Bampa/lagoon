@@ -5,10 +5,10 @@
 [resource]
 script = ExtResource("1")
 HoldPose = "pistol_idle"
-FirePose = "pistol_idle"
+FirePose = "pistol_fire"
 IsTwoHanded = false
 GripOffset = Vector3(0, 0, 0)
-GripRotationDegrees = Vector3(0, 0, 0)
+GripRotationDegrees = Vector3(-61.8, 17.3, 0)
 SupportGripOffset = Vector3(0, 0, 0)
 RecoilKickBack = 0.03
 RecoilKickUpDegrees = 5.0

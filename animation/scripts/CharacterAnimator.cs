@@ -23,12 +23,18 @@ public partial class CharacterAnimator : Node3D
     private const string WalkPosition = "parameters/WalkSpace/blend_position";
     private const string RunPosition = "parameters/RunSpace/blend_position";
     private const string RunAmount = "parameters/MoveBlend/blend_amount";
+    private const string ArmedWalkPosition = "parameters/RifleWalkSpace/blend_position";
+    private const string ArmedRunPosition = "parameters/RifleRunSpace/blend_position";
+    private const string ArmedRunAmount = "parameters/ArmedMoveBlend/blend_amount";
+    private const string StanceAmount = "parameters/StanceBlend/blend_amount";
     private const string CrouchPosition = "parameters/CrouchSpace/blend_position";
     private const string AirAmount = "parameters/AirBlend/blend_amount";
     private const string LandRequest = "parameters/Land/request";
     private const string CrouchAmount = "parameters/CrouchBlend/blend_amount";
     private const string WeaponAmount = "parameters/WeaponBlend/blend_amount";
     private const string WeaponPoseRequest = "parameters/WeaponPose/transition_request";
+    private const string FirePoseRequest = "parameters/FirePose/transition_request";
+    private const string LandPoseRequest = "parameters/LandPose/transition_request";
     private const string FireRequest = "parameters/Fire/request";
     private const string JumpRequest = "parameters/Jump/request";
     private const string JumpTimeScale = "parameters/JumpScale/scale";
@@ -70,8 +76,26 @@ public partial class CharacterAnimator : Node3D
     /// Velocita' d'impatto a cui l'abbassamento e' massimo, in m/s. Sotto, scala proporzionalmente.
     [Export] public float HardLandingSpeed { get; set; } = 9.0f;
 
+    /// <summary>
+    /// Velocita' d'impatto oltre la quale parte la clip di atterraggio MORBIDO (land_soft).
+    /// Sta sopra la velocita' d'impatto di un salto normale (JumpVelocity = 6 m/s): il salto
+    /// resta coperto dalla sola flessione procedurale, la clip e' per le cadute vere.
+    /// </summary>
+    [Export] public float SoftLandingSpeed { get; set; } = 6.5f;
+
     /// Velocita' di riassorbimento dell'abbassamento d'atterraggio, in frazione al secondo.
     [Export] public float LandingRecoverySpeed { get; set; } = 9.0f;
+
+    /// <summary>
+    /// Ampiezza del passo sintetico del turn-in-place, in metri di blend per radiante al secondo di
+    /// rotazione del corpo. Il turn-in-place non ha una clip propria: mentre il corpo ruota da
+    /// fermo, si alimenta l'asse X del blend space con la velocita' di rotazione, cosi' le gambe
+    /// riproducono i passetti dello strafe invece di scivolare sul posto.
+    /// </summary>
+    [Export] public float TurnStepScale { get; set; } = 0.4f;
+
+    /// Rotazione minima (rad/s) perche' il passo sintetico si attivi: sotto, il corpo e' fermo.
+    [Export] public float TurnStepThreshold { get; set; } = 0.5f;
 
     // ====================================================================================
     //  Stato in ingresso: lo scrive chi pilota, ogni frame
@@ -105,13 +129,53 @@ public partial class CharacterAnimator : Node3D
     /// </summary>
     public WeaponAnimationSet? WeaponPose { get; set; }
 
+    /// <summary>
+    /// Direzione in cui si sta mirando, in coordinate MONDO. Vettore nullo = non si mira.
+    ///
+    /// Non e' ridondante con l'orientamento dell'avatar: da quando la mira e' uno stato (RMB) il
+    /// busto puo' guardare dove il corpo non guarda, e questa porta anche l'INCLINAZIONE, che
+    /// nessuna clip contiene e che senza un layer procedurale non esisterebbe affatto.
+    /// </summary>
+    public Vector3 AimDirection { get; set; }
+
+    /// <summary>
+    /// Stance di mira attiva. Decide se il set armato full-body e la mira procedurale sono accesi:
+    /// da armati SENZA mira l'arma e' portata rilassata e il corpo cammina come da disarmato.
+    /// </summary>
+    public bool Aiming { get; set; }
+
+    /// <summary>
+    /// Velocita' di rotazione del corpo in rad/s (positiva = verso sinistra), gia' smorzata da chi
+    /// pilota. Alimenta il passo sintetico del turn-in-place.
+    /// </summary>
+    public float TurnRate { get; set; }
+
+    /// <summary>
+    /// Ricostruisce la direzione di mira in coordinate mondo da imbardata e inclinazione replicate.
+    /// Sta qui, e non nei bridge, perche' e' la stessa formula per giocatore e NPC e definisce il
+    /// contratto di <see cref="AimDirection"/>.
+    /// </summary>
+    public static Vector3 AimVector(float yaw, float pitch)
+    {
+        float horizontal = Mathf.Cos(pitch);
+        return new Vector3(
+            Mathf.Sin(yaw) * horizontal,
+            Mathf.Sin(pitch),
+            Mathf.Cos(yaw) * horizontal);
+    }
+
     private AnimationTree _tree = null!;
+    private AimRig? _aimRig;
+    private FootIkRig? _footRig;
+    private WeaponGripRig? _gripRig;
     private Vector2 _smoothedVelocity;
     private float _crouchWeight;
     private float _weaponWeight;
+    private float _stanceWeight;
     private float _runWeight;
     private float _airWeight;
     private string _lastPoseRequest = "";
+    private string _lastFirePoseRequest = "";
     private Vector3 _restPosition;
     private float _landingOffset;
 
@@ -119,6 +183,11 @@ public partial class CharacterAnimator : Node3D
     {
         _tree = GetNode<AnimationTree>("AnimationTree");
         _tree.Active = true;
+
+        // Opzionale: un rig senza layer procedurale continua a funzionare, solo senza mira verticale.
+        _aimRig = GetNodeOrNull<AimRig>("AimRig");
+        _footRig = GetNodeOrNull<FootIkRig>("FootIkRig");
+        _gripRig = GetNodeOrNull<WeaponGripRig>("GripRig");
 
         // Posizione a riposo del rig: l'abbassamento d'atterraggio e' un OFFSET da questa, non un
         // valore assoluto. Il rig sta gia' a Y = -1 sotto Visual (origine ai piedi contro capsula
@@ -171,7 +240,45 @@ public partial class CharacterAnimator : Node3D
         UpdateAir(dt);
         UpdateCrouch(dt);
         UpdateWeapon(dt);
-        UpdateLandingDip(dt);
+        UpdateAimRig();
+        UpdateFootRig();
+        UpdatePelvisOffset(dt);
+    }
+
+    /// <summary>
+    /// Alimenta il layer procedurale. La mira ha effetto solo da armati e a terra: a mezz'aria il
+    /// busto segue la caduta, e torcerlo verso il cursore mentre si vola sarebbe piu' strano
+    /// dell'assenza di mira.
+    /// </summary>
+    private void UpdateAimRig()
+    {
+        if (_aimRig == null)
+            return;
+
+        _aimRig.AimDirection = AimDirection;
+        _aimRig.LocalVelocity = _smoothedVelocity;
+
+        // Contro un muro l'arma si alza in "port arms": inseguire ancora il bersaglio col busto
+        // torcerebbe il torso verso un punto che l'arma non sta piu' guardando.
+        // Il busto insegue la mira SOLO in mira: fuori mira l'arma e' portata rilassata e il
+        // torso appartiene alla locomozione.
+        float clearance = 1f - (_gripRig?.MuzzleBlocked ?? 0f);
+        _aimRig.Weight = Aiming && WeaponPose != null && Grounded ? clearance : 0f;
+
+        // La mano di supporto insegue l'astina solo in mira: nel porto rilassato l'IK, tarato
+        // sulla posa di mira, flipperebbe il gomito sopra la canna.
+        if (_gripRig != null)
+            _gripRig.SupportActive = Aiming;
+    }
+
+    /// Alimenta i piedi a terra. In aria si spegne da solo: non c'e' suolo da assecondare.
+    private void UpdateFootRig()
+    {
+        if (_footRig == null)
+            return;
+
+        _footRig.Grounded = Grounded;
+        _footRig.LocalVelocity = _smoothedVelocity;
     }
 
     /// <summary>
@@ -191,18 +298,39 @@ public partial class CharacterAnimator : Node3D
         // regione coperta dai quattro triangoli di WalkSpace. In diagonale a piena velocita' si avrebbe
         // |x| = |y| = WalkSpeed / sqrt(2), cioe' una somma di 1,41 * WalkSpeed: un punto FUORI dai
         // triangoli, dove il blend space non produce nulla e lo scheletro torna in T-pose.
-        // Tre spazi direzionali, stessa velocita' proiettata sul rombo di ciascuno.
-        _tree.Set(WalkPosition, ClampToDiamond(_smoothedVelocity, WalkSpeed));
-        _tree.Set(RunPosition, ClampToDiamond(_smoothedVelocity, RunSpeed));
-        _tree.Set(CrouchPosition, ClampToDiamond(_smoothedVelocity, CrouchSpeed));
+        //
+        // La stessa velocita' si scrive in TUTTI gli spazi, ognuno proiettato sul proprio rombo:
+        // sono alternativi fra loro, e quello con peso 0 continua comunque ad avanzare (sync) per
+        // non ripartire da un tempo vecchio quando torna in scena.
+        Vector2 blendVelocity = _smoothedVelocity;
+
+        // Passo sintetico del turn-in-place: da fermi in mira, mentre il corpo ruota, le gambe
+        // riproducono lo strafe proporzionale alla rotazione. TurnRate positivo = il corpo gira a
+        // SINISTRA, quindi i piedi fanno passetti a sinistra: X di blend negativa (X = destra).
+        if (Aiming && Grounded && blendVelocity.Length() < 0.5f
+            && Mathf.Abs(TurnRate) > TurnStepThreshold)
+        {
+            float maxStep = WalkSpeed * 0.6f;
+            blendVelocity.X += Mathf.Clamp(-TurnRate * TurnStepScale, -maxStep, maxStep);
+        }
+
+        Vector2 walk = ClampToDiamond(blendVelocity, WalkSpeed);
+        Vector2 run = ClampToDiamond(blendVelocity, RunSpeed);
+
+        _tree.Set(WalkPosition, walk);
+        _tree.Set(RunPosition, run);
+        _tree.Set(ArmedWalkPosition, walk);
+        _tree.Set(ArmedRunPosition, run);
+        _tree.Set(CrouchPosition, ClampToDiamond(blendVelocity, CrouchSpeed));
 
         // Peso della corsa: cresce fra WalkSpeed e RunSpeed, e basta. Non serve piu' il fattore di
-        // "avantezza" che c'era quando l'unica clip di corsa era quella frontale: ora RunSpace ha
+        // "avantezza" che c'era quando l'unica clip di corsa era quella frontale: ora ogni spazio ha
         // tutti e quattro gli assi, quindi correre di lato mostra lo strafe di corsa.
         float speed = _smoothedVelocity.Length();
         float band = Mathf.Max(RunSpeed - WalkSpeed, 0.001f);
         _runWeight = Mathf.Clamp((speed - WalkSpeed) / band, 0f, 1f);
         _tree.Set(RunAmount, _runWeight);
+        _tree.Set(ArmedRunAmount, _runWeight);
     }
 
     /// Proiezione sulla palla L1 di raggio <paramref name="radius"/> (il rombo dei triangoli).
@@ -225,40 +353,89 @@ public partial class CharacterAnimator : Node3D
         _tree.Set(CrouchAmount, _crouchWeight);
     }
 
+    /// <summary>
+    /// Sceglie la STANCE e, dove serve, la posa d'arma sul solo upper body.
+    ///
+    /// Sono due meccanismi distinti e non intercambiabili:
+    ///  - un'arma a DUE MANI cambia come si cammina, quindi accende il set di locomozione armato su
+    ///    tutto il corpo (<c>StanceBlend</c>);
+    ///  - una PISTOLA no: si tiene bassa, le gambe restano quelle disarmate e basta sostituire il
+    ///    busto (<c>WeaponBlend</c>). Quattro clip dedicate sarebbero spese male.
+    ///
+    /// Da ACCOVACCIATI vale sempre il secondo caso, anche col fucile: non esistono clip di crouch
+    /// armato, e il set di stance verrebbe comunque coperto dal layer crouch.
+    /// </summary>
     private void UpdateWeapon(float dt)
     {
         // La posa dell'arma si sceglie PRIMA di alzarne il peso: cambiando arma la transizione
         // avviene mentre il layer e' gia' visibile, senza passare da disarmato.
         bool armed = WeaponPose != null && !string.IsNullOrEmpty(WeaponPose.HoldPose);
+        bool twoHanded = armed && WeaponPose!.IsTwoHanded;
+
         if (armed)
         {
-            string request = WeaponPose!.IsTwoHanded ? "rifle" : "pistol";
+            // La posa dipende da arma E stato di mira: porto rilassato senza RMB, mira con.
+            // I nomi sono gli ingressi del Transition WeaponPose (build_animation_tree.gd).
+            string request = twoHanded
+                ? (Aiming ? "rifle_aim" : "rifle_lowered")
+                : (Aiming ? "pistol_aim" : "pistol");
             if (request != _lastPoseRequest)
             {
                 _tree.Set(WeaponPoseRequest, request);
                 _lastPoseRequest = request;
             }
+
+            // La clip di sparo la dichiara l'ARMA (FirePose = nome dell'ingresso del
+            // Transition FirePose): cosi' la pistola non spara con l'animazione del fucile.
+            // Si imposta al cambio d'arma, PRIMA che il one-shot Fire possa partire.
+            string firePose = WeaponPose!.FirePose;
+            if (!string.IsNullOrEmpty(firePose) && firePose != _lastFirePoseRequest)
+            {
+                _tree.Set(FirePoseRequest, firePose);
+                _lastFirePoseRequest = firePose;
+            }
+        }
+        else
+        {
+            // Da disarmato il Transition resta sull'ultimo ingresso: si azzerano le richieste
+            // memorizzate cosi' al prossimo equipaggiamento vengono rimandate anche se l'arma
+            // e' la stessa di prima.
+            _lastPoseRequest = "";
+            _lastFirePoseRequest = "";
         }
 
-        _weaponWeight = Mathf.Lerp(_weaponWeight, armed ? 1f : 0f, Damp(BlendSpeed, dt));
+        // Stance armata full-body: solo a due mani, solo in piedi e SOLO IN MIRA. Fuori mira
+        // l'arma e' portata rilassata e si cammina con la locomozione disarmata: e' l'overlay
+        // upper-body a mostrare il porto, come per la pistola.
+        float stance = twoHanded && Aiming ? 1f - _crouchWeight : 0f;
+        _stanceWeight = Mathf.Lerp(_stanceWeight, stance, Damp(BlendSpeed, dt));
+        _tree.Set(StanceAmount, _stanceWeight);
+
+        // Override upper-body: da armati e' sempre acceso. La posa (porto rilassato o mira,
+        // fucile o pistola) la sceglie il Transition qui sopra; sul set armato full-body
+        // l'overlay ribadisce la stessa famiglia di pose, quindi non confligge.
+        float overlay = armed ? 1f : 0f;
+        _weaponWeight = Mathf.Lerp(_weaponWeight, overlay, Damp(BlendSpeed, dt));
         _tree.Set(WeaponAmount, _weaponWeight);
     }
 
-    /// Riassorbe l'abbassamento d'atterraggio e lo applica come offset del rig.
-    private void UpdateLandingDip(float dt)
+    /// <summary>
+    /// Posizione verticale del rig: un solo scrittore per due contributi.
+    ///
+    /// L'ammortizzazione d'atterraggio e l'abbassamento dei piedi a terra vogliono entrambi
+    /// abbassare il bacino. Tenerli separati significherebbe due nodi che scrivono la stessa
+    /// <c>Position</c> nello stesso frame, e chi arriva secondo cancella il primo — un conflitto che
+    /// non da' errori e si manifesta come "l'IK dei piedi ogni tanto non funziona".
+    /// Si sommano: l'atterraggio e' un impulso che rientra, i piedi un offset continuo.
+    /// </summary>
+    private void UpdatePelvisOffset(float dt)
     {
-        if (_landingOffset <= 0.0001f)
-        {
-            if (_landingOffset != 0f)
-            {
-                _landingOffset = 0f;
-                Position = _restPosition;
-            }
-            return;
-        }
+        _landingOffset = _landingOffset <= 0.0001f
+            ? 0f
+            : Mathf.Lerp(_landingOffset, 0f, Damp(LandingRecoverySpeed, dt));
 
-        _landingOffset = Mathf.Lerp(_landingOffset, 0f, Damp(LandingRecoverySpeed, dt));
-        Position = _restPosition - new Vector3(0f, _landingOffset, 0f);
+        float drop = _landingOffset + (_footRig?.PelvisDrop ?? 0f);
+        Position = _restPosition - new Vector3(0f, drop, 0f);
     }
 
     // ====================================================================================
@@ -289,15 +466,18 @@ public partial class CharacterAnimator : Node3D
     /// <summary>
     /// Atterraggio, con la velocita' d'impatto in m/s.
     ///
-    /// Due regimi, non uno: oltre <see cref="HardLandingSpeed"/> parte la clip di atterraggio duro,
-    /// sotto resta la sola ammortizzazione procedurale del bacino. Sono ALTERNATIVI apposta — la
-    /// clip contiene gia' la sua flessione, e sommarci quella procedurale farebbe sprofondare il
-    /// personaggio nel pavimento.
+    /// TRE regimi alternativi, mai sommati (la clip contiene gia' la propria flessione, e
+    /// sommarci quella procedurale farebbe sprofondare il personaggio nel pavimento):
+    ///  - oltre <see cref="HardLandingSpeed"/>: clip di atterraggio duro;
+    ///  - fra <see cref="SoftLandingSpeed"/> e Hard: clip di atterraggio morbido (procedurale);
+    ///  - sotto: sola ammortizzazione del bacino — un salto normale non merita una clip.
+    /// La posa la sceglie il Transition LandPose, impostato PRIMA del one-shot.
     /// </summary>
     public void TriggerLand(float impactSpeed)
     {
-        if (impactSpeed >= HardLandingSpeed)
+        if (impactSpeed >= SoftLandingSpeed)
         {
+            _tree.Set(LandPoseRequest, impactSpeed >= HardLandingSpeed ? "land_hard" : "land_soft");
             Request(LandRequest);
             return;
         }

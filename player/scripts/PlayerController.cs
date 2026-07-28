@@ -30,33 +30,8 @@ public enum PlayerMode
 /// su un'imbarcazione si replichi in coordinate LOCALI allo scafo. Chi ha bisogno della posizione
 /// autoritativa in coordinate mondo usa <see cref="ResolvedSyncPosition"/>.
 /// </summary>
-public partial class PlayerController : CharacterBody3D
+public partial class PlayerController : CharacterMotor
 {
-    /// Frazione dell'altezza in piedi a cui si riduce la capsula da accovacciati.
-    private const float CrouchHeightFactor = 0.6f;
-
-    [Export] public float WalkSpeed { get; set; } = 4.0f;
-    [Export] public float RunSpeed { get; set; } = 7.0f;
-    [Export] public float CrouchSpeed { get; set; } = 2.0f;
-    [Export] public float Gravity { get; set; } = 20.0f;
-
-    /// Velocita' verticale impressa dal salto, in m/s.
-    [Export] public float JumpVelocity { get; set; } = 6.0f;
-
-    /// <summary>
-    /// Velocita' con cui l'avatar ruota verso la direzione voluta. Serve perche' da armato
-    /// l'orientamento insegue il cursore, che puo' saltare da una parte all'altra dello schermo in un
-    /// frame: senza smorzamento l'avatar scatterebbe.
-    /// </summary>
-    [Export] public float TurnSpeed { get; set; } = 14.0f;
-
-    /// <summary>
-    /// Velocita' d'impatto oltre la quale l'atterraggio e' "duro". Non ha alcun effetto sul movimento:
-    /// la legge <see cref="PlayerAnimationBridge"/> e la gira al <c>CharacterAnimator</c>, che ci scala
-    /// l'ammortizzazione procedurale del bacino.
-    /// </summary>
-    [Export] public float HardLandingSpeed { get; set; } = 9.0f;
-
     /// Fattore di interpolazione per gli avatar remoti (piu' alto = piu' reattivo, meno morbido).
     [Export] public float InterpolationSpeed { get; set; } = 14.0f;
 
@@ -67,64 +42,22 @@ public partial class PlayerController : CharacterBody3D
     /// Quanto sotto la superficie dell'acqua si viene riportati al molo (nessun nuoto in questa fase).
     [Export] public float WaterFallbackDepth { get; set; } = 2.0f;
 
-    // Stato replicato dal MultiplayerSynchronizer (vedi Player.tscn).
-
-    /// Posizione, espressa nel riferimento indicato da <see cref="SyncAnchorId"/>.
-    [Export] public Vector3 SyncPosition { get; set; }
-
-    /// Imbardata dell'avatar, sempre in coordinate MONDO.
-    [Export] public float SyncFacing { get; set; }
+    // Stato replicato specifico del giocatore. Il resto (posizione, imbardata, velocita' locale,
+    // crouch, contatto a terra, pitch di mira) sta in CharacterMotor, condiviso con gli NPC.
 
     /// <summary>
-    /// Riferimento in cui e' espressa <see cref="SyncPosition"/>: 0 = mondo, altrimenti il
-    /// <see cref="BoatController.VehicleId"/> del veicolo su cui si sta.
+    /// Riferimento in cui e' espressa <see cref="CharacterMotor.SyncPosition"/>: 0 = mondo,
+    /// altrimenti il <see cref="BoatController.VehicleId"/> del veicolo su cui si sta.
     ///
-    /// Sta nello STESSO <c>SceneReplicationConfig</c> di <see cref="SyncPosition"/> perche' i due
-    /// valori devono viaggiare nello stesso pacchetto: se arrivassero separati ci sarebbe un frame in
-    /// cui l'ancora e' cambiata e la posizione no, cioe' un teletrasporto a ogni imbarco/sbarco.
+    /// Sta nello STESSO <c>SceneReplicationConfig</c> della posizione perche' i due valori devono
+    /// viaggiare nello stesso pacchetto: se arrivassero separati ci sarebbe un frame in cui l'ancora
+    /// e' cambiata e la posizione no, cioe' un teletrasporto a ogni imbarco/sbarco.
     /// </summary>
     [Export] public int SyncAnchorId { get; set; }
-
-    /// <summary>
-    /// Velocita' orizzontale espressa nel riferimento dell'AVATAR: X = destra, Y = avanti, in m/s.
-    ///
-    /// E' locale e non in coordinate mondo perche' e' esattamente cio' che serve al
-    /// <c>BlendSpace2D</c> della locomozione: se fosse in mondo, ogni peer dovrebbe riproiettarla
-    /// usando <see cref="SyncFacing"/>, e con i due valori che arrivano in pacchetti diversi ci
-    /// sarebbe un frame in cui direzione e orientamento non corrispondono. Replicando gia' la
-    /// grandezza finale il problema non esiste.
-    /// </summary>
-    [Export] public Vector2 SyncLocalVelocity { get; set; }
-
-    /// Stato replicato: accovacciato. Pilota il peso del layer crouch sugli altri peer.
-    [Export] public bool SyncCrouching { get; set; }
-
-    /// Stato replicato: a terra. Distingue locomozione da caduta sugli altri peer.
-    [Export] public bool SyncGrounded { get; set; } = true;
-
-    /// <summary>
-    /// Salto: evento estetico, non uno stato. Emesso su OGNI peer da <see cref="BroadcastJump"/>,
-    /// cosi' il layer one-shot lo intercetta senza dover confrontare stati fra un frame e l'altro.
-    /// </summary>
-    [Signal]
-    public delegate void JumpedEventHandler();
-
-    /// Atterraggio, con la velocita' d'impatto in m/s: sceglie fra atterraggio morbido e duro.
-    [Signal]
-    public delegate void LandedEventHandler(float impactSpeed);
 
     private PlayerInput _input = null!;
     private WeaponController? _weapon;
     private WeaponInput? _weaponInput;
-    private CollisionShape3D _collision = null!;
-    private ShapeCast3D _headroom = null!;
-    private CapsuleShape3D _capsule = null!;
-
-    private float _standHeight;
-    private float _crouchBlend;
-    private bool _wasGrounded = true;
-    private float _fallSpeed;
-    private Node3D _visual = null!;
     private RayCast3D _groundProbe = null!;
     private WaterVolume? _water;
     private int _ownerPeerId;
@@ -133,6 +66,9 @@ public partial class PlayerController : CharacterBody3D
     private BoatController? _anchor;
     private Transform3D _lastAnchorFrame;
     private bool _hasAnchorFrame;
+
+    /// Tempo residuo del latch di mira dopo un hip-fire (vedi CharacterMotor.HipFireAimSeconds).
+    private float _hipFireTimer;
 
     // --- Su ogni peer: derivato dallo stato replicato della barca --------------------------
     private BoatController? _drivingBoat;
@@ -182,22 +118,24 @@ public partial class PlayerController : CharacterBody3D
 
     public override void _Ready()
     {
+        // Capsula, crouch e stato comune li prepara il motore condiviso.
+        base._Ready();
+
         _input = GetNode<PlayerInput>("Input");
-        _visual = GetNode<Node3D>("Visual");
         _groundProbe = GetNode<RayCast3D>("GroundProbe");
         _water = WaterVolume.Find(this);
 
-        // Opzionali: un avatar puo' esistere senza armi (NPC futuri), il movimento non deve dipenderne.
+        // Opzionali: un avatar puo' esistere senza armi, il movimento non deve dipenderne.
         _weapon = GetNodeOrNull<WeaponController>("Weapon");
         _weaponInput = GetNodeOrNull<WeaponInput>("WeaponInput");
 
-        _collision = GetNode<CollisionShape3D>("CollisionShape3D");
-        _headroom = GetNode<ShapeCast3D>("Headroom");
-        _capsule = (CapsuleShape3D)_collision.Shape;
-        _standHeight = _capsule.Height;
+        // Hip-fire: un colpo sparato senza mirare alza comunque l'arma per un attimo, cosi' il
+        // gesto si legge. Ci si aggancia allo sparo gia' risolto invece di rileggere l'input di
+        // fuoco: un solo punto di verita' su "ho sparato davvero".
+        if (_weapon != null)
+            _weapon.ShotResolved += OnShotResolved;
 
         // Evita che gli avatar remoti "saltino" dall'origine al primo update.
-        SyncPosition = GlobalPosition;
         SyncAnchorId = 0;
     }
 
@@ -250,45 +188,15 @@ public partial class PlayerController : CharacterBody3D
         if (worldDir.LengthSquared() > 1f)
             worldDir = worldDir.Normalized();
 
-        bool grounded = IsOnFloor();
-        UpdateCrouch(delta, grounded);
+        // Accelerazione, pendenza, gradini, salto, gravita' e atterraggio: tutto nel motore condiviso.
+        StepMotion(worldDir, SelectSpeed(), _input.ReadJumpPressed(), _input.ReadCrouch(), delta);
 
-        Vector3 velocity = Velocity;
-        float speed = SelectSpeed();
-        velocity.X = worldDir.X * speed;
-        velocity.Z = worldDir.Z * speed;
-
-        if (grounded)
-        {
-            // Il salto va impresso PRIMA di MoveAndSlide e dopo l'azzeramento, altrimenti l'azzeramento
-            // di questo stesso frame lo cancellerebbe: a terra IsOnFloor() e' ancora vero quando si salta.
-            velocity.Y = 0f;
-            if (!SyncCrouching && _input.ReadJumpPressed())
-            {
-                velocity.Y = JumpVelocity;
-                Rpc(MethodName.BroadcastJump);
-            }
-        }
-        else
-        {
-            velocity.Y -= Gravity * (float)delta;
-        }
-
-        // Velocita' di caduta al momento del contatto: campionata prima di MoveAndSlide, perche' dopo
-        // la collisione l'ha gia' azzerata.
-        if (!grounded)
-            _fallSpeed = Mathf.Max(_fallSpeed, -velocity.Y);
-
-        Velocity = velocity;
-        MoveAndSlide();
-
-        DetectLanding();
         RefreshAnchor();
         CheckWaterFallback();
 
         // Pubblica lo stato che verra' replicato agli altri peer.
         PublishState();
-        UpdateFacing(worldDir, delta);
+        UpdateAiming(worldDir, delta);
         PublishLocomotionState();
     }
 
@@ -306,86 +214,70 @@ public partial class PlayerController : CharacterBody3D
     }
 
     /// <summary>
-    /// Aggiorna l'accovacciamento e la capsula di collisione.
+    /// Orientamento e mira dell'avatar, in TRE stati.
     ///
-    /// Rialzarsi non e' garantito: se sopra la testa non c'e' spazio (<c>Headroom</c>) si resta giu'
-    /// anche lasciando il tasto, altrimenti si finirebbe incastrati dentro il soffitto. In aria non si
-    /// cambia postura, per non alterare la capsula a mezz'aria.
-    /// </summary>
-    private void UpdateCrouch(double delta, bool grounded)
-    {
-        bool wants = grounded && _input.ReadCrouch();
-
-        if (!wants && SyncCrouching)
-        {
-            _headroom.ForceShapecastUpdate();
-            if (_headroom.IsColliding())
-                wants = true;
-        }
-
-        SyncCrouching = wants;
-
-        // La capsula si accorcia dall'ALTO: il fondo resta dov'e', cosi' l'avatar non sprofonda ne'
-        // viene espulso dal pavimento quando cambia postura.
-        _crouchBlend = Mathf.MoveToward(_crouchBlend, SyncCrouching ? 1f : 0f, (float)delta * 6f);
-        float height = Mathf.Lerp(_standHeight, _standHeight * CrouchHeightFactor, _crouchBlend);
-
-        _capsule.Height = height;
-        _collision.Position = new Vector3(0f, (height - _standHeight) * 0.5f, 0f);
-    }
-
-    /// Rileva il passaggio aria -> terra ed emette l'evento di atterraggio una sola volta.
-    private void DetectLanding()
-    {
-        bool grounded = IsOnFloor();
-
-        if (grounded && !_wasGrounded)
-            Rpc(MethodName.BroadcastLand, _fallSpeed);
-
-        if (grounded)
-            _fallSpeed = 0f;
-
-        _wasGrounded = grounded;
-        SyncGrounded = grounded;
-    }
-
-    /// <summary>
-    /// Orientamento dell'avatar.
+    /// IN MIRA (RMB, o latch dopo un hip-fire): la mira la calcola il cursore e la insegue il
+    /// BUSTO (SpineAimModifier via SyncAimYaw/SyncAimPitch). Il corpo la segue solo quando serve:
+    /// sempre in movimento (e' cio' che attiva lo strafe armato, perche' la velocita' locale si
+    /// proietta su SyncFacing), con zona morta e isteresi da fermi (turn-in-place,
+    /// <see cref="CharacterMotor.PlanAimFacing"/>). Mirare "dietro" non e' un caso speciale: lo
+    /// scarto supera la soglia e il corpo recupera da solo per la via piu' corta.
     ///
-    /// Da ARMATO guarda il punto di mira e si muove di lato: e' quello che rende sensato un
-    /// BlendSpace2D a otto direzioni, perche' altrimenti si camminerebbe sempre in avanti e meta'
-    /// delle clip non verrebbe mai usata. Da DISARMATO guarda dove va, che e' piu' naturale.
+    /// ARMATO SENZA MIRA e DISARMATO: il corpo guarda dove va, il pitch rientra smorzato e
+    /// SyncAimYaw resta agganciato a SyncFacing, cosi' sui peer remoti il busto non punta mai a un
+    /// residuo stantio.
     ///
     /// Il punto di mira si legge da <see cref="WeaponInput.AimPoint"/>, che lo ricalcola gia' ogni
     /// frame per il tiro: non si duplica <see cref="AimResolver"/>.
     /// </summary>
-    private void UpdateFacing(Vector3 worldDir, double delta)
+    /// Latch dell'hip-fire: parte solo sul peer proprietario, che e' l'unico a leggere l'input.
+    private void OnShotResolved(Vector3 origin, Vector3 end, bool hit, bool isLocalShooter)
     {
-        float target = SyncFacing;
-        bool armed = _weapon is { IsArmed: true } && _weaponInput != null;
-
-        if (armed)
-        {
-            Vector3 toAim = _weaponInput!.AimPoint - GlobalPosition;
-            toAim.Y = 0f;
-            if (toAim.LengthSquared() > 0.0001f)
-                target = Mathf.Atan2(toAim.X, toAim.Z);
-        }
-        else if (worldDir.LengthSquared() > 0.001f)
-        {
-            target = Mathf.Atan2(worldDir.X, worldDir.Z);
-        }
-
-        SyncFacing = Mathf.LerpAngle(SyncFacing, target, Mathf.Clamp((float)delta * TurnSpeed, 0f, 1f));
-        _visual.Rotation = new Vector3(0f, SyncFacing, 0f);
+        if (isLocalShooter)
+            _hipFireTimer = HipFireAimSeconds;
     }
 
-    /// Proietta la velocita' nel riferimento dell'avatar (vedi <see cref="SyncLocalVelocity"/>).
-    private void PublishLocomotionState()
+    private void UpdateAiming(Vector3 worldDir, double delta)
     {
-        Vector3 planar = new(Velocity.X, 0f, Velocity.Z);
-        Vector3 local = planar.Rotated(Vector3.Up, -SyncFacing);
-        SyncLocalVelocity = new Vector2(local.X, local.Z);
+        bool armed = _weapon is { IsArmed: true } && _weaponInput != null;
+
+        if (_hipFireTimer > 0f)
+            _hipFireTimer -= (float)delta;
+        bool aiming = armed && (_input.ReadAim() || _hipFireTimer > 0f);
+        SyncAiming = aiming;
+
+        bool moving = worldDir.LengthSquared() > 0.001f;
+        float target = SyncFacing;
+
+        if (aiming)
+        {
+            // L'origine e' la SPALLA, non i piedi: il pitch di mira misurato dal suolo sarebbe
+            // sempre inclinato verso l'alto anche mirando dritto davanti a se'.
+            Vector3 muzzle = GlobalPosition + Vector3.Up * WeaponController.MuzzleHeight;
+            Vector3 toAim = _weaponInput!.AimPoint - muzzle;
+
+            Vector3 flat = new(toAim.X, 0f, toAim.Z);
+            if (flat.LengthSquared() > 0.0001f)
+            {
+                SyncAimYaw = Mathf.Atan2(flat.X, flat.Z);
+                SyncAimPitch = Mathf.Atan2(toAim.Y, flat.Length());
+            }
+
+            target = PlanAimFacing(SyncFacing, SyncAimYaw, moving);
+        }
+        else
+        {
+            SyncAimPitch = Mathf.Lerp(SyncAimPitch, 0f, Damp(8f, (float)delta));
+            if (moving)
+                target = Mathf.Atan2(worldDir.X, worldDir.Z);
+        }
+
+        UpdateFacing(target, delta);
+
+        // Fuori mira il busto segue il corpo per definizione: si riallinea DOPO UpdateFacing,
+        // cosi' i due angoli replicati non divergono mai di un frame.
+        if (!aiming)
+            SyncAimYaw = SyncFacing;
     }
 
     /// <summary>
@@ -401,6 +293,12 @@ public partial class PlayerController : CharacterBody3D
     [Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = true,
         TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     public void BroadcastLand(float impactSpeed) => EmitSignal(SignalName.Landed, impactSpeed);
+
+    // Il motore condiviso non conosce la rete: segnala l'evento e basta. Qui lo si trasmette.
+    protected override void OnJumpTriggered() => Rpc(MethodName.BroadcastJump);
+
+    protected override void OnLandTriggered(float impactSpeed) =>
+        Rpc(MethodName.BroadcastLand, impactSpeed);
 
     /// <summary>
     /// Al timone: nessuna gravita' e nessun <c>MoveAndSlide</c>, quindi il pilota non produce alcuna
@@ -420,7 +318,7 @@ public partial class PlayerController : CharacterBody3D
         SyncAnchorId = boat.VehicleId;
         SyncPosition = boat.HelmLocalPosition;
         SyncFacing = boat.HeadingYaw;
-        _visual.Rotation = new Vector3(0f, SyncFacing, 0f);
+        Visual.Rotation = new Vector3(0f, SyncFacing, 0f);
     }
 
     /// <summary>
@@ -435,7 +333,8 @@ public partial class PlayerController : CharacterBody3D
     /// INVARIANTE FRAGILE: la platform velocity dell'engine FUNZIONA con Jolt e l'AnimatableBody3D del
     /// ponte (verificato: senza disattivarla il giocatore viaggiava al doppio della velocita' della
     /// barca, perche' i due trasporti si sommavano). E' disattivata in <c>Player.tscn</c> con
-    /// <c>platform_floor_layers = 4294967279</c>, cioe' tutti i layer TRANNE il 5 "vehicles".
+    /// <c>platform_floor_layers = 4294967263</c>, cioe' tutti i layer TRANNE il 6 "vehicle_deck" —
+    /// il ponte calpestabile, che e' l'<c>AnimatableBody3D</c> su cui si cammina davvero.
     /// Se quel valore torna al default, il trasporto si applica due volte.
     /// </summary>
     private void CarryWithAnchor()
@@ -544,7 +443,6 @@ public partial class PlayerController : CharacterBody3D
         BoatController? anchor = VehicleRegistry.Find(this, SyncAnchorId);
         GlobalPosition = anchor != null ? anchor.GlobalTransform * _remoteLocal : _remoteLocal;
 
-        float yaw = Mathf.LerpAngle(_visual.Rotation.Y, SyncFacing, t);
-        _visual.Rotation = new Vector3(0f, yaw, 0f);
+        ApplyRemoteFacing(InterpolationSpeed, delta);
     }
 }

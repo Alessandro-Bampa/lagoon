@@ -24,6 +24,10 @@ public partial class PlayerAnimationBridge : Node
     private string _lastHeldItemId = "";
     private WeaponAnimationSet? _cachedPose;
 
+    /// Stato per la derivata smorzata di <c>SyncFacing</c> (velocita' di rotazione del corpo).
+    private float _lastFacing;
+    private float _smoothedTurnRate;
+
     public override void _Ready()
     {
         _controller = GetParent<PlayerController>();
@@ -66,6 +70,31 @@ public partial class PlayerAnimationBridge : Node
         _animator.Crouching = _controller.SyncCrouching;
         _animator.Grounded = _controller.SyncGrounded;
         _animator.WeaponPose = ResolveWeaponPose();
+        _animator.Aiming = _controller.SyncAiming;
+
+        // La direzione di mira si ricostruisce dagli angoli REPLICATI (SyncAimYaw + SyncAimPitch),
+        // non da WeaponInput.AimPoint che esiste solo sul peer proprietario: cosi' il bridge gira
+        // identico sull'avatar locale e su quelli remoti. SyncAimYaw e' distinto da SyncFacing
+        // perche' in mira il busto puo' guardare dove il corpo non guarda.
+        _animator.AimDirection = CharacterAnimator.AimVector(
+            _controller.SyncAimYaw, _controller.SyncAimPitch);
+
+        _animator.TurnRate = UpdateTurnRate((float)delta);
+    }
+
+    /// <summary>
+    /// Velocita' di rotazione del corpo in rad/s, derivata da <c>SyncFacing</c> e smorzata. Si
+    /// deriva da stato replicato invece di leggerla dal controller cosi' il valore e' identico su
+    /// ogni peer: alimenta il passo sintetico del turn-in-place.
+    /// </summary>
+    private float UpdateTurnRate(float dt)
+    {
+        float facing = _controller.SyncFacing;
+        float rate = dt > 0.0001f ? Mathf.AngleDifference(_lastFacing, facing) / dt : 0f;
+        _lastFacing = facing;
+
+        _smoothedTurnRate = Mathf.Lerp(_smoothedTurnRate, rate, 1f - Mathf.Exp(-10f * dt));
+        return _smoothedTurnRate;
     }
 
     /// <summary>

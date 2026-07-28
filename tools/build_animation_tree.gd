@@ -27,6 +27,10 @@ const CROUCH_SPEED := 2.0
 # non c'entra: quella la sovrappone il layer arma sul solo upper body.
 const IDLE_CLIP := "idle_neutral"
 
+# Centro degli spazi ARMATI: la posa "reggi fucile" da fermi. Non e' la stessa cosa
+# della idle neutra — fermarsi col fucile in mano non vuol dire abbassarlo.
+const ARMED_IDLE_CLIP := "rifle_idle"
+
 # Maschera upper-body: busto, collo, testa e braccia. E' l'insieme di bone che la
 # posa dell'arma SOSTITUISCE, lasciando le gambe alla locomozione. Le clavicole
 # ci stanno dentro: senza, la spalla resterebbe alla posa di corsa e il braccio
@@ -83,7 +87,7 @@ func _apply_upper_body_filter(node: AnimationNode) -> void:
 func _initialize() -> void:
 	var tree := AnimationNodeBlendTree.new()
 
-	# --- Layer 1: locomozione ------------------------------------------------
+	# --- Layer 1: locomozione DISARMATA --------------------------------------
 	# Assi in m/s nel riferimento dell'AVATAR: X = destra, Y = avanti. Sono le stesse
 	# unita' di PlayerController.SyncLocalVelocity, quindi il parametro si scrive senza
 	# conversioni.
@@ -91,8 +95,8 @@ func _initialize() -> void:
 	# Camminata e corsa sono DUE spazi identici a raggio diverso, non un solo spazio con
 	# la corsa come punto in piu': quel punto sarebbe collineare con idle e walk_fwd, ed
 	# e' esattamente cio' che genera triangolazioni degeneri.
-	tree.add_node("WalkSpace", _directional_space(IDLE_CLIP, "walk", WALK_SPEED), Vector2(-880, -80))
-	tree.add_node("RunSpace", _directional_space(IDLE_CLIP, "run", RUN_SPEED), Vector2(-880, 160))
+	tree.add_node("WalkSpace", _directional_space(IDLE_CLIP, "walk", WALK_SPEED), Vector2(-1140, -80))
+	tree.add_node("RunSpace", _directional_space(IDLE_CLIP, "run", RUN_SPEED), Vector2(-1140, 160))
 
 	# sync = true: l'ingresso con peso 0 continua ad avanzare. Senza, passando da
 	# camminata a corsa quella ferma ripartirebbe da un tempo vecchio e i piedi
@@ -100,7 +104,31 @@ func _initialize() -> void:
 	# diverse, quindi un breve disallineamento del passo nel crossfade resta.
 	var move := AnimationNodeBlend2.new()
 	move.sync = true
-	tree.add_node("MoveBlend", move, Vector2(-620, 20))
+	tree.add_node("MoveBlend", move, Vector2(-880, 20))
+
+	# --- Layer 1b: locomozione ARMATA (stance a due mani) --------------------
+	# Set completo e separato, non un override del solo upper body sopra le clip
+	# disarmate. Il motivo e' che l'override non poteva funzionare: la posa "reggi
+	# fucile" e' authored su un bacino neutro, ma le clip di strafe il bacino lo ruotano,
+	# quindi il torso restava fermo su gambe che strafavano e l'arma puntava altrove. Un
+	# set di stance e' come lo risolvono gli sparatutto veri.
+	#
+	# Vale solo per le armi a DUE MANI. La pistola resta sul set disarmato piu' la posa
+	# upper-body: per un'arma tenuta bassa e' corretto e costa zero clip.
+	tree.add_node("RifleWalkSpace",
+		_directional_space(ARMED_IDLE_CLIP, "rifle_walk", WALK_SPEED), Vector2(-1140, 640))
+	tree.add_node("RifleRunSpace",
+		_directional_space(ARMED_IDLE_CLIP, "rifle_run", RUN_SPEED), Vector2(-1140, 880))
+
+	var armed_move := AnimationNodeBlend2.new()
+	armed_move.sync = true
+	tree.add_node("ArmedMoveBlend", armed_move, Vector2(-880, 760))
+
+	# Selettore di stance, su TUTTO il corpo: e' la differenza con l'albero precedente,
+	# dove il layer arma era filtrato sull'upper body.
+	var stance := AnimationNodeBlend2.new()
+	stance.sync = true
+	tree.add_node("StanceBlend", stance, Vector2(-620, 200))
 
 	# --- Layer 2: crouch -----------------------------------------------------
 	# Anche il crouch e' direzionale a 4 assi, con le clip prese TUTTE dallo stesso set
@@ -123,24 +151,40 @@ func _initialize() -> void:
 	tree.add_node("FallClip", _anim("fall_idle"), Vector2(-620, 620))
 
 	# --- Layer 3: posa dell'arma (upper-body) --------------------------------
-	# Transition e non BlendSpace: fra "reggi fucile" e "reggi pistola" non esiste
-	# una via di mezzo sensata da interpolare, si passa dall'una all'altra.
+	# Transition e non BlendSpace: fra le pose d'arma non esiste una via di mezzo
+	# sensata da interpolare, si passa dall'una all'altra (xfade 0.15).
+	#
+	# QUATTRO pose, due per famiglia: porto rilassato e mira. La mira e' uno STATO
+	# (RMB), non una conseguenza dell'essere armati: e' CharacterAnimator a chiedere
+	# la posa giusta da Aiming. Le pose *_aim_* e rifle_lowered_idle sono clip
+	# PROCEDURALI (tools/blender/build_procedural_clips.py), non Mixamo.
 	var pose := AnimationNodeTransition.new()
-	pose.input_count = 2
-	pose.set_input_name(0, "rifle")
-	pose.set_input_name(1, "pistol")
+	pose.input_count = 4
+	pose.set_input_name(0, "rifle_lowered")
+	pose.set_input_name(1, "rifle_aim")
+	pose.set_input_name(2, "pistol")
+	pose.set_input_name(3, "pistol_aim")
 	pose.xfade_time = 0.15
 	tree.add_node("WeaponPose", pose, Vector2(-620, 500))
-	tree.add_node("RifleIdle", _anim("rifle_idle"), Vector2(-880, 480))
-	tree.add_node("PistolIdle", _anim("pistol_idle"), Vector2(-880, 580))
+	tree.add_node("RifleLowered", _anim("rifle_lowered_idle"), Vector2(-880, 460))
+	tree.add_node("RifleAim", _anim("rifle_aim_idle"), Vector2(-880, 530))
+	tree.add_node("PistolIdle", _anim("pistol_idle"), Vector2(-880, 600))
+	tree.add_node("PistolAim", _anim("pistol_aim_idle"), Vector2(-880, 670))
 
-	# Blend2 FILTRATO, non Add2: senza clip-delta un additivo sommerebbe due pose
-	# assolute e raddoppierebbe le trasformazioni. Qui la posa dell'arma
-	# SOSTITUISCE l'upper body e lascia intatte le gambe.
+	# Posa d'arma sul solo upper body. NON serve piu' al fucile, che ha il suo set di
+	# stance completo: resta per i due casi che quel set non copre.
+	#   - la PISTOLA, che si tiene bassa e per cui una locomozione dedicata sarebbe
+	#     spesa male (quattro clip per un'arma che non cambia come si cammina);
+	#   - il CROUCH armato, che riusa le clip di crouch disarmate.
+	# Il peso lo calcola CharacterAnimator come "armato E (pistola OPPURE accovacciato)".
 	#
-	# sync = true e' l'invariante "impugnare un'arma non ferma le gambe": da armato
-	# il peso di questo nodo e' 1, quindi l'ingresso 0 (la locomozione) ha peso 0 pur
-	# restando VISIBILE sulle gambe, che il filtro non copre.
+	# Blend2 FILTRATO, non Add2: senza clip-delta un additivo sommerebbe due pose
+	# assolute e raddoppierebbe le trasformazioni. Qui la posa dell'arma SOSTITUISCE
+	# l'upper body e lascia intatte le gambe.
+	#
+	# sync = true e' l'invariante "impugnare un'arma non ferma le gambe": col peso a 1
+	# l'ingresso 0 (la locomozione) ha peso 0 pur restando VISIBILE sulle gambe, che il
+	# filtro non copre.
 	var weapon_blend := AnimationNodeBlend2.new()
 	weapon_blend.sync = true
 	_apply_upper_body_filter(weapon_blend)
@@ -157,7 +201,19 @@ func _initialize() -> void:
 	fire.sync = true
 	_apply_upper_body_filter(fire)
 	tree.add_node("Fire", fire, Vector2(140, 120))
-	tree.add_node("FireClip", _anim("rifle_fire"), Vector2(-120, 360))
+
+	# La clip di sparo la sceglie l'ARMA (WeaponAnimationSet.FirePose), non l'albero:
+	# prima era cablata rifle_fire e la pistola sparava con l'animazione del fucile.
+	# I nomi degli ingressi SONO i nomi delle clip, cosi' il .tres si mappa diretto.
+	# xfade 0: la richiesta arriva al cambio d'arma, mai a meta' colpo.
+	var fire_pose := AnimationNodeTransition.new()
+	fire_pose.input_count = 2
+	fire_pose.set_input_name(0, "rifle_fire")
+	fire_pose.set_input_name(1, "pistol_fire")
+	fire_pose.xfade_time = 0.0
+	tree.add_node("FirePose", fire_pose, Vector2(-120, 360))
+	tree.add_node("RifleFireClip", _anim("rifle_fire"), Vector2(-380, 340))
+	tree.add_node("PistolFireClip", _anim("pistol_fire"), Vector2(-380, 410))
 
 	# Il salto invece coinvolge tutto il corpo: nessun filtro.
 	#
@@ -174,34 +230,54 @@ func _initialize() -> void:
 	tree.add_node("JumpScale", AnimationNodeTimeScale.new(), Vector2(140, 380))
 	tree.add_node("JumpClip", _anim("jump"), Vector2(-120, 380))
 
-	# Atterraggio DURO: one-shot su tutto il corpo, innescato solo oltre
-	# HardLandingSpeed. Sotto quella soglia non parte nessuna clip e resta la sola
-	# ammortizzazione procedurale del bacino, che per un salto normale basta e avanza.
+	# Atterraggio: one-shot su tutto il corpo, a TRE regimi decisi da CharacterAnimator.
+	# Oltre HardLandingSpeed parte land_hard; fra SoftLandingSpeed e Hard parte
+	# land_soft (clip procedurale); sotto non parte nessuna clip e resta la sola
+	# ammortizzazione del bacino. Il selettore e' un Transition con xfade 0: la
+	# richiesta arriva PRIMA del one-shot, mai a clip in corso.
 	var land := AnimationNodeOneShot.new()
 	land.fadein_time = 0.05
 	land.fadeout_time = 0.25
 	land.mix_mode = AnimationNodeOneShot.MIX_MODE_BLEND
 	tree.add_node("Land", land, Vector2(660, 120))
-	tree.add_node("LandClip", _anim("land_hard"), Vector2(400, 380))
+
+	var land_pose := AnimationNodeTransition.new()
+	land_pose.input_count = 2
+	land_pose.set_input_name(0, "land_hard")
+	land_pose.set_input_name(1, "land_soft")
+	land_pose.xfade_time = 0.0
+	tree.add_node("LandPose", land_pose, Vector2(400, 380))
+	tree.add_node("LandHardClip", _anim("land_hard"), Vector2(140, 360))
+	tree.add_node("LandSoftClip", _anim("land_soft"), Vector2(140, 430))
 
 	# --- Connessioni ---------------------------------------------------------
 	tree.connect_node("MoveBlend", 0, "WalkSpace")
 	tree.connect_node("MoveBlend", 1, "RunSpace")
-	tree.connect_node("CrouchBlend", 0, "MoveBlend")
+	tree.connect_node("ArmedMoveBlend", 0, "RifleWalkSpace")
+	tree.connect_node("ArmedMoveBlend", 1, "RifleRunSpace")
+	tree.connect_node("StanceBlend", 0, "MoveBlend")
+	tree.connect_node("StanceBlend", 1, "ArmedMoveBlend")
+	tree.connect_node("CrouchBlend", 0, "StanceBlend")
 	tree.connect_node("CrouchBlend", 1, "CrouchSpace")
 	tree.connect_node("AirBlend", 0, "CrouchBlend")
 	tree.connect_node("AirBlend", 1, "FallClip")
-	tree.connect_node("WeaponPose", 0, "RifleIdle")
-	tree.connect_node("WeaponPose", 1, "PistolIdle")
+	tree.connect_node("WeaponPose", 0, "RifleLowered")
+	tree.connect_node("WeaponPose", 1, "RifleAim")
+	tree.connect_node("WeaponPose", 2, "PistolIdle")
+	tree.connect_node("WeaponPose", 3, "PistolAim")
 	tree.connect_node("WeaponBlend", 0, "AirBlend")
 	tree.connect_node("WeaponBlend", 1, "WeaponPose")
+	tree.connect_node("FirePose", 0, "RifleFireClip")
+	tree.connect_node("FirePose", 1, "PistolFireClip")
 	tree.connect_node("Fire", 0, "WeaponBlend")
-	tree.connect_node("Fire", 1, "FireClip")
+	tree.connect_node("Fire", 1, "FirePose")
 	tree.connect_node("JumpScale", 0, "JumpClip")
 	tree.connect_node("Jump", 0, "Fire")
 	tree.connect_node("Jump", 1, "JumpScale")
+	tree.connect_node("LandPose", 0, "LandHardClip")
+	tree.connect_node("LandPose", 1, "LandSoftClip")
 	tree.connect_node("Land", 0, "Jump")
-	tree.connect_node("Land", 1, "LandClip")
+	tree.connect_node("Land", 1, "LandPose")
 	tree.connect_node("output", 0, "Land")
 
 	var err := ResourceSaver.save(tree, OUT_PATH)
