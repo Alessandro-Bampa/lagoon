@@ -1,11 +1,12 @@
 # Genera il BlendTree del personaggio e lo salva come risorsa.
 #
-# ARCHITETTURA A LAYER ADDITIVI (rifatta rispetto alla versione a stance):
+# ARCHITETTURA A LAYER (rifatta rispetto alla versione a stance):
 #   1. Locomozione FULL BODY, agnostica dall'arma: walk/run/crouch/aria. Nessun set
 #      armato: l'arma non cambia come si cammina.
-#   2. Impugnatura: delta ADDITIVO upper-body (add/rifle_* e add/pistol*), sommato
-#      sopra qualunque locomozione. Le clip delta portano SOLO le track dell'upper
-#      body, quindi le gambe non ricevono nulla per costruzione: non servono filtri.
+#   2. Impugnatura: posa ASSOLUTA delle sole braccia (hold/rifle_* e hold/pistol*),
+#      sostituita alla locomozione da un Blend2 FILTRATO sulle otto ossa delle
+#      braccia. Non e' additiva, e il perche' e' misurato: vedi HOLD_MASK piu' sotto
+#      e l'intestazione di tools/build_weapon_poses.gd.
 #   3. Aim offset: BlendSpace2D di 5 pose additive (centro/su/giu'/sx/dx) pilotato
 #      da yaw/pitch della mira, sommato sopra impugnatura e locomozione.
 #   4. One-shot additivi: sparo e hit reaction (delta, MIX_MODE_ADD).
@@ -13,10 +14,11 @@
 #   I layer procedurali (SpineAim, FootIk, GripRig) NON stanno qui: sono
 #   SkeletonModifier3D che girano dopo l'albero.
 #
-# Le clip delta vivono in una libreria SEPARATA, prefisso `add/`
-# (animation/resources/AdditiveClips.tres, generata da tools/build_additive_clips.gd).
-# Non passano da Blender: il perche' — due difetti misurati della via glTF — sta
-# nell'intestazione di quel tool. Rigenerare l'albero dopo aver rigenerato le clip.
+# Le clip generate vivono in DUE librerie separate, entrambe montate su AnimationTree:
+#   `add/`  delta additivi     (animation/resources/AdditiveClips.tres)
+#   `hold/` pose d'impugnatura (animation/resources/WeaponHoldPoses.tres)
+# Nessuna delle due passa da Blender: il perche' sta nell'intestazione dei rispettivi
+# tool. Rigenerare l'albero dopo aver rigenerato le clip.
 #
 # Perche' generato e non scritto a mano nel .tscn: l'albero e' fatto di path di
 # track e di indici di connessione, che scritti a mano si sbagliano in silenzio.
@@ -38,8 +40,28 @@ const RUN_SPEED := 7.0
 const CROUCH_SPEED := 2.0
 
 # Idle NEUTRA disarmata al centro degli spazi di locomozione. La posa "reggi arma"
-# non c'entra: quella la somma il layer additivo di impugnatura.
+# non c'entra: quella la sovrappone il layer d'impugnatura.
 const IDLE_CLIP := "idle_neutral"
+
+# Le ossa che il layer d'impugnatura SOSTITUISCE. Deve combaciare con ARM_BONES di
+# tools/build_weapon_poses.gd.
+#
+# Perche' una maschera e non un Add2. La semantica additiva di Godot e'
+# `risultato = Base x (Rest^-1 x Chiave)`: un delta costante applica al braccio una
+# rotazione RELATIVA, quindi riproduce la presa solo quando la base coincide con la
+# clip di riferimento. Misurato sul rig — distanza fra le due mani, che reggendo un
+# fucile DEVE valere 0,39 m: 0,39 su idle_neutral (base = riferimento), 0,58 su
+# walk_fwd, mani all'altezza del bacino su crouch_fwd. L'oscillazione delle braccia
+# della camminata restava nella base e si sommava alla presa.
+#
+# La presa e' un VINCOLO (due mani sulla stessa arma), non uno scarto: si esprime con
+# una posa assoluta e una maschera. Rachide, bacino e gambe NON sono nella maschera,
+# quindi il busto continua a respirare, a oscillare in corsa e ad accovacciarsi, e le
+# braccia — figlie dello stesso Spine2 — lo seguono in blocco tenendo la presa.
+const HOLD_MASK := [
+	"LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand",
+	"RightShoulder", "RightArm", "RightForeArm", "RightHand",
+]
 
 
 # Costruisce uno spazio direzionale a 5 punti: idle al centro e le quattro clip
@@ -135,12 +157,12 @@ func _initialize() -> void:
 	tree.add_node("AirBlend", air, Vector2(-380, 120))
 	tree.add_node("FallClip", _anim("fall_idle"), Vector2(-620, 620))
 
-	# --- Layer 2: impugnatura (ADDITIVO upper-body) --------------------------
+	# --- Layer 2: impugnatura (posa ASSOLUTA delle braccia, mascherata) ------
 	# Transition e non BlendSpace: fra le pose d'arma non esiste una via di mezzo
-	# sensata da interpolare, si passa dall'una all'altra (xfade 0.15, che sui DELTA
-	# interpola verso/da identita' senza artefatti).
+	# sensata da interpolare, si passa dall'una all'altra (xfade 0.15, che fra due pose
+	# di braccia e' un crossfade normale).
 	#
-	# QUATTRO delta, due per famiglia: porto rilassato e mira. La mira e' uno STATO
+	# QUATTRO pose, due per famiglia: porto rilassato e mira. La mira e' uno STATO
 	# (RMB), non una conseguenza dell'essere armati. I nomi degli ingressi restano
 	# quelli storici: CharacterAnimator non cambia contratto.
 	var pose := AnimationNodeTransition.new()
@@ -151,18 +173,26 @@ func _initialize() -> void:
 	pose.set_input_name(3, "pistol_aim")
 	pose.xfade_time = 0.15
 	tree.add_node("WeaponPose", pose, Vector2(-620, 500))
-	tree.add_node("RifleLowered", _anim("add/rifle_lowered"), Vector2(-880, 460))
-	tree.add_node("RifleAim", _anim("add/rifle_aim"), Vector2(-880, 530))
-	tree.add_node("PistolIdle", _anim("add/pistol"), Vector2(-880, 600))
-	tree.add_node("PistolAim", _anim("add/pistol_aim"), Vector2(-880, 670))
+	tree.add_node("RifleLowered", _anim("hold/rifle_lowered"), Vector2(-880, 460))
+	tree.add_node("RifleAim", _anim("hold/rifle_aim"), Vector2(-880, 530))
+	tree.add_node("PistolIdle", _anim("hold/pistol"), Vector2(-880, 600))
+	tree.add_node("PistolAim", _anim("hold/pistol_aim"), Vector2(-880, 670))
 
-	# Add2, NON Blend2 filtrato: le clip qui sopra sono DELTA (q_rif^-1 x q_bersaglio,
-	# authorate cosi' in Blender) e portano solo le track dell'upper body. La maschera
-	# sta nella clip: un bone senza track non riceve nulla, quindi le gambe restano
-	# alla locomozione per costruzione, senza filtri da mantenere.
-	var hold := AnimationNodeAdd2.new()
+	# Blend2 FILTRATO sulle otto ossa delle braccia (vedi HOLD_MASK): l'ingresso 1
+	# SOSTITUISCE la locomozione su quelle ossa e non tocca nient'altro. Doppia
+	# sicurezza, come per le clip delta: le pose d'impugnatura non hanno comunque
+	# track fuori dalla maschera, quindi anche un filtro allargato per sbaglio non
+	# potrebbe intaccare gambe e rachide.
+	#
+	# sync = true e' OBBLIGATORIO su un nodo filtrato: con sync = false l'ingresso a
+	# peso 0 resta visibile sulle parti che il filtro non copre e la locomozione si
+	# congela (skill character-animation §1.7).
+	var hold := AnimationNodeBlend2.new()
 	hold.sync = true
-	tree.add_node("HoldAdd", hold, Vector2(-120, 120))
+	hold.filter_enabled = true
+	for bone in HOLD_MASK:
+		hold.set_filter_path("%s:%s" % [SKELETON, bone], true)
+	tree.add_node("HoldMask", hold, Vector2(-120, 120))
 
 	# --- Layer 3: aim offset (ADDITIVO, pitch/yaw) ---------------------------
 	# Sfera di mira continua in stile aim-offset: il grosso della posa lo mette qui
@@ -271,9 +301,9 @@ func _initialize() -> void:
 	tree.connect_node("WeaponPose", 1, "RifleAim")
 	tree.connect_node("WeaponPose", 2, "PistolIdle")
 	tree.connect_node("WeaponPose", 3, "PistolAim")
-	tree.connect_node("HoldAdd", 0, "AirBlend")
-	tree.connect_node("HoldAdd", 1, "WeaponPose")
-	tree.connect_node("AimAdd", 0, "HoldAdd")
+	tree.connect_node("HoldMask", 0, "AirBlend")
+	tree.connect_node("HoldMask", 1, "WeaponPose")
+	tree.connect_node("AimAdd", 0, "HoldMask")
 	tree.connect_node("AimAdd", 1, "AimSpace")
 	tree.connect_node("FirePose", 0, "RifleFireClip")
 	tree.connect_node("FirePose", 1, "PistolFireClip")

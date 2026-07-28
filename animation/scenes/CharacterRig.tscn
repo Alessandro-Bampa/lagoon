@@ -9,6 +9,7 @@
 [ext_resource type="Script" uid="uid://fkw2asqcjvew" path="res://animation/scripts/FootIkRig.cs" id="7"]
 [ext_resource type="Script" uid="uid://b3e0rh3wjrcbp" path="res://animation/scripts/VaultIkRig.cs" id="8"]
 [ext_resource type="AnimationLibrary" path="res://animation/resources/AdditiveClips.tres" id="9"]
+[ext_resource type="AnimationLibrary" path="res://animation/resources/WeaponHoldPoses.tres" id="10"]
 
 [node name="CharacterRig" type="Node3D" unique_id=751520220]
 script = ExtResource("4")
@@ -19,6 +20,7 @@ script = ExtResource("4")
 root_node = NodePath("../Body")
 libraries/ = ExtResource("2")
 libraries/add = ExtResource("9")
+libraries/hold = ExtResource("10")
 tree_root = ExtResource("3")
 parameters/WalkSpace/blend_position = Vector2(0, 0)
 parameters/RunSpace/blend_position = Vector2(0, 0)
@@ -29,7 +31,7 @@ parameters/AirBlend/blend_amount = 0.0
 parameters/WeaponPose/current_state = ""
 parameters/WeaponPose/transition_request = ""
 parameters/WeaponPose/current_index = -1
-parameters/HoldAdd/add_amount = 0.0
+parameters/HoldMask/blend_amount = 0.0
 parameters/AimSpace/blend_position = Vector2(0, 0)
 parameters/AimAdd/add_amount = 0.0
 parameters/Fire/active = false

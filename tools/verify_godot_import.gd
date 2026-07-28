@@ -141,7 +141,7 @@ func _verify_rig() -> void:
 		"parameters/AirBlend/blend_amount",
 		"parameters/Land/request",
 		"parameters/CrouchBlend/blend_amount",
-		"parameters/HoldAdd/add_amount",
+		"parameters/HoldMask/blend_amount",
 		"parameters/AimAdd/add_amount",
 		"parameters/AimSpace/blend_position",
 		"parameters/WeaponPose/transition_request",
@@ -259,23 +259,45 @@ func _inside_any_triangle(bs: AnimationNodeBlendSpace2D, p: Vector2) -> bool:
 # FILTRATO e' un bug: l'ingresso a peso 0 resta VISIBILE sulle parti che il filtro non
 # copre, quindi la locomozione smetterebbe di avanzare pur essendo a schermo.
 #
-# Con l'albero a layer additivi nessun nodo e' piu' filtrato — la maschera vive nelle
-# clip delta, che hanno solo le track dell'upper body — quindi oggi questo controllo non
-# trova nulla da controllare. Resta come rete: se qualcuno reintroducesse un filtro,
-# sarebbe di nuovo esposto alla trappola.
+# Il nodo filtrato dell'albero e' HoldMask, la maschera d'impugnatura: e' esattamente il
+# caso esposto alla trappola, quindi il controllo ha di nuovo qualcosa da controllare.
+#
+# Si verifica anche CHE COSA filtra: la maschera deve coprire le otto ossa delle braccia
+# e nient'altro. Una maschera allargata al rachide o al bacino spegnerebbe la locomozione
+# del busto o delle gambe senza dare il minimo errore — il personaggio camminerebbe con
+# le gambe ferme, o accovacciato resterebbe dritto.
 func _verify_no_frozen_layer(root: AnimationRootNode) -> void:
 	if not (root is AnimationNodeBlendTree):
 		return
 
+	var arms := ["LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand",
+		"RightShoulder", "RightArm", "RightForeArm", "RightHand"]
+
 	var tree := root as AnimationNodeBlendTree
+	var filtered: PackedStringArray = []
 	for node_name in tree.get_node_list():
 		var node := tree.get_node(node_name)
 		if not (node is AnimationNodeBlend2 or node is AnimationNodeOneShot):
 			continue
 		if not node.filter_enabled:
 			continue
+		filtered.append(node_name)
 		_check("%s filtrato ha sync attivo" % node_name, node.sync,
 			"con sync=false la locomozione si ferma pur restando visibile sulle gambe")
+
+		# AnimationNode non espone get_filters(): l'elenco si legge dalla proprieta'
+		# `filters`, che e' quella serializzata nel .tres.
+		var masked: PackedStringArray = []
+		for path in (node.get("filters") as Array):
+			masked.append(String(path).split(":")[-1])
+		masked.sort()
+		var expected := arms.duplicate()
+		expected.sort()
+		_check("%s maschera le sole braccia" % node_name,
+			Array(masked) == expected, "maschera = %s" % ", ".join(masked))
+
+	_check("la maschera d'impugnatura esiste", filtered.has("HoldMask"),
+		"nodi filtrati: %s" % ", ".join(filtered))
 
 
 # Tutte le clip stanno in UNA AnimationLibrary, cosi' nell'AnimationTree si scrive

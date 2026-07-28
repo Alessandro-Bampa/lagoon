@@ -1,5 +1,11 @@
 # Genera le clip DELTA ADDITIVE e le salva come AnimationLibrary.
 #
+# Contiene i layer che sono davvero ADDITIVI, cioe' quelli che esprimono uno SCARTO
+# rispetto a qualunque posa sotto: aim offset, rinculo, reazione ai colpi. L'impugnatura
+# NON e' fra questi ed e' stata spostata in tools/build_weapon_poses.gd: reggere un'arma
+# e' un vincolo geometrico (due mani sulla stessa arma), non uno scarto, e come delta
+# costante funzionava solo sopra la clip di riferimento.
+#
 # Uso:
 #   Godot --path . --headless --script tools/build_additive_clips.gd
 #
@@ -114,13 +120,27 @@ func _key_for(bone: String, reference: Quaternion, target: Quaternion) -> Quater
 	return _bone_rest(bone) * reference.inverse() * target
 
 
-# Rotazione attorno a un asse dichiarato in coordinate MONDO, espressa nello spazio
-# locale dell'osso. Si porta l'asse nello spazio dell'osso con la sua rest GLOBALE:
-# dichiarare l'asse gia' in locale significherebbe indovinare l'orientamento di ogni
-# osso, che dipende dai roll del rig (skill blender-pipeline).
+# Chiave NEUTRA: quella che non cambia nulla.
+#
+# NON e' l'identita', ed e' costato tre bug a video. Dalla semantica additiva
+# `risultato = Base x (Rest^-1 x Chiave)` discende che il contributo nullo si ha per
+# Chiave = REST, non per Chiave = identita': scrivendo l'identita' l'osso viene
+# moltiplicato per Rest^-1, cioe' ruotato dell'INVERSO della propria posa di riposo.
+# Sul rachide sono pochi gradi e non si nota; sulle CLAVICOLE il rest vale 115 gradi
+# (misurato su Body_Base), quindi accendere l'aim offset storceva spalle e braccia
+# fino a scambiarle di lato — il difetto "quando si mira le braccia sono tutte storte".
+func _neutral(bone: String) -> Quaternion:
+	return _bone_rest(bone)
+
+
+# Rotazione attorno a un asse dichiarato in coordinate MONDO, espressa come CHIAVE
+# additiva. Si porta l'asse nello spazio dell'osso con la sua rest GLOBALE (dichiararlo
+# gia' in locale significherebbe indovinare l'orientamento di ogni osso, che dipende dai
+# roll del rig, skill blender-pipeline), poi si premoltiplica per il rest: e' la stessa
+# regola di _neutral, di cui questa e' il caso con angolo non nullo.
 func _local_swing(bone: String, world_axis: Vector3, degrees: float) -> Quaternion:
 	var axis: Vector3 = (_bone_global_rest(bone).inverse() * world_axis).normalized()
-	return Quaternion(axis, deg_to_rad(degrees))
+	return _bone_rest(bone) * Quaternion(axis, deg_to_rad(degrees))
 
 
 # Crea una clip vuota con le track di rotazione dell'upper body gia' predisposte.
@@ -141,31 +161,9 @@ func _new_clip(length: float, loop: bool) -> Array:
 #  Costruttori
 # ==========================================================================
 
-# Posa additiva COSTANTE: il delta che trasforma `reference_clip` in `target_clip`.
-#
-# E' cosi' che l'impugnatura smette di richiedere un set di locomozione per arma: la
-# posa "reggi fucile" e' authorata su un bacino neutro (idle_neutral), il delta la
-# esprime come "cosa cambia rispetto allo stare fermi", e quel cambiamento si somma
-# identico sopra qualunque clip di locomozione.
-func _build_hold(name: String, reference_clip: String, target_clip: String) -> void:
-	var pair := _new_clip(1.0, true)
-	var anim: Animation = pair[0]
-	var tracks: Dictionary = pair[1]
-
-	for bone in UPPER_BODY:
-		var key := _key_for(bone, _sample(reference_clip, bone, 0.0),
-			_sample(target_clip, bone, 0.0))
-		# Due chiavi identiche: la posa e' costante e il loop non salta.
-		anim.rotation_track_insert_key(tracks[bone], 0.0, key)
-		anim.rotation_track_insert_key(tracks[bone], 1.0, key)
-
-	_out.add_animation(name, anim)
-	print("  %-16s posa costante, %d track" % [name, anim.get_track_count()])
-
-
 # Posa additiva di aim offset: una rotazione distribuita sul rachide.
 #
-# Il centro e' l'identita' ESATTA per costruzione (chain vuota), che e' la proprieta'
+# Il centro e' il delta NULLO esatto per costruzione (chain vuota), che e' la proprieta'
 # che authorando in Blender non si riusciva a ottenere.
 func _build_aim(name: String, world_axis: Vector3, degrees: float) -> void:
 	var pair := _new_clip(1.0, true)
@@ -173,7 +171,7 @@ func _build_aim(name: String, world_axis: Vector3, degrees: float) -> void:
 	var tracks: Dictionary = pair[1]
 
 	for bone in UPPER_BODY:
-		var key := Quaternion.IDENTITY
+		var key := _neutral(bone)
 		if AIM_CHAIN.has(bone) and absf(degrees) > 0.001:
 			key = _local_swing(bone, world_axis, degrees * AIM_CHAIN[bone])
 		anim.rotation_track_insert_key(tracks[bone], 0.0, key)
@@ -193,12 +191,13 @@ func _build_hit(name: String, world_axis: Vector3, degrees: float) -> void:
 	var tracks: Dictionary = pair[1]
 
 	for bone in UPPER_BODY:
-		var peak := Quaternion.IDENTITY
+		var neutral := _neutral(bone)
+		var peak := neutral
 		if HIT_CHAIN.has(bone):
 			peak = _local_swing(bone, world_axis, degrees * HIT_CHAIN[bone])
-		anim.rotation_track_insert_key(tracks[bone], 0.0, Quaternion.IDENTITY)
+		anim.rotation_track_insert_key(tracks[bone], 0.0, neutral)
 		anim.rotation_track_insert_key(tracks[bone], HIT_PEAK, peak)
-		anim.rotation_track_insert_key(tracks[bone], HIT_END, Quaternion.IDENTITY)
+		anim.rotation_track_insert_key(tracks[bone], HIT_END, neutral)
 
 	_out.add_animation(name, anim)
 	print("  %-16s flinch %.0f gradi" % [name, degrees])
@@ -248,12 +247,11 @@ func _initialize() -> void:
 		% [BODY_PATH, _skel.get_bone_count(), LIBRARY_PATH,
 			_library.get_animation_list().size()])
 
-	# --- impugnatura: delta da idle_neutral verso le pose assolute -----------
-	print("\nimpugnatura (delta da idle_neutral):")
-	_build_hold("rifle_lowered", "idle_neutral", "rifle_lowered_idle")
-	_build_hold("rifle_aim", "idle_neutral", "rifle_aim_idle")
-	_build_hold("pistol", "idle_neutral", "pistol_idle")
-	_build_hold("pistol_aim", "idle_neutral", "pistol_aim_idle")
+	# NOTA: l'IMPUGNATURA non sta piu' qui. Era un delta costante, e un delta costante
+	# riproduce la presa solo quando la base coincide col riferimento: su una qualunque
+	# clip di locomozione le mani finivano fuori dall'arma (misure in
+	# tools/build_weapon_poses.gd, che l'ha sostituito con una posa assoluta mascherata).
+	# Qui resta cio' che additivo lo e' davvero: mira, rinculo, flinch.
 
 	# --- aim offset ----------------------------------------------------------
 	# Il rig guarda +Z e la sua sinistra e' +X (contratto degli assi, skill

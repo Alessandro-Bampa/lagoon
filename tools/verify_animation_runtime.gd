@@ -130,9 +130,10 @@ func _diamond(v: Vector2, radius: float) -> Vector2:
 
 # Replica cio' che fa CharacterAnimator, perche' qui il suo script e' stato tolto.
 #
-# `hold` e' il peso del layer ADDITIVO di impugnatura (HoldAdd): la posa la sceglie il
-# Transition WeaponPose. La locomozione e' unica e agnostica dall'arma: non esistono piu'
-# spazi armati ne' StanceBlend. `aim` e `aim_amount` pilotano l'aim offset additivo.
+# `hold` e' il peso della MASCHERA d'impugnatura (HoldMask, Blend2 filtrato sulle braccia):
+# la posa la sceglie il Transition WeaponPose. La locomozione e' unica e agnostica
+# dall'arma: non esistono piu' spazi armati ne' StanceBlend. `aim` e `aim_amount` pilotano
+# l'aim offset, che invece additivo lo e' davvero.
 func _drive(local_velocity: Vector2, crouch: float, hold: float,
 		aim := Vector2.ZERO, aim_amount := 0.0) -> void:
 	var walk := _diamond(local_velocity, WALK_SPEED)
@@ -141,7 +142,7 @@ func _drive(local_velocity: Vector2, crouch: float, hold: float,
 	_tree.set("parameters/RunSpace/blend_position", run)
 	_tree.set("parameters/CrouchSpace/blend_position", _diamond(local_velocity, CROUCH_SPEED))
 	_tree.set("parameters/CrouchBlend/blend_amount", crouch)
-	_tree.set("parameters/HoldAdd/add_amount", hold)
+	_tree.set("parameters/HoldMask/blend_amount", hold)
 	_tree.set("parameters/AimSpace/blend_position", aim)
 	_tree.set("parameters/AimAdd/add_amount", aim_amount)
 	_tree.set("parameters/AirBlend/blend_amount", 0.0)
@@ -336,12 +337,14 @@ func _initialize() -> void:
 	await _verify_hit_reaction()
 	await _verify_vault_clip()
 	await _verify_strafe_direction()
+	await _verify_hold_mask()
 	await _verify_procedural_clips(rig)
 	await _verify_grip(rig)
 	await _verify_aim(rig)
 	await _verify_feet(rig)
 	await _verify_muzzle(rig)
 	await _verify_npc()
+	await _verify_slope()
 
 	print("")
 	print("%d controlli falliti" % _failures)
@@ -484,7 +487,7 @@ func _verify_additive_isolation() -> void:
 	var legs_drift: float = _max_pose_delta(legs_before, _pose_snapshot(legs))
 	var torso_drift: float = _max_pose_delta(torso_before, _pose_snapshot(torso))
 
-	# Scatto del solo delta di impugnatura.
+	# Scatto della sola maschera d'impugnatura.
 	legs_before = _pose_snapshot(legs)
 	torso_before = _pose_snapshot(torso)
 	_drive(Vector2.ZERO, 0.0, 1.0)
@@ -492,12 +495,12 @@ func _verify_additive_isolation() -> void:
 	var legs_delta: float = _max_pose_delta(legs_before, _pose_snapshot(legs))
 	var torso_delta: float = _max_pose_delta(torso_before, _pose_snapshot(torso))
 
-	_check("l'impugnatura additiva cambia il busto", torso_delta > torso_drift + 0.15,
+	_check("la maschera d'impugnatura cambia il busto", torso_delta > torso_drift + 0.15,
 		"busto %.4f rad, deriva della base %.4f" % [torso_delta, torso_drift])
-	# Sulle gambe non deve succedere NULLA oltre la deriva: e' la maschera, che qui e'
-	# una proprieta' delle CLIP (nessuna track sotto il bacino), non un filtro
-	# dell'albero. Un delta generato con le gambe dentro si vede solo qui.
-	_check("l'impugnatura additiva NON tocca le gambe", legs_delta < legs_drift + 0.01,
+	# Sulle gambe non deve succedere NULLA oltre la deriva. Qui la maschera e' doppia: il
+	# filtro di HoldMask e l'assenza di track fuori dalle braccia nelle pose hold/*. Basta
+	# che una delle due regga, ma se cadessero entrambe si vedrebbe solo qui.
+	_check("la maschera d'impugnatura NON tocca le gambe", legs_delta < legs_drift + 0.01,
 		"gambe %.4f rad, deriva della base %.4f" % [legs_delta, legs_drift])
 
 	# Stessa cosa per l'aim offset, che e' il secondo Add2 della catena.
@@ -618,14 +621,13 @@ func _find_rotation_track(anim: Animation, bone_name: String) -> int:
 # passerebbe ogni controllo di posa e ricomparirebbe come locomozione sovrascritta
 # dall'arma, cioe' il difetto da cui e' nata l'architettura a layer.
 #
-# Si verifica anche che il CENTRO dell'aim offset sia l'identita': se non lo fosse, il
-# personaggio starebbe con la mira "storta" ogni volta che punta dritto davanti a se'.
+# Si verifica anche che il centro dell'aim offset e le ossa che un delta non deve toccare
+# portino la chiave NEUTRA — che NON e' l'identita' (vedi _delta_from_rest).
 func _verify_delta_clips() -> void:
 	var lower_body := ["Hips", "LeftUpLeg", "LeftLeg", "LeftFoot", "LeftToeBase",
 		"RightUpLeg", "RightLeg", "RightFoot", "RightToeBase"]
 
 	var deltas := [
-		"add/rifle_lowered", "add/rifle_aim", "add/pistol", "add/pistol_aim",
 		"add/aim_center", "add/aim_up", "add/aim_down", "add/aim_left", "add/aim_right",
 		"add/rifle_fire", "add/pistol_fire",
 		"add/hit_front", "add/hit_back", "add/hit_left", "add/hit_right",
@@ -645,17 +647,29 @@ func _verify_delta_clips() -> void:
 	_check("le clip delta non hanno track sulla parte bassa del corpo", leaking.is_empty(),
 		"; ".join(leaking))
 
-	# Il centro dell'aim offset e' per definizione il delta NULLO.
+	# Il centro dell'aim offset e' per definizione il delta NULLO, su OGNI osso che tocca.
+	#
+	# E' il controllo che avrebbe intercettato il bug delle chiavi identita'. Dalla
+	# semantica additiva `risultato = Base x (Rest^-1 x Chiave)` discende che il contributo
+	# nullo si ha per Chiave = REST, non per Chiave = identita'. Guardare solo Spine2 non
+	# bastava: li' il rest vale 4 gradi e passava sotto la soglia, mentre sulle CLAVICOLE
+	# vale 115 gradi — accendere la mira scambiava le braccia di lato.
 	if _tree.has_animation("add/aim_center"):
 		var center: Animation = _tree.get_animation("add/aim_center")
-		var track := _find_rotation_track(center, "Spine2")
-		if track >= 0:
-			var q: Quaternion = center.rotation_track_interpolate(track, 0.0)
-			var off: float = q.angle_to(Quaternion.IDENTITY)
-			_check("il centro dell'aim offset e' il delta nullo", off < 0.02,
-				"scarto dall'identita' = %.4f rad" % off)
+		var worst := 0.0
+		var worst_bone := ""
+		for i in center.get_track_count():
+			var bone_name := String(center.track_get_path(i)).split(":")[-1]
+			var off := _delta_from_rest(center.rotation_track_interpolate(i, 0.0), bone_name)
+			if off > worst:
+				worst = off
+				worst_bone = bone_name
+		_check("il centro dell'aim offset e' il delta nullo su ogni osso", worst < 0.02,
+			"peggiore: %s a %.4f rad dal rest" % [worst_bone, worst])
 
-	# E gli estremi NON devono esserlo, o la sfera di mira sarebbe piatta.
+	# Gli estremi devono muovere il RACHIDE e lasciare fermo il resto: l'aim offset ruota
+	# il busto, le braccia lo seguono perche' gli sono figlie. Un estremo che tocca le
+	# clavicole storce le spalle a ogni movimento della mira.
 	for clip in ["add/aim_up", "add/aim_down", "add/aim_left", "add/aim_right"]:
 		if not _tree.has_animation(clip):
 			continue
@@ -664,10 +678,103 @@ func _verify_delta_clips() -> void:
 		if track < 0:
 			_check("'%s' anima il rachide" % clip, false, "nessuna track su Spine2")
 			continue
-		var q: Quaternion = anim.rotation_track_interpolate(track, 0.0)
-		var off: float = q.angle_to(Quaternion.IDENTITY)
+		var off := _delta_from_rest(anim.rotation_track_interpolate(track, 0.0), "Spine2")
 		_check("'%s' e' un delta non nullo" % clip, off > 0.03,
-			"scarto dall'identita' = %.4f rad" % off)
+			"scarto dal rest = %.4f rad" % off)
+
+		var arm := _find_rotation_track(anim, "RightShoulder")
+		if arm >= 0:
+			var shoulder := _delta_from_rest(anim.rotation_track_interpolate(arm, 0.0),
+				"RightShoulder")
+			_check("'%s' non tocca le clavicole" % clip, shoulder < 0.02,
+				"scarto dal rest = %.4f rad" % shoulder)
+
+
+# Quanto un delta additivo sposta un osso: e' `Rest^-1 x Chiave`, non `Chiave` e basta.
+func _delta_from_rest(key: Quaternion, bone_name: String) -> float:
+	var idx := _skel.find_bone(bone_name)
+	if idx < 0:
+		return 0.0
+	var rest: Quaternion = _skel.get_bone_rest(idx).basis.get_rotation_quaternion()
+	return (rest.inverse() * key).angle_to(Quaternion.IDENTITY)
+
+
+# Pose d'impugnatura (build_weapon_poses.gd): assolute, sole braccia, presa conservata.
+#
+# La misura che conta e' la DISTANZA fra le mani: reggendo un fucile deve restare quella
+# dell'astina in ogni posa e sopra ogni locomozione, ed e' precisamente cio' che il delta
+# additivo non riusciva a garantire (0,39 m sopra l'idle, 0,58 m sopra walk_fwd). Qui si
+# misura sull'albero VERO, con la locomozione sotto.
+func _verify_hold_mask() -> void:
+	print("")
+	print("== maschera d'impugnatura ==")
+
+	var forbidden := ["Hips", "Spine", "Spine1", "Spine2", "Neck", "Head",
+		"LeftUpLeg", "LeftLeg", "LeftFoot", "RightUpLeg", "RightLeg", "RightFoot"]
+
+	var leaking: PackedStringArray = []
+	for clip in ["hold/rifle_lowered", "hold/rifle_aim", "hold/pistol", "hold/pistol_aim"]:
+		if not _tree.has_animation(clip):
+			_check("'%s' presente in libreria" % clip, false)
+			continue
+		var anim: Animation = _tree.get_animation(clip)
+		for bone_name in forbidden:
+			if _find_rotation_track(anim, bone_name) >= 0:
+				leaking.append("%s tocca %s" % [clip, bone_name])
+				break
+	_check("le pose d'impugnatura toccano solo le braccia", leaking.is_empty(),
+		"; ".join(leaking))
+
+	var left := _skel.find_bone("LeftHand")
+	var right := _skel.find_bone("RightHand")
+
+	# La presa del fucile su OGNI locomozione: e' il difetto che ha motivato il passaggio
+	# dal delta additivo alla maschera, e senza questa misura tornerebbe muto.
+	_tree.set("parameters/WeaponPose/transition_request", "rifle_aim")
+	var casi := [
+		["fermi", Vector2.ZERO, 0.0],
+		["in camminata", Vector2(0, WALK_SPEED), 0.0],
+		["in strafe", Vector2(WALK_SPEED, 0), 0.0],
+		["in corsa", Vector2(0, RUN_SPEED), 0.0],
+		["accovacciati", Vector2(0, CROUCH_SPEED), 1.0],
+	]
+	for caso in casi:
+		_drive(caso[1], caso[2], 1.0)
+		await _settle(20)
+		var gap: float = (_skel.get_bone_global_pose(left).origin
+			- _skel.get_bone_global_pose(right).origin).length()
+		_check("la presa del fucile regge %s" % caso[0], absf(gap - 0.392) < 0.03,
+			"distanza fra le mani = %.3f m (astina a 0,392)" % gap)
+
+	# E con l'aim offset a fondo corsa: la mira ruota il busto, non deve aprire la presa.
+	_drive(Vector2.ZERO, 0.0, 1.0, Vector2(1, 1), 1.0)
+	await _settle(20)
+	var gap_aim: float = (_skel.get_bone_global_pose(left).origin
+		- _skel.get_bone_global_pose(right).origin).length()
+	_check("la presa regge in mira a fondo corsa", absf(gap_aim - 0.392) < 0.03,
+		"distanza fra le mani = %.3f m" % gap_aim)
+
+	# Porto rilassato: le mani stanno piu' in basso della mira, ma DAVANTI al corpo e non
+	# lungo i fianchi (era il difetto della vecchia posa a 35 gradi: mani a z = +0,04 m
+	# dal bacino, cioe' dentro le cosce).
+	var hips := _skel.find_bone("Hips")
+	_tree.set("parameters/WeaponPose/transition_request", "rifle_lowered")
+	_drive(Vector2.ZERO, 0.0, 1.0)
+	await _settle(30)
+	var origin := _skel.get_bone_global_pose(hips).origin
+	var lowered := _skel.get_bone_global_pose(right).origin - origin
+	_tree.set("parameters/WeaponPose/transition_request", "rifle_aim")
+	_drive(Vector2.ZERO, 0.0, 1.0)
+	await _settle(30)
+	var aimed := _skel.get_bone_global_pose(right).origin - origin
+
+	_check("il porto abbassa la mano rispetto alla mira", aimed.y > lowered.y + 0.04,
+		"mano destra: mira %.3f m, porto %.3f m" % [aimed.y, lowered.y])
+	_check("il porto tiene l'arma davanti al corpo", lowered.z > 0.12,
+		"mano destra avanti di %.3f m dal bacino" % lowered.z)
+
+	_drive(Vector2.ZERO, 0.0, 0.0)
+	await _settle(20)
 
 
 # Clip procedurali (build_procedural_clips.py): esistono, non sono la T-pose, e la
@@ -686,8 +793,11 @@ func _verify_procedural_clips(rig: Node) -> void:
 
 	_tree.active = false
 
-	for clip in ["rifle_aim_idle", "rifle_lowered_idle", "pistol_aim_idle",
-			"pistol_fire", "land_soft", "vault_low"]:
+	# rifle_aim_idle / rifle_lowered_idle / pistol_aim_idle NON sono piu' in elenco: le
+	# pose d'impugnatura vengono ora da hold/*, derivate in Godot dalle sorgenti Mixamo
+	# (build_weapon_poses.gd). Restano nel .glb come le otto clip di locomozione armata,
+	# non referenziate e senza costo. A verificarle c'e' _verify_hold_mask.
+	for clip in ["pistol_fire", "land_soft", "vault_low"]:
 		var ok: bool = player.has_animation(clip)
 		_check("'%s' presente in libreria" % clip, ok)
 		if not ok:
@@ -699,19 +809,6 @@ func _verify_procedural_clips(rig: Node) -> void:
 			"scarto dalla rest pose = %.4f rad" % d)
 
 	_verify_delta_clips()
-
-	# La mira alza le mani, il porto le abbassa: se le due pose coincidessero, il
-	# Transition della Fase 4 non mostrerebbe alcuna differenza fra RMB premuto e no.
-	var hand := _skel.find_bone("RightHand")
-	if player.has_animation("rifle_aim_idle") and player.has_animation("rifle_lowered_idle"):
-		player.play("rifle_aim_idle")
-		await _settle(8)
-		var aim_y: float = _skel.get_bone_global_pose(hand).origin.y
-		player.play("rifle_lowered_idle")
-		await _settle(8)
-		var lowered_y: float = _skel.get_bone_global_pose(hand).origin.y
-		_check("la mira alza la mano rispetto al porto", aim_y > lowered_y + 0.10,
-			"mano destra: aim %.3f m, porto %.3f m" % [aim_y, lowered_y])
 
 	player.stop()
 	rig.remove_child(player)
@@ -1112,3 +1209,79 @@ func _verify_npc() -> void:
 		absf(yaw - deg_to_rad(10.0)) < 0.001, "target = %.3f rad" % yaw)
 
 	npc.queue_free()
+
+
+# Camminata su una RAMPA: si resta a terra?
+#
+# Il difetto che questo controllo blocca non e' fisico ma visivo, ed era muto: salendo una
+# rampa il personaggio riproduceva la posa di CADUTA in continuazione. La causa era che
+# CharacterMotor proiettava a mano la velocita' sul piano del pavimento e ne scriveva la
+# componente VERTICALE in Velocity.Y; con Velocity.Y positivo Godot salta lo snap al
+# pavimento (lo applica solo quando la velocita' non punta in alto), quindi il corpo si
+# staccava di qualche millimetro a ogni tick e IsOnFloor() lampeggiava.
+#
+# Si misura sul motore VERO (un NpcController, che eredita da CharacterMotor senza
+# riscrivere una riga di movimento) e sulla pendenza vera del livello di prova: 20 gradi.
+# La sonda guarda SyncGrounded, cioe' esattamente il dato che alimenta il layer di caduta.
+func _verify_slope() -> void:
+	print("")
+	print("== camminata in pendenza ==")
+
+	# Mondo di prova isolato, lontano dagli altri oggetti della suite. Le quote sono quelle
+	# della rampa di TestLevel: 20 gradi fra il pavimento (y = 0) e il molo (y = 1.25).
+	var world := Node3D.new()
+	root.add_child(world)
+	_static_box(world, Vector3(40, 1, 10), Vector3(0, -0.5, -100), 0.0)
+	_static_box(world, Vector3(4.4, 0.4, 4), Vector3(16.385, 0.437, -100), 20.0)
+	_static_box(world, Vector3(8, 1, 6), Vector3(22.5, 0.75, -100), 0.0)
+
+	var scene := load("res://ai/scenes/NpcCharacter.tscn") as PackedScene
+	if scene == null:
+		world.queue_free()
+		return
+
+	var npc: Node3D = scene.instantiate()
+	# I waypoint sono LOCALI allo spawn, e lo spawn lo legge NpcController._Ready: la
+	# posizione va scritta PRIMA di entrare nell'albero, o l'origine dei waypoint resta
+	# quella della scena (l'origine del mondo) e l'NPC cammina da tutt'altra parte.
+	# La quota del secondo punto e' quella del molo: l'arrivo si misura in 3D.
+	npc.position = Vector3(13, 1.05, -100)
+	npc.set("Waypoints", PackedVector3Array([Vector3(9, 1.25, 0), Vector3(0, 0, 0)]))
+	world.add_child(npc)
+
+	# Niente navmesh in questo mondo di prova: l'NPC usa il ripiego "punta dritto al
+	# waypoint" di NpcController.
+	# Un po' di frame per assestarsi sul pavimento prima di cominciare a contare.
+	for i in 40:
+		await physics_frame
+
+	var airborne := 0
+	var samples := 420
+	var peak := npc.global_position.y
+	for i in samples:
+		await physics_frame
+		peak = maxf(peak, npc.global_position.y)
+		if not npc.get("SyncGrounded"):
+			airborne += 1
+
+	_check("la rampa viene salita davvero", peak > 1.6,
+		"quota massima raggiunta = %.2f m (molo a 1,25 piu' mezza capsula)" % peak)
+	_check("in pendenza non si stacca mai da terra", airborne == 0,
+		"%d frame su %d con SyncGrounded falso" % [airborne, samples])
+
+	world.queue_free()
+	await _settle(4)
+
+
+func _static_box(parent: Node3D, size: Vector3, at: Vector3, roll_degrees: float) -> void:
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.collision_mask = 1
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = size
+	shape.shape = box
+	body.add_child(shape)
+	parent.add_child(body)
+	body.global_transform = Transform3D(
+		Basis(Vector3(0, 0, 1), deg_to_rad(roll_degrees)), at)

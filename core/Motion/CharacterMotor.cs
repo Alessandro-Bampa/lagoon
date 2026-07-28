@@ -73,6 +73,27 @@ public partial class CharacterMotor : CharacterBody3D
     [Export] public float AirControl { get; set; } = 4.0f;
 
     /// <summary>
+    /// Quanto in basso <c>MoveAndSlide</c> cerca il pavimento per riagganciarsi, in metri.
+    ///
+    /// Il valore di default di Godot (0,1 m) e' pensato per terreno piatto: correndo a 7 m/s su una
+    /// rampa di 20 gradi si scende 4 cm per tick, e basta un dosso perche' il corpo decolli e
+    /// l'animazione passi in caduta. Va tenuto sopra al dislivello di un tick alla velocita' massima
+    /// e sotto <see cref="MaxStepHeight"/>. Non impedisce di saltare: lo snap non si applica quando
+    /// la velocita' punta in alto.
+    /// </summary>
+    [Export] public float FloorSnap { get; set; } = 0.3f;
+
+    /// <summary>
+    /// Per quanto tempo si continua a considerarsi "a terra" dopo aver perso il contatto, in secondi.
+    ///
+    /// Riguarda SOLO lo stato pubblicato (<see cref="SyncGrounded"/>) e il rilevamento
+    /// dell'atterraggio, mai la gravita': un distacco di pochi millisecondi su uno spigolo, un
+    /// gradino o il raccordo di una rampa non e' una caduta, e mostrarlo come tale fa lampeggiare la
+    /// posa di volo mentre si cammina. Vale anche da coyote time percettivo.
+    /// </summary>
+    [Export] public float GroundedGraceSeconds { get; set; } = 0.12f;
+
+    /// <summary>
     /// Altezza massima di un gradino che si sale camminandoci contro, in metri.
     ///
     /// Jolt non lo fa da solo: contro uno scalino il corpo si limita a strisciare. Zero disattiva
@@ -187,6 +208,9 @@ public partial class CharacterMotor : CharacterBody3D
     private bool _wasGrounded = true;
     private float _fallSpeed;
 
+    /// Tempo trascorso dall'ultimo contatto reale col pavimento (vedi GroundedGraceSeconds).
+    private float _airTime;
+
     /// Stato dell'isteresi del turn-in-place (vedi <see cref="PlanAimFacing"/>).
     private bool _turningInPlace;
 
@@ -208,6 +232,13 @@ public partial class CharacterMotor : CharacterBody3D
 
         // Opzionale: un NPC che non si accovaccia non ha bisogno della sonda del soffitto.
         _headroom = GetNodeOrNull<ShapeCast3D>("Headroom");
+
+        // Gestione delle pendenze, delegata al motore invece che ricalcolata a mano (vedi
+        // StepMotion). Si imposta qui e non nelle scene perche' vale per OGNI personaggio: un NPC
+        // che decolla su una rampa e' lo stesso difetto del giocatore che ci decolla.
+        FloorSnapLength = FloorSnap;
+        FloorConstantSpeed = true;
+        FloorStopOnSlope = true;
 
         SyncPosition = GlobalPosition;
     }
@@ -248,25 +279,27 @@ public partial class CharacterMotor : CharacterBody3D
             : (wanted.LengthSquared() < planar.LengthSquared() ? GroundDeceleration : GroundAcceleration);
         planar = planar.Lerp(wanted, Damp(rate, dt));
 
-        // Su una pendenza la velocita' voluta va PROIETTATA sul piano del pavimento. Senza, salendo
-        // si spinge contro la salita (si rallenta) e scendendo ci si stacca dal terreno a ogni
-        // dislivello, con l'animazione che sfarfalla fra locomozione e caduta.
-        if (grounded)
-        {
-            Vector3 normal = GetFloorNormal();
-            if (normal != Vector3.Zero && normal.Y < 0.999f)
-                planar = planar.Slide(normal);
-        }
-
+        // Nessuna proiezione manuale sul piano della pendenza: ci pensa MoveAndSlide, e con
+        // FloorConstantSpeed = true la salita non costa velocita'. La proiezione fatta a mano
+        // (planar.Slide(GetFloorNormal())) rallentava comunque di cos^2 e, soprattutto, produceva
+        // la componente verticale positiva che disattivava lo snap al pavimento.
         velocity.X = planar.X;
         velocity.Z = planar.Z;
 
         if (grounded)
         {
-            // Il salto va impresso PRIMA di MoveAndSlide e dopo l'azzeramento, altrimenti
-            // l'azzeramento di questo stesso frame lo cancellerebbe: a terra IsOnFloor() e' ancora
-            // vero quando si salta.
-            velocity.Y = planar.Y;
+            // A terra la verticale NON la decide questa classe: la decide MoveAndSlide, che sale
+            // la pendenza facendo scivolare il movimento orizzontale sul piano del pavimento e ci
+            // riappoggia con lo snap. Imprimere qui la componente verticale della salita
+            // (velocity.Y = planar.Y) era il bug della rampa: con Velocity.Y POSITIVO Godot salta
+            // lo snap al pavimento (lo fa solo quando la velocita' non punta in alto), quindi
+            // camminando in salita il corpo si staccava di qualche millimetro a ogni frame,
+            // IsOnFloor() lampeggiava e con lui la posa di caduta.
+            //
+            // Il tratto in discesa lo tiene invece FloorSnapLength (impostato in _Ready): senza,
+            // si decolla a ogni dislivello. Il salto resta possibile perche' lo snap non si
+            // applica quando la velocita' punta in alto — che e' esattamente il caso qui sotto.
+            velocity.Y = 0f;
             if (wantJump && !SyncCrouching)
             {
                 // Saltare CONTRO un ostacolo scavalcabile diventa un vault: stesso tasto, la
@@ -291,7 +324,7 @@ public partial class CharacterMotor : CharacterBody3D
         Velocity = velocity;
         MoveAndSlide();
         TryStepUp(dt);
-        DetectLanding();
+        DetectLanding(dt);
     }
 
     /// <summary>
@@ -392,6 +425,7 @@ public partial class CharacterMotor : CharacterBody3D
             _vaultTime = -1f;
             _wasGrounded = true;
             _fallSpeed = 0f;
+            _airTime = 0f;
         }
     }
 
@@ -463,10 +497,24 @@ public partial class CharacterMotor : CharacterBody3D
         _collision.Position = new Vector3(0f, (height - _standHeight) * 0.5f, 0f);
     }
 
+    /// <summary>
     /// Rileva il passaggio aria -> terra e notifica l'atterraggio una sola volta.
-    private void DetectLanding()
+    ///
+    /// Lo stato che si PUBBLICA non e' <c>IsOnFloor()</c> nudo ma la sua versione con isteresi: un
+    /// distacco piu' breve di <see cref="GroundedGraceSeconds"/> mentre si sta ancora scendendo non
+    /// e' una caduta. Senza, ogni spigolo e ogni raccordo di rampa produce un frame in volo, e a
+    /// valle si vede la posa di caduta lampeggiare in continuazione mentre si cammina. La gravita'
+    /// continua a leggere <c>IsOnFloor()</c> vero (in <c>StepMotion</c>): l'isteresi e' solo per
+    /// l'animazione e per l'atterraggio, non altera la fisica.
+    /// </summary>
+    private void DetectLanding(float dt)
     {
-        bool grounded = IsOnFloor();
+        bool onFloor = IsOnFloor();
+        _airTime = onFloor ? 0f : _airTime + dt;
+
+        // Salendo (salto, vault) si e' in volo da subito: la grazia copre i distacchi involontari,
+        // che avvengono sempre con velocita' verticale nulla o negativa.
+        bool grounded = onFloor || (_airTime < GroundedGraceSeconds && Velocity.Y <= 0.01f);
 
         if (grounded && !_wasGrounded)
             OnLandTriggered(_fallSpeed);

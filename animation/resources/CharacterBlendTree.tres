@@ -1,4 +1,4 @@
-[gd_resource type="AnimationNodeBlendTree" format=3 uid="uid://dtobsa5khmh75"]
+[gd_resource type="AnimationNodeBlendTree" format=3]
 
 [sub_resource type="AnimationNodeAdd2" id="AnimationNodeAdd2_68c3a"]
 sync = true
@@ -131,7 +131,9 @@ input_3/reset = true
 [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_bn5w0"]
 animation = &"add/hit_right"
 
-[sub_resource type="AnimationNodeAdd2" id="AnimationNodeAdd2_k4tt7"]
+[sub_resource type="AnimationNodeBlend2" id="AnimationNodeBlend2_k4tt7"]
+filter_enabled = true
+filters = ["Armature_Character/Skeleton3D:LeftArm", "Armature_Character/Skeleton3D:LeftForeArm", "Armature_Character/Skeleton3D:LeftHand", "Armature_Character/Skeleton3D:LeftShoulder", "Armature_Character/Skeleton3D:RightArm", "Armature_Character/Skeleton3D:RightForeArm", "Armature_Character/Skeleton3D:RightHand", "Armature_Character/Skeleton3D:RightShoulder"]
 sync = true
 
 [sub_resource type="AnimationNodeOneShot" id="AnimationNodeOneShot_ovdt7"]
@@ -167,22 +169,22 @@ animation = &"land_soft"
 sync = true
 
 [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_o1are"]
-animation = &"add/pistol_aim"
+animation = &"hold/pistol_aim"
 
 [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_ja2wv"]
 animation = &"add/pistol_fire"
 
 [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_hibsk"]
-animation = &"add/pistol"
+animation = &"hold/pistol"
 
 [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_20bwj"]
-animation = &"add/rifle_aim"
+animation = &"hold/rifle_aim"
 
 [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_sgk37"]
 animation = &"add/rifle_fire"
 
 [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_ti7sm"]
-animation = &"add/rifle_lowered"
+animation = &"hold/rifle_lowered"
 
 [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_hv7jm"]
 animation = &"idle_neutral"
@@ -279,7 +281,6 @@ input_3/break_loop_at_end = false
 input_3/reset = true
 
 [resource]
-graph_offset = Vector2(-637.3877, 92.937454)
 nodes/WalkSpace/node = SubResource("AnimationNodeBlendSpace2D_hp6ud")
 nodes/WalkSpace/position = Vector2(-1140, -80)
 nodes/RunSpace/node = SubResource("AnimationNodeBlendSpace2D_32vw3")
@@ -304,8 +305,8 @@ nodes/PistolIdle/node = SubResource("AnimationNodeAnimation_hibsk")
 nodes/PistolIdle/position = Vector2(-880, 600)
 nodes/PistolAim/node = SubResource("AnimationNodeAnimation_o1are")
 nodes/PistolAim/position = Vector2(-880, 670)
-nodes/HoldAdd/node = SubResource("AnimationNodeAdd2_k4tt7")
-nodes/HoldAdd/position = Vector2(-120, 120)
+nodes/HoldMask/node = SubResource("AnimationNodeBlend2_k4tt7")
+nodes/HoldMask/position = Vector2(-120, 120)
 nodes/AimSpace/node = SubResource("AnimationNodeBlendSpace2D_513vi")
 nodes/AimSpace/position = Vector2(-380, 380)
 nodes/AimAdd/node = SubResource("AnimationNodeAdd2_68c3a")
@@ -348,4 +349,4 @@ nodes/Vault/node = SubResource("AnimationNodeOneShot_1f8aa")
 nodes/Vault/position = Vector2(1440, 120)
 nodes/VaultClip/node = SubResource("AnimationNodeAnimation_o6bhc")
 nodes/VaultClip/position = Vector2(1180, 380)
-node_connections = [&"output", 0, &"Vault", &"MoveBlend", 0, &"WalkSpace", &"MoveBlend", 1, &"RunSpace", &"CrouchBlend", 0, &"MoveBlend", &"CrouchBlend", 1, &"CrouchSpace", &"AirBlend", 0, &"CrouchBlend", &"AirBlend", 1, &"FallClip", &"WeaponPose", 0, &"RifleLowered", &"WeaponPose", 1, &"RifleAim", &"WeaponPose", 2, &"PistolIdle", &"WeaponPose", 3, &"PistolAim", &"HoldAdd", 0, &"AirBlend", &"HoldAdd", 1, &"WeaponPose", &"AimAdd", 0, &"HoldAdd", &"AimAdd", 1, &"AimSpace", &"Fire", 0, &"AimAdd", &"Fire", 1, &"FirePose", &"FirePose", 0, &"RifleFireClip", &"FirePose", 1, &"PistolFireClip", &"Hit", 0, &"Fire", &"Hit", 1, &"HitPose", &"HitPose", 0, &"HitFront", &"HitPose", 1, &"HitBack", &"HitPose", 2, &"HitLeft", &"HitPose", 3, &"HitRight", &"Jump", 0, &"Hit", &"Jump", 1, &"JumpScale", &"JumpScale", 0, &"JumpClip", &"Land", 0, &"Jump", &"Land", 1, &"LandPose", &"LandPose", 0, &"LandHardClip", &"LandPose", 1, &"LandSoftClip", &"Vault", 0, &"Land", &"Vault", 1, &"VaultClip"]
+node_connections = [&"output", 0, &"Vault", &"MoveBlend", 0, &"WalkSpace", &"MoveBlend", 1, &"RunSpace", &"CrouchBlend", 0, &"MoveBlend", &"CrouchBlend", 1, &"CrouchSpace", &"AirBlend", 0, &"CrouchBlend", &"AirBlend", 1, &"FallClip", &"WeaponPose", 0, &"RifleLowered", &"WeaponPose", 1, &"RifleAim", &"WeaponPose", 2, &"PistolIdle", &"WeaponPose", 3, &"PistolAim", &"HoldMask", 0, &"AirBlend", &"HoldMask", 1, &"WeaponPose", &"AimAdd", 0, &"HoldMask", &"AimAdd", 1, &"AimSpace", &"Fire", 0, &"AimAdd", &"Fire", 1, &"FirePose", &"FirePose", 0, &"RifleFireClip", &"FirePose", 1, &"PistolFireClip", &"Hit", 0, &"Fire", &"Hit", 1, &"HitPose", &"HitPose", 0, &"HitFront", &"HitPose", 1, &"HitBack", &"HitPose", 2, &"HitLeft", &"HitPose", 3, &"HitRight", &"Jump", 0, &"Hit", &"Jump", 1, &"JumpScale", &"JumpScale", 0, &"JumpClip", &"Land", 0, &"Jump", &"Land", 1, &"LandPose", &"LandPose", 0, &"LandHardClip", &"LandPose", 1, &"LandSoftClip", &"Vault", 0, &"Land", &"Vault", 1, &"VaultClip"]

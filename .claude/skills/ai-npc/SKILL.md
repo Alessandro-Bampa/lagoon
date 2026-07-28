@@ -51,13 +51,21 @@ subito e aggiungerlo dopo vorrebbe dire ritoccare la scena invece che solo il co
 
 ## 3. Navigazione, e il ripiego che evita un sintomo muto
 
-`NpcController` usa un `NavigationAgent3D`, **ma con un ripiego a guida diretta**: se non esiste una
-mappa di navigazione valida, punta dritto al waypoint.
+`NpcController` usa un `NavigationAgent3D`, **ma con un ripiego a guida diretta**: senza rotta, punta
+dritto al waypoint.
 
-Non e' pigrizia. Senza `NavigationRegion3D` nel livello, l'agente dichiara subito
-`IsNavigationFinished()` e l'NPC resta **immobile** — un sintomo che si scambia immediatamente per un
-bug dell'animazione o dello spawn, e che costa mezz'ora a chiunque. Meglio camminare in linea retta e
+Non e' pigrizia: senza `NavigationRegion3D` nel livello l'NPC resterebbe **immobile**, un sintomo che
+si scambia immediatamente per un bug dell'animazione o dello spawn. Meglio camminare in linea retta e
 prendersi gli ostacoli, che almeno e' visibile e dice la verita'.
+
+**La condizione del ripiego NON puo' essere il solo `IsNavigationFinished()`, ed e' misurato.** La
+prima versione lo assumeva ("senza navmesh l'agente dichiara subito arrivato"), ed e' falso: con una
+mappa **valida** ma senza navmesh l'agente non dichiara mai la rotta finita e `GetNextPathPosition()`
+restituisce la **posizione corrente**, cioe' direzione nulla. Il ripiego non si agganciava mai e
+l'NPC restava fermo — esattamente il sintomo muto che quel codice esiste per evitare, in silenzio da
+quando e' stato scritto. Oggi la condizione guarda anche il risultato: se il punto di rotta coincide
+con dove siamo gia', rotta non ce n'e'. Lo copre `_verify_slope` in `verify_animation_runtime.gd`,
+che fa camminare un NPC vero in un mondo senza navmesh.
 
 **`TestLevel.tscn` non ha ancora un `NavigationRegion3D`**, quindi `NpcWalker` cammina in linea retta.
 Quando ne verra' aggiunto uno con la navmesh bakeata, l'NPC comincera' a evitare gli ostacoli senza

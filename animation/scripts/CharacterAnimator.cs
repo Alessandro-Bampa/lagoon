@@ -27,7 +27,7 @@ public partial class CharacterAnimator : Node3D
     private const string AirAmount = "parameters/AirBlend/blend_amount";
     private const string LandRequest = "parameters/Land/request";
     private const string CrouchAmount = "parameters/CrouchBlend/blend_amount";
-    private const string HoldAmount = "parameters/HoldAdd/add_amount";
+    private const string HoldAmount = "parameters/HoldMask/blend_amount";
     private const string AimAmount = "parameters/AimAdd/add_amount";
     private const string AimPosition = "parameters/AimSpace/blend_position";
     private const string WeaponPoseRequest = "parameters/WeaponPose/transition_request";
@@ -363,13 +363,16 @@ public partial class CharacterAnimator : Node3D
     }
 
     /// <summary>
-    /// Layer di impugnatura: un DELTA additivo upper-body che si somma sopra qualunque locomozione.
+    /// Layer di impugnatura: una posa ASSOLUTA delle sole braccia, sostituita alla locomozione da un
+    /// <c>Blend2</c> filtrato sulle otto ossa delle braccia (<c>HoldMask</c>).
     ///
-    /// La locomozione e' agnostica dall'arma: reggere un fucile o una pistola non cambia come si
-    /// cammina, cambia solo cosa fanno busto e braccia. Il delta e' authorato in Blender dalla stessa
-    /// posa assoluta su cui sono misurati presa e polo IK, quindi sommato sull'idle riproduce
-    /// esattamente quella posa; sommato su una clip in movimento, le braccia "si aggiustano" sul
-    /// busto della clip e l'errore residuo di mira lo chiude SpineAimModifier.
+    /// La locomozione resta agnostica dall'arma: reggere un fucile o una pistola non cambia come si
+    /// cammina. Ma la presa e' un VINCOLO geometrico — due mani sulla stessa arma — e non uno scarto
+    /// da sommare: come delta additivo riproduceva la posa giusta solo sopra la clip di riferimento,
+    /// e su qualunque locomozione le mani finivano fuori dall'arma (misure nell'intestazione di
+    /// <c>tools/build_weapon_poses.gd</c>). Rachide e bacino NON sono nella maschera, quindi le
+    /// braccia seguono in blocco il busto della locomozione tenendo la presa, e l'errore residuo di
+    /// mira lo chiude <c>SpineAimModifier</c>.
     /// </summary>
     private void UpdateWeapon(float dt)
     {
@@ -410,7 +413,7 @@ public partial class CharacterAnimator : Node3D
             _lastFirePoseRequest = "";
         }
 
-        // Peso del delta di impugnatura: da armati e' sempre acceso, con qualunque locomozione
+        // Peso della maschera di impugnatura: da armati e' sempre acceso, con qualunque locomozione
         // sotto (in piedi, accovacciati, in aria). La posa la sceglie il Transition qui sopra.
         float overlay = armed ? 1f : 0f;
         _weaponWeight = Mathf.Lerp(_weaponWeight, overlay, Damp(BlendSpeed, dt));

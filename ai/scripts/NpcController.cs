@@ -70,12 +70,22 @@ public partial class NpcController : CharacterMotor
             // Con una mappa di navigazione si segue la rotta; senza, si punta dritti al waypoint.
             //
             // Il ripiego non e' pigrizia: un livello di prova puo' non avere ancora un
-            // NavigationRegion3D, e in quel caso l'agente dichiara subito "arrivato" e l'NPC
-            // resterebbe immobile — un sintomo muto che si scambia per un bug dell'animazione.
-            // Meglio camminare in linea retta e prendersi gli ostacoli, che e' visibile.
-            Vector3 next = _agent.GetNavigationMap().IsValid && !_agent.IsNavigationFinished()
-                ? _agent.GetNextPathPosition()
-                : CurrentWaypoint();
+            // NavigationRegion3D, e senza rotta l'NPC resterebbe immobile — un sintomo muto che
+            // si scambia per un bug dell'animazione. Meglio camminare in linea retta e prendersi
+            // gli ostacoli, che e' visibile.
+            //
+            // La condizione NON puo' essere il solo IsNavigationFinished(): misurato, con una
+            // mappa valida ma senza navmesh l'agente NON dichiara mai la rotta finita e
+            // GetNextPathPosition() restituisce la posizione corrente, cioe' direzione nulla.
+            // Il ripiego si aggancia anche a quel caso: se il punto di rotta e' dove siamo gia',
+            // rotta non ce n'e'.
+            Vector3 next = CurrentWaypoint();
+            if (_agent.GetNavigationMap().IsValid && !_agent.IsNavigationFinished())
+            {
+                Vector3 onPath = _agent.GetNextPathPosition();
+                if (onPath.DistanceSquaredTo(GlobalPosition) > 0.01f)
+                    next = onPath;
+            }
 
             direction = next - GlobalPosition;
             direction.Y = 0f;
