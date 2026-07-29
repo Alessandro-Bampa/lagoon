@@ -31,6 +31,18 @@ const MOTION_EPSILON := 0.002
 
 const LEGS := ["LeftUpLeg", "LeftLeg", "RightUpLeg", "RightLeg"]
 
+# Distanza fra le due mani reggendo il fucile, cioe' la lunghezza dell'astina. DEVE
+# combaciare con SupportGripOffset.z di animation/resources/two_handed.tres: e' la stessa
+# grandezza vista da due parti, la posa d'impugnatura e il bersaglio dell'IK. La misura
+# la stampa tools/build_weapon_poses.gd quando rigenera le pose.
+const HANDGUARD := 0.254
+
+# Scarto massimo tollerato, in gradi, fra la canna e la direzione in cui si sta mirando.
+# E' il controllo che mancava: con le pose derivate da `rifle_idle` valeva 85 gradi (arma
+# di traverso sul petto) e nessun altro controllo se ne accorgeva, perche' tutti
+# misuravano DOVE finisce l'arma e nessuno DOVE punta.
+const AIM_TOLERANCE_DEG := 15.0
+
 var _failures := 0
 var _skel: Skeleton3D
 var _tree: AnimationTree
@@ -743,15 +755,15 @@ func _verify_hold_mask() -> void:
 		await _settle(20)
 		var gap: float = (_skel.get_bone_global_pose(left).origin
 			- _skel.get_bone_global_pose(right).origin).length()
-		_check("la presa del fucile regge %s" % caso[0], absf(gap - 0.392) < 0.03,
-			"distanza fra le mani = %.3f m (astina a 0,392)" % gap)
+		_check("la presa del fucile regge %s" % caso[0], absf(gap - HANDGUARD) < 0.03,
+			"distanza fra le mani = %.3f m (astina a %.3f)" % [gap, HANDGUARD])
 
 	# E con l'aim offset a fondo corsa: la mira ruota il busto, non deve aprire la presa.
 	_drive(Vector2.ZERO, 0.0, 1.0, Vector2(1, 1), 1.0)
 	await _settle(20)
 	var gap_aim: float = (_skel.get_bone_global_pose(left).origin
 		- _skel.get_bone_global_pose(right).origin).length()
-	_check("la presa regge in mira a fondo corsa", absf(gap_aim - 0.392) < 0.03,
+	_check("la presa regge in mira a fondo corsa", absf(gap_aim - HANDGUARD) < 0.03,
 		"distanza fra le mani = %.3f m" % gap_aim)
 
 	# Porto rilassato: le mani stanno piu' in basso della mira, ma DAVANTI al corpo e non
@@ -830,7 +842,7 @@ func _verify_aim(rig: Node) -> void:
 	print("")
 	print("== mira procedurale ==")
 
-	var aim_rig: Node3D = rig.get_node_or_null("AimRig")
+	var aim_rig: Node3D = rig.get_node_or_null("AimRig") as Node3D
 	_check("AimRig presente nel rig", aim_rig != null)
 	if aim_rig == null:
 		return
@@ -875,12 +887,58 @@ func _verify_aim(rig: Node) -> void:
 	_check("l'arma segue la correzione di mira", high.distance_to(low) > 0.05,
 		"spostamento della presa fra mira alta e bassa = %.3f m" % high.distance_to(low))
 
+	# --- LA CANNA DEVE PUNTARE DOVE SI MIRA ---------------------------------
+	#
+	# E' il controllo che mancava, ed e' diverso da tutti quelli sopra: quelli misurano
+	# DOVE finisce l'arma (segue la mano, sta fra le mani, si sposta con la mira), questo
+	# misura DOVE PUNTA. Con le pose d'impugnatura derivate da `rifle_idle` — un porto con
+	# l'arma di traverso sul petto — la canna stava a 85 gradi dalla mira e ognuno degli
+	# altri controlli passava lo stesso.
+	#
+	# Va provato su piu' locomozioni perche' la posa d'impugnatura sostituisce le sole
+	# braccia: il busto sotto e' quello della clip in corso, e sono le sue rotazioni a
+	# poter portare la canna altrove.
+	_tree.set("parameters/WeaponPose/transition_request", "rifle_aim")
+	var mire := [
+		["dritto davanti", Vector3(0, 0, 1), Vector2.ZERO],
+		["in alto", Vector3(0, 0.55, 1).normalized(), Vector2.ZERO],
+		["in basso", Vector3(0, -0.4, 1).normalized(), Vector2.ZERO],
+		["camminando", Vector3(0, 0, 1), Vector2(0, WALK_SPEED)],
+		["in strafe", Vector3(0, 0, 1), Vector2(-WALK_SPEED, 0)],
+		["in corsa", Vector3(0, 0, 1), Vector2(0, RUN_SPEED)],
+	]
+	aim_rig.set("Weight", 1.0)
+	for caso in mire:
+		_drive(caso[2], 0.0, 1.0, Vector2.ZERO, 1.0)
+		aim_rig.set("AimDirection", caso[1])
+		await _settle(60)
+		var muzzle_error: float = rad_to_deg(
+			grip.global_transform.basis.z.normalized().angle_to((caso[1] as Vector3).normalized()))
+		_check("col fucile la canna punta sulla mira, %s" % caso[0],
+			muzzle_error < AIM_TOLERANCE_DEG, "scarto = %.2f gradi" % muzzle_error)
+
 	# Spenta la mira, il busto deve tornare alla posa animata: un layer procedurale che non
 	# si spegne e' peggio di uno che non c'e'.
+	_drive(Vector2(-WALK_SPEED, 0), 0.0, 1.0)
+	aim_rig.set("AimDirection", Vector3(0, 0, 1))
 	aim_rig.set("Weight", 0.0)
 	await _settle(60)
 	_check("a peso zero la correzione rientra", _aim_error(Vector3(0, 0, 1)) > 0.5,
 		"il busto e' rimasto agganciato alla mira anche da disarmato")
+
+
+# Da che parte sporge il gomito sinistro rispetto all'asse spalla -> mano.
+#
+# E' la componente di (gomito - spalla) PERPENDICOLARE a quell'asse: la sola parte che
+# dice da che lato si piega il braccio. La lunghezza non interessa, solo la direzione,
+# quindi si normalizza. Tutte le pose vengono da dopo i modificatori (§1.1).
+func _elbow_side() -> Vector3:
+	var root := _bone_after_modifiers("LeftArm")
+	var tip := _bone_after_modifiers("LeftHand")
+	var elbow := _bone_after_modifiers("LeftForeArm")
+	var axis: Vector3 = (tip - root).normalized()
+	var arm: Vector3 = elbow - root
+	return (arm - axis * arm.dot(axis)).normalized()
 
 
 # Scarto in GRADI fra dove punta il busto e dove si sta mirando.
@@ -955,12 +1013,82 @@ func _verify_grip(rig: Node) -> void:
 		_check("il polo del gomito e' dichiarato", not ik.get_pole_node(0).is_empty(),
 			"senza pole_node TwoBoneIK3D non risolve affatto la catena")
 
+		# L'IK di supporto deve girare per ULTIMO fra i modificatori: chiude un vincolo
+		# sull'arma, e qualunque cosa muova il busto dopo di lui glielo porta via. Con
+		# SupportHandIk davanti a SpineAim la mano restava 36 cm fuori dall'astina, e
+		# soltanto in mira (fuori mira SpineAim ha influenza nulla).
+		var modificatori: PackedStringArray = []
+		for c in _skel.get_children():
+			if c is SkeletonModifier3D:
+				modificatori.append(c.name)
+		_check("l'IK di supporto e' l'ultimo modificatore",
+			not modificatori.is_empty() and modificatori[-1] == "SupportHandIk",
+			"ordine di esecuzione: %s" % ", ".join(modificatori))
+
 	_watch_bone("LeftHand")
 	_watch_bone("RightHand")
+	_watch_bone("LeftArm")
+	_watch_bone("LeftForeArm")
 	await _settle(60)
 	var reach_error: float = _bone_after_modifiers("LeftHand").distance_to(support.global_position)
 	_check("la mano di supporto raggiunge l'astina", reach_error < 0.08,
 		"errore residuo = %.3f m" % reach_error)
+
+	# Da che PARTE si piega il gomito.
+	#
+	# Raggiungere l'astina non basta: il gomito puo' arrivarci piegato al contrario, e la
+	# distanza resta identica — e' il difetto che si e' visto solo a schermo. Lo decide il
+	# pole_node, che vive nel frame dell'ARMA: cambiando GripRotationDegrees si sposta con
+	# lei, quindi ogni presa nuova va accompagnata da un SupportElbowHint nuovo
+	# (tools/build_weapon_poses.gd li stampa insieme).
+	#
+	# Il riferimento e' la posa ANIMATA, cioe' l'IK spento: la posa d'impugnatura ha gia'
+	# il gomito dove va, ed e' quello il lato giusto per definizione.
+	var elbow_ik := _elbow_side()
+	grip_rig.set("EnableSupportHandIk", false)
+	await _settle(60)
+	var elbow_pose := _elbow_side()
+	grip_rig.set("EnableSupportHandIk", true)
+	await _settle(60)
+
+	var flip: float = rad_to_deg(elbow_ik.angle_to(elbow_pose))
+	_check("il gomito di supporto si piega dal lato della posa", flip < 90.0,
+		"scarto fra IK e posa animata = %.0f gradi (oltre 90 = gomito rovesciato)" % flip)
+
+	# --- La mano di supporto NON deve staccarsi, in nessuno stato ------------
+	#
+	# L'IK di supporto e' acceso sempre, non solo in mira: la mano sinistra e' SULL'ARMA,
+	# e un vincolo che vale solo mirando lascia la mano a fluttuare accanto all'astina in
+	# tutto il resto del gioco. Perche' regga anche nel porto rilassato serve che il polo
+	# del gomito ruoti con l'arma — cosa che fa, essendo figlio di GripPoint — e che la
+	# posa di porto sia derivata da quella di mira ruotando le braccia in blocco, cosi'
+	# l'arma resta fra le mani anche li' (§1.6quater).
+	# La mira PROCEDURALE va accesa: e' il caso in cui il difetto si vede, e misurarlo con
+	# SpineAimModifier spento vuol dire non misurarlo affatto. Il modificatore ruota il
+	# rachide ogni frame, quindi l'arma — appesa alla mano destra — si sposta di continuo,
+	# ed e' esattamente in quelle condizioni che la mano sinistra puo' restare indietro.
+	var aim_rig: Node3D = rig.get_node_or_null("AimRig") as Node3D
+	var stati := [
+		["in mira, fermi", "rifle_aim", Vector2.ZERO, 1.0],
+		["in mira, in camminata", "rifle_aim", Vector2(0, WALK_SPEED), 1.0],
+		["in mira, in corsa", "rifle_aim", Vector2(0, RUN_SPEED), 1.0],
+		["in mira, in strafe", "rifle_aim", Vector2(-WALK_SPEED, 0), 1.0],
+		["nel porto, fermi", "rifle_lowered", Vector2.ZERO, 0.0],
+		["nel porto, in camminata", "rifle_lowered", Vector2(0, WALK_SPEED), 0.0],
+		["nel porto, in corsa", "rifle_lowered", Vector2(0, RUN_SPEED), 0.0],
+	]
+	for stato in stati:
+		_tree.set("parameters/WeaponPose/transition_request", stato[1])
+		_drive(stato[2], 0.0, 1.0, Vector2.ZERO, stato[3])
+		if aim_rig != null:
+			aim_rig.set("Weight", stato[3])
+			aim_rig.set("AimDirection", Vector3(0.4, 0.25, 1).normalized())
+		await _settle(40)
+		var slip: float = _bone_after_modifiers("LeftHand").distance_to(support.global_position)
+		var side: float = rad_to_deg(_elbow_side().angle_to(elbow_pose))
+		_check("la mano di supporto resta sull'astina %s" % stato[0], slip < 0.02,
+			"scostamento = %.3f m, gomito a %.0f gradi dal lato della posa" % [slip, side])
+	_tree.set("parameters/WeaponPose/transition_request", "rifle_aim")
 
 	# L'arma deve GIACERE fra le due mani, non spuntare dalla mano in una direzione qualsiasi.
 	# E' il controllo che il placeholder e' orientato sull'animazione e non su un sistema di

@@ -1,36 +1,47 @@
-[gd_scene load_steps=22 format=3]
+[gd_scene format=3 uid="uid://cg24b0t5fxthg"]
 
 [ext_resource type="PackedScene" path="res://combat/scenes/TargetDummy.tscn" id="1"]
-[ext_resource type="Script" path="res://vehicles/scripts/WaterVolume.cs" id="2"]
+[ext_resource type="Script" uid="uid://dawuxe8qqu2eb" path="res://vehicles/scripts/WaterVolume.cs" id="2"]
 [ext_resource type="PackedScene" path="res://vehicles/scenes/Boat.tscn" id="3"]
 [ext_resource type="PackedScene" path="res://ai/scenes/NpcCharacter.tscn" id="4"]
 
 [sub_resource type="BoxShape3D" id="Shape_1"]
 size = Vector3(40, 1, 40)
 
-[sub_resource type="BoxMesh" id="Mesh_1"]
-size = Vector3(40, 1, 40)
-
 [sub_resource type="StandardMaterial3D" id="Mat_1"]
 albedo_color = Color(0.32, 0.34, 0.36, 1)
 
-[sub_resource type="BoxShape3D" id="Shape_Seabed"]
-size = Vector3(60, 1, 60)
+[sub_resource type="BoxMesh" id="Mesh_1"]
+size = Vector3(40, 1, 40)
 
-[sub_resource type="BoxMesh" id="Mesh_Seabed"]
+[sub_resource type="ProceduralSkyMaterial" id="SkyMat_1"]
+
+[sub_resource type="Sky" id="Sky_1"]
+sky_material = SubResource("SkyMat_1")
+
+[sub_resource type="Environment" id="Env_1"]
+background_mode = 2
+sky = SubResource("Sky_1")
+ambient_light_source = 3
+tonemap_mode = 2
+
+[sub_resource type="BoxShape3D" id="Shape_Seabed"]
 size = Vector3(60, 1, 60)
 
 [sub_resource type="StandardMaterial3D" id="Mat_Sand"]
 albedo_color = Color(0.76, 0.7, 0.5, 1)
 
-[sub_resource type="BoxShape3D" id="Shape_Dock"]
-size = Vector3(9, 3, 6)
+[sub_resource type="BoxMesh" id="Mesh_Seabed"]
+size = Vector3(60, 1, 60)
 
-[sub_resource type="BoxMesh" id="Mesh_Dock"]
+[sub_resource type="BoxShape3D" id="Shape_Dock"]
 size = Vector3(9, 3, 6)
 
 [sub_resource type="StandardMaterial3D" id="Mat_Wood"]
 albedo_color = Color(0.45, 0.32, 0.2, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_Dock"]
+size = Vector3(9, 3, 6)
 
 [sub_resource type="BoxShape3D" id="Shape_Ramp"]
 size = Vector3(4.4, 0.4, 4)
@@ -44,147 +55,133 @@ size = Vector3(3.5, 0.1, 2)
 [sub_resource type="BoxMesh" id="Mesh_Plank"]
 size = Vector3(3.5, 0.1, 2)
 
-[sub_resource type="PlaneMesh" id="Mesh_Water"]
-size = Vector2(60, 60)
-
 [sub_resource type="StandardMaterial3D" id="Mat_Water"]
 transparency = 1
 cull_mode = 2
 albedo_color = Color(0.1, 0.35, 0.55, 0.45)
 
-[sub_resource type="ProceduralSkyMaterial" id="SkyMat_1"]
+[sub_resource type="PlaneMesh" id="Mesh_Water"]
+size = Vector2(60, 60)
 
-[sub_resource type="Sky" id="Sky_1"]
-sky_material = SubResource("SkyMat_1")
+[sub_resource type="BoxShape3D" id="BoxShape3D_54j0a"]
+size = Vector3(4.452362, 1.6103516, 1)
 
-[sub_resource type="Environment" id="Env_1"]
-background_mode = 2
-sky = SubResource("Sky_1")
-ambient_light_source = 3
-tonemap_mode = 2
+[sub_resource type="BoxMesh" id="BoxMesh_3yu8t"]
+size = Vector3(4.4571533, 1.6016235, 1)
 
-[node name="TestLevel" type="Node3D"]
+[sub_resource type="BoxShape3D" id="BoxShape3D_vuql3"]
+size = Vector3(2.6269598, 0.70080566, 0.20172119)
 
-[node name="Floor" type="StaticBody3D" parent="."]
-collision_layer = 1
-collision_mask = 1
+[sub_resource type="BoxMesh" id="BoxMesh_iea5j"]
+size = Vector3(2.6332703, 0.6926422, 0.20123291)
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+[node name="TestLevel" type="Node3D" unique_id=1890490299]
+
+[node name="Floor" type="StaticBody3D" parent="." unique_id=536496448]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor" unique_id=64232742]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 shape = SubResource("Shape_1")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor" unique_id=1870934941]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
-mesh = SubResource("Mesh_1")
 material_override = SubResource("Mat_1")
+mesh = SubResource("Mesh_1")
 
-[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1792820031]
 transform = Transform3D(1, 0, 0, 0, 0.643, -0.766, 0, 0.766, 0.643, 0, 8, 0)
 shadow_enabled = true
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=150397573]
 environment = SubResource("Env_1")
 
-[node name="TargetDummyA" parent="." instance=ExtResource("1")]
+[node name="TargetDummyA" parent="." unique_id=1144919699 instance=ExtResource("1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 8)
 
-[node name="TargetDummyB" parent="." instance=ExtResource("1")]
+[node name="TargetDummyB" parent="." unique_id=1087699282 instance=ExtResource("1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0, 10)
 
-[node name="TargetDummyC" parent="." instance=ExtResource("1")]
+[node name="TargetDummyC" parent="." unique_id=1556938530 instance=ExtResource("1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0, 10)
 
-; NPC di prova: cammina avanti e indietro sul pavimento. Serve a guardare la locomozione
-; condivisa da fuori — un personaggio animato che non sei tu e' l'unico modo per accorgersi
-; di scatti e scivolamenti che sul proprio avatar, con la camera addosso, non si notano.
-; Non ha IA: percorre waypoint e basta (skill ai-npc).
-[node name="NpcWalker" parent="." instance=ExtResource("4")]
+[node name="NpcWalker" parent="." unique_id=1782440196 instance=ExtResource("4")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 1, -2)
-Waypoints = [Vector3(0, 0, 0), Vector3(0, 0, 12), Vector3(6, 0, 12), Vector3(6, 0, 0)]
 
-; --- Laguna (Fase 4) -----------------------------------------------------------------------------
-; Il Floor esistente (x,z in [-20,20], superficie y=0) NON e' stato toccato: la laguna e' adiacente
-; in +X. Quote scelte perche' non ci sia nessuno scalino da superare a piedi: molo e ponte della barca
-; sono COMPLANARI a y=1.25, collegati da una passerella che li sovrappone; da terra si sale con una
-; rampa inclinata (CharacterBody3D in Godot 4 non ha step-up automatico).
-[node name="Lagoon" type="Node3D" parent="."]
+[node name="Lagoon" type="Node3D" parent="." unique_id=1785074128]
 
-[node name="Seabed" type="StaticBody3D" parent="Lagoon"]
+[node name="Seabed" type="StaticBody3D" parent="Lagoon" unique_id=1757689770]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50, -4.5, 0)
-collision_layer = 1
-collision_mask = 1
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Lagoon/Seabed"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Lagoon/Seabed" unique_id=1203937860]
 shape = SubResource("Shape_Seabed")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Lagoon/Seabed"]
-mesh = SubResource("Mesh_Seabed")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Lagoon/Seabed" unique_id=1081323451]
 material_override = SubResource("Mat_Sand")
+mesh = SubResource("Mesh_Seabed")
 
-[node name="Dock" type="StaticBody3D" parent="Lagoon"]
+[node name="Dock" type="StaticBody3D" parent="Lagoon" unique_id=1186675982]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22.5, -0.25, 0)
-collision_layer = 1
-collision_mask = 1
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Lagoon/Dock"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Lagoon/Dock" unique_id=1743934415]
 shape = SubResource("Shape_Dock")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Lagoon/Dock"]
-mesh = SubResource("Mesh_Dock")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Lagoon/Dock" unique_id=2119331376]
 material_override = SubResource("Mat_Wood")
+mesh = SubResource("Mesh_Dock")
 
-; Rampa terra -> molo: 20 gradi, sotto il floor_max_angle di 45.
-; Il piede e' INTERRATO sotto il pavimento (la faccia superiore attraversa y=0 a x=14): un
-; CharacterBody3D in Godot 4 non ha step-up automatico, quindi anche una soglia di pochi centimetri si
-; comporterebbe come un muro. La rampa deve emergere dal pavimento come un cuneo, senza spigoli.
-[node name="Ramp" type="StaticBody3D" parent="Lagoon"]
+[node name="Ramp" type="StaticBody3D" parent="Lagoon" unique_id=182805185]
 transform = Transform3D(0.9397, -0.342, 0, 0.342, 0.9397, 0, 0, 0, 1, 16.385, 0.437, 0)
-collision_layer = 1
-collision_mask = 1
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Lagoon/Ramp"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Lagoon/Ramp" unique_id=45336281]
 shape = SubResource("Shape_Ramp")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Lagoon/Ramp"]
-mesh = SubResource("Mesh_Ramp")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Lagoon/Ramp" unique_id=735501604]
 material_override = SubResource("Mat_Wood")
+mesh = SubResource("Mesh_Ramp")
 
-; Passerella molo -> ponte: complanare a entrambi (superficie y=1.25), sovrapposta al molo per 1 m e al
-; ponte per 0.3 m, cosi' l'imbarco regge anche se la barca deriva un poco all'ormeggio. Passa 0.35 m
-; sopra il tetto dello scafo (y=0.8), quindi non lo urta; arriva sul varco del parapetto di sinistra.
-[node name="Plank" type="StaticBody3D" parent="Lagoon"]
+[node name="Plank" type="StaticBody3D" parent="Lagoon" unique_id=360499044]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 27.75, 1.2, 0)
-collision_layer = 1
-collision_mask = 1
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Lagoon/Plank"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Lagoon/Plank" unique_id=455479822]
 shape = SubResource("Shape_Plank")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Lagoon/Plank"]
-mesh = SubResource("Mesh_Plank")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Lagoon/Plank" unique_id=1996232408]
 material_override = SubResource("Mat_Wood")
+mesh = SubResource("Mesh_Plank")
 
-; Superficie d'acqua: SOLO mesh, nessun corpo fisico (vedi WaterVolume.cs).
-[node name="WaterSurface" type="MeshInstance3D" parent="Lagoon"]
+[node name="WaterSurface" type="MeshInstance3D" parent="Lagoon" unique_id=394998841]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50, 0, 0)
-mesh = SubResource("Mesh_Water")
 material_override = SubResource("Mat_Water")
+mesh = SubResource("Mesh_Water")
 
-[node name="WaterVolume" type="Node3D" parent="Lagoon"]
+[node name="WaterVolume" type="Node3D" parent="Lagoon" unique_id=1213322289]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50, 0, 0)
 script = ExtResource("2")
-SurfaceY = 0.0
-ExtentXZ = Vector2(60, 60)
 
-; Rientro di chi finisce in acqua: sul molo, y = 1.25 + mezza capsula.
-[node name="ShoreRespawn" type="Marker3D" parent="Lagoon" groups=["water_respawn"]]
+[node name="ShoreRespawn" type="Marker3D" parent="Lagoon" unique_id=584477760 groups=["water_respawn"]]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22, 2.25, 0)
 
-; Barca STATICA nel livello, non spawnata a runtime: il NodePath e' identico su ogni peer, quindi il
-; MultiplayerSynchronizer interno funziona senza passare da un MultiplayerSpawner (stesso criterio di
-; TargetDummy). y=0.2 e' anche la quota di riposo del galleggiamento, quindi non c'e' assestamento.
-[node name="Boat" parent="." instance=ExtResource("3")]
+[node name="Boat" parent="." unique_id=951277202 instance=ExtResource("3")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 31, 0.2, 0)
 
+[node name="Wall" type="StaticBody3D" parent="." unique_id=607590511]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1463003, -15.799978)
 
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Wall" unique_id=586267636]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.72406, -0.34228516, 0)
+shape = SubResource("BoxShape3D_54j0a")
 
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Wall" unique_id=1359636378]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.7285767, -0.34039593, 0)
+mesh = SubResource("BoxMesh_3yu8t")
+
+[node name="Wall2" type="StaticBody3D" parent="." unique_id=1180583776]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.28605068, 1.1508818, -12.349003)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Wall2" unique_id=679798732]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.00907, -0.7970581, 0.3991394)
+shape = SubResource("BoxShape3D_vuql3")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Wall2" unique_id=1035560715]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.0143585, -0.7948866, 0.39938354)
+mesh = SubResource("BoxMesh_iea5j")

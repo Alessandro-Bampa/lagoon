@@ -1,41 +1,22 @@
-[gd_resource type="Resource" script_class="WeaponDefinition" load_steps=4 format=3]
+[gd_resource type="Resource" script_class="WeaponDefinition" format=3 uid="uid://bao5bkonffcml"]
 
-[ext_resource type="Script" path="res://combat/scripts/WeaponDefinition.cs" id="1"]
+[ext_resource type="Script" uid="uid://bpww8vmfix0e5" path="res://combat/scripts/WeaponDefinition.cs" id="1"]
 [ext_resource type="Resource" path="res://animation/resources/two_handed.tres" id="2"]
-[ext_resource type="PackedScene" path="res://assets/models/weapons/W_Rifle.glb" id="3"]
+[ext_resource type="PackedScene" uid="uid://obje8q52ee5q" path="res://assets/models/weapons/W_Rifle.glb" id="3"]
 
 [resource]
 script = ExtResource("1")
+MinDamageFactor = 0.4
+Caliber = "5.45x39"
+BaseSpreadDegrees = 0.6
+RecoilPerShotDegrees = 0.7
+CameraKick = 0.06
+ReloadSeconds = 2.2
+AnimationSet = ExtResource("2")
+VisualScene = ExtResource("3")
 ItemId = "rifle"
 Width = 5
 Height = 2
 Weight = 3.5
 Category = 3
 EquipSlot = 7
-IsContainer = false
-ContainerColumns = 0
-ContainerRows = 0
-MaxStack = 1
-QuickUsable = false
-Damage = 25
-FalloffStartMeters = 18.0
-MinDamageFactor = 0.4
-Penetration = 0
-Caliber = "5.45x39"
-EffectiveRangeMeters = 30.0
-MaxRangeMeters = 60.0
-BaseSpreadDegrees = 0.6
-SpreadPerRangeDegrees = 2.5
-MaxSpreadDegrees = 8.0
-RecoilPerShotDegrees = 0.7
-RecoilRecoveryDegreesPerSecond = 4.0
-MaxRecoilSpreadDegrees = 5.0
-CameraKick = 0.06
-RoundsPerMinute = 600.0
-Automatic = true
-MagazineSize = 30
-ReloadSeconds = 2.2
-AmmoItemId = "ammo"
-ProjectileSpeed = 400.0
-AnimationSet = ExtResource("2")
-VisualScene = ExtResource("3")

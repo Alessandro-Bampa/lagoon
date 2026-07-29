@@ -66,10 +66,15 @@ public partial class WeaponGripRig : Node3D
     ///
     /// Non e' un dettaglio estetico: senza un <c>pole_node</c> <see cref="TwoBoneIK3D"/> non risolve
     /// affatto la catena — misurato, lo spostamento della mano resta sotto i 4 mm e l'errore al
-    /// bersaglio non cala. Dichiarare la sola <c>pole_direction</c> non basta. Il valore di default
-    /// tiene il gomito basso e leggermente arretrato, che e' la presa naturale su un'astina.
+    /// bersaglio non cala. Dichiarare la sola <c>pole_direction</c> non basta.
+    ///
+    /// **Si MISURA dalla posa di mira, insieme alla presa** (lo stampa
+    /// <c>tools/build_weapon_poses.gd</c>): vive nel frame dell'ARMA, quindi ruota con
+    /// <see cref="WeaponAnimationSet.GripRotationDegrees"/>. Cambiare la presa senza rimisurarlo
+    /// porta il polo dalla parte opposta e il gomito si piega **al contrario** — e nessun controllo
+    /// di distanza se ne accorge, perche' la mano continua a raggiungere l'astina lo stesso.
     /// </summary>
-    [Export] public Vector3 SupportElbowHint { get; set; } = new(-0.15f, -0.45f, -0.20f);
+    [Export] public Vector3 SupportElbowHint { get; set; } = new(0.126f, 0.145f, 0.081f);
 
     /// <summary>
     /// Punto di presa: qui va messa l'arma. E' figlio del <see cref="BoneAttachment3D"/> sulla mano
@@ -170,11 +175,72 @@ public partial class WeaponGripRig : Node3D
     }
 
     /// <summary>
+    /// Tiene la catena IK ULTIMA fra i figli dello scheletro, cioe' ultima a girare.
+    ///
+    /// I <see cref="SkeletonModifier3D"/> vengono eseguiti nell'ordine dei figli, e la mano di
+    /// supporto e' un vincolo che si chiude sull'ARMA: dev'essere risolta dopo tutto cio' che
+    /// muove il busto, o quello che viene dopo se la porta via. Misurato con
+    /// <c>SupportHandIk</c> davanti a <c>SpineAim</c>: mirando, la mano restava fino a
+    /// <b>36 cm</b> fuori dall'astina — l'IK risolveva, e subito dopo il rachide ruotava
+    /// trascinandosi dietro il braccio sinistro. Fuori mira non si vedeva, perche' li'
+    /// <c>SpineAimModifier</c> ha influenza nulla.
+    ///
+    /// L'ordine non si puo' fissare alla costruzione: ogni rig procedurale crea il proprio
+    /// modificatore in <c>CallDeferred</c>, quindi chi arriva ultimo dipende dall'ordine dei nodi
+    /// nella scena — un accoppiamento invisibile e facilissimo da rompere spostando un nodo. Qui
+    /// invece la posizione si ripara da sola, e il controllo costa un confronto di indici.
+    ///
+    /// Durante uno scavalcamento le mani vanno sul BORDO e non sull'arma: li' non serve cedere il
+    /// posto in coda, perche' <see cref="CharacterAnimator"/> azzera <see cref="SupportActive"/> e
+    /// un modificatore a influenza nulla non scrive niente, qualunque sia il suo posto.
+    /// </summary>
+    private void EnsureModifierRunsLast()
+    {
+        if (_supportIk == null || _skeleton == null)
+            return;
+
+        int last = _skeleton.GetChildCount() - 1;
+        if (_supportIk.GetIndex() != last)
+            _skeleton.MoveChild(_supportIk, last);
+    }
+
+    /// <summary>
     /// Dichiara quale arma si impugna, o null da disarmato. E' l'UNICO punto da toccare per
     /// aggiungere un'arma: presa, rinculo e mano di supporto arrivano tutti dal
     /// <see cref="WeaponAnimationSet"/>, quindi la locomozione non viene sfiorata.
     /// </summary>
     public void ApplyWeapon(WeaponAnimationSet? weapon) => _weapon = weapon;
+
+    /// <summary>
+    /// Alza il muso di <paramref name="radians"/>, ruotando attorno a un asse GEOMETRICO invece
+    /// che sommando gradi a una componente di Eulero.
+    ///
+    /// Sommare il beccheggio alla X della presa sembra equivalente e non lo e': l'ordine YXZ di
+    /// Godot fa si' che l'effetto di quella somma cambi SEGNO a seconda della Y della presa. Con
+    /// <c>GripRotationDegrees.Y = 37</c> alzava, con <c>Y = 179</c> — la presa misurata sulla
+    /// posa di mira vera del fucile — abbassava, e la differenza non e' visibile leggendo il
+    /// codice (skill <c>character-animation</c> §1.8: si misura la direzione, non l'angolo).
+    ///
+    /// Qui l'asse e' <c>canna x alto</c>: ruotare la canna attorno a esso la porta verso l'alto
+    /// del mondo per costruzione, qualunque sia l'orientamento della mano e qualunque presa
+    /// dichiari l'arma. Nessuna arma futura puo' piu' invertirne il segno.
+    /// </summary>
+    private Basis PitchMuzzleUp(Basis grip, float radians)
+    {
+        if (Mathf.IsZeroApprox(radians) || GripPoint?.GetParent() is not Node3D parent)
+            return grip;
+
+        // Si lavora nello spazio del PADRE (il BoneAttachment sulla mano): l'asse si calcola in
+        // coordinate mondo e ci si riporta dentro, cosi' la rotazione premoltiplicata equivale a
+        // una rotazione mondo attorno a quell'asse.
+        Basis toWorld = parent.GlobalTransform.Basis.Orthonormalized();
+        Vector3 barrel = (toWorld * grip) * Vector3.Back;
+        Vector3 axis = barrel.Cross(Vector3.Up);
+        if (axis.LengthSquared() < 0.000001f)
+            return grip;
+
+        return new Basis((toWorld.Inverse() * axis).Normalized(), radians) * grip;
+    }
 
     /// Rinculo di un colpo. Chiamato su ogni peer, come il calcio della camera.
     public void PlayRecoil()
@@ -190,6 +256,8 @@ public partial class WeaponGripRig : Node3D
     {
         if (GripPoint == null)
             return;
+
+        EnsureModifierRunsLast();
 
         float dt = (float)delta;
 
@@ -209,21 +277,17 @@ public partial class WeaponGripRig : Node3D
             _probe?.Update(GripPoint, MuzzleReach, MuzzleClearance, PortArmsSpeed, dt);
 
         // Presa: offset dichiarato dall'arma, piu' il rinculo, piu' il "port arms". L'arma punta
-        // verso +Z locale, quindi rinculo e ritrazione arretrano lungo -Z e la canna si alza
-        // ruotando attorno a X.
-        //
-        // SEGNO: la rotazione attorno a X va SOMMATA per alzare il muso. Sottraendola lo si
-        // abbassa — che e' quello che faceva il rinculo, silenziosamente, da sempre: nessuno se
-        // ne era accorto perche' i controlli misuravano di quanto si sposta la presa, non in che
-        // direzione punta la canna.
+        // verso +Z locale, quindi rinculo e ritrazione arretrano lungo -Z.
         Vector3 grip = _weapon?.GripOffset ?? Vector3.Zero;
         Vector3 gripRotation = _weapon?.GripRotationDegrees ?? Vector3.Zero;
         float blocked = MuzzleBlocked;
 
         var basis = Basis.FromEuler(new Vector3(
-            Mathf.DegToRad(gripRotation.X) + _kickUp + Mathf.DegToRad(PortArmsPitchDegrees) * blocked,
+            Mathf.DegToRad(gripRotation.X),
             Mathf.DegToRad(gripRotation.Y),
             Mathf.DegToRad(gripRotation.Z)));
+
+        basis = PitchMuzzleUp(basis, _kickUp + Mathf.DegToRad(PortArmsPitchDegrees) * blocked);
 
         GripPoint.Transform = new Transform3D(
             basis, grip - new Vector3(0f, 0f, _kickBack + PortArmsPullBack * blocked));

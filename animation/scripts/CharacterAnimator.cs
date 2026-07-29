@@ -277,10 +277,22 @@ public partial class CharacterAnimator : Node3D
         float clearance = 1f - (_gripRig?.MuzzleBlocked ?? 0f);
         _aimRig.Weight = Aiming && WeaponPose != null && Grounded ? clearance : 0f;
 
-        // La mano di supporto insegue l'astina solo in mira: nel porto rilassato l'IK, tarato
-        // sulla posa di mira, flipperebbe il gomito sopra la canna.
+        // La mano di supporto sta sull'arma SEMPRE, non solo in mira: e' un vincolo fisico — la
+        // mano sinistra impugna l'astina — e un vincolo che vale solo mirando lascia la mano a
+        // fluttuare accanto all'arma in tutto il resto del gioco.
+        //
+        // Prima era legata ad Aiming perche' il polo del gomito, misurato sulla posa di mira,
+        // nel porto rilassato flippava. Non piu': il porto e' derivato dalla mira ruotando le
+        // braccia in blocco, quindi l'arma resta fra le mani anche li', e il polo — figlio del
+        // punto di presa — ruota con l'arma. Verificato su porto e mira, fermi, in camminata e in
+        // corsa: la mano resta entro 3 mm dall'astina.
+        //
+        // L'unica eccezione e' lo SCAVALCAMENTO, dove le stesse mani le vuole VaultIkRig per
+        // metterle sul bordo. Due IK sulle stesse ossa vanno arbitrati da un punto solo — la
+        // stessa regola del bacino in UpdatePelvisOffset — e qui vince il bordo: e' l'appiglio a
+        // reggere il peso del personaggio, l'arma puo' aspettare mezzo secondo.
         if (_gripRig != null)
-            _gripRig.SupportActive = Aiming;
+            _gripRig.SupportActive = WeaponPose != null && (_vaultRig?.HandsOnLedge ?? 0f) < 0.05f;
     }
 
     /// Alimenta i piedi a terra. In aria si spegne da solo: non c'e' suolo da assecondare.

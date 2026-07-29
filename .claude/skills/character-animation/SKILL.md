@@ -138,6 +138,83 @@ tick a 7 m/s. In più `SyncGrounded` ha un'**isteresi** di 0,12 s (`GroundedGrac
 spigoli e gradini; la gravità continua a leggere `IsOnFloor()` nudo, quindi la fisica non cambia.
 Copre `_verify_slope` nella suite runtime, che fa salire e scendere la rampa a un NPC vero.
 
+### 1.6quater Una posa d'impugnatura può reggere l'arma benissimo e non PUNTARLA
+
+L'arma non ha una direzione propria: pende dalla mano destra con `GripRotationDegrees` e la mano di
+supporto le si aggancia a `SupportGripOffset` lungo il suo +Z. Ne segue che **la canna punta lungo la
+congiungente mano destra → mano sinistra**, cioè la posa d'impugnatura decide da sola dove va a
+finire il colpo — e nessun layer di mira può rimediare, perché aim offset e `SpineAimModifier`
+ruotano il **busto** e le braccia lo seguono in blocco portandosi dietro lo scarto.
+
+`rifle_idle`, da cui derivavano entrambe le pose del fucile, **non è una posa di mira**: è un porto
+con l'arma di traverso sul petto. Misurato, angolo fra la canna e l'avanti del busto:
+
+| posa | scarto dalla mira |
+|---|---|
+| `rifle_idle` (era `hold/rifle_aim` e `hold/rifle_lowered`) | **85°** |
+| `rifle_fire`, braccia a t = 0 (posa spallata, ma busto girato di 40°) | 43° |
+| `hold/rifle_aim` di oggi | **0,03°** |
+
+È il difetto "impugno il fucile e miro, le braccia non vanno in puntamento". La pistola non lo aveva
+perché non ha mano di supporto: la sua canna dipende dalla sola `GripRotationDegrees`, che era
+misurata contro un asse ragionevole (restavano comunque 25° di scarto, ora azzerati).
+
+**L'unica posa spallata nella libreria è `rifle_fire`**, authorata però su un busto girato: siccome
+le braccia sono figlie di `Spine2` quella rotazione se la portano dietro. `build_weapon_poses.gd` ne
+prende le braccia e le **riallinea in blocco** ruotando le due clavicole finché la congiungente fra
+le mani coincide con l'avanti del busto (iterativo per lo stesso motivo di `SpineAimModifier`: le due
+clavicole hanno origini diverse, quindi non è esattamente una rotazione rigida).
+
+Corollario che vale per ogni arma futura: **la posa di mira si valida sulla DIREZIONE della canna,
+non su dove finiscono le mani.** Lo copre ora `_verify_aim` con sei casi (`col fucile la canna punta
+sulla mira`); con la presa disallineata segna 35,8° e fallisce.
+
+Corollario sul porto rilassato: si ottiene ruotando le **clavicole**, non i bracci. Le due clavicole
+nascono quasi nello stesso punto, quindi la rotazione è quasi rigida e la distanza fra le mani —
+il vincolo dell'astina — resta invariata al millimetro; ruotando i bracci, che nascono a mezzo metro
+l'uno dall'altro, la presa si apriva di 4,5 cm e per giunta la canna quasi non si inclinava
+(misurato: clavicole 30° → canna giù di 31° e presa invariata; bracci 42°+10° → canna giù di 9° e
+presa da 0,254 a 0,299 m).
+
+### 1.6quinquies L'ORDINE dei modificatori è un accoppiamento invisibile
+
+I `SkeletonModifier3D` girano nell'ordine dei figli dello `Skeleton3D`, e ogni rig procedurale crea
+il proprio in `CallDeferred` (§1.3): **chi arriva ultimo dipende dall'ordine dei nodi nella scena**,
+che nessuno dichiara e che si cambia spostando un nodo nell'editor.
+
+`SupportHandIk` nasceva **prima** di `SpineAim`. L'IK chiudeva la mano sinistra sull'astina, e subito
+dopo il rachide ruotava portandosi dietro tutto il braccio: mirando, la mano restava fino a **36 cm**
+fuori dall'arma (misurato: 0,24 m fermi, 0,28 in corsa, 0,36 in strafe). Fuori mira non si vedeva,
+perché lì `SpineAimModifier` ha influenza nulla — motivo per cui la sonda che girava con la mira
+spenta misurava 1 mm e dichiarava tutto a posto.
+
+Regola: **un vincolo si risolve DOPO tutto ciò che muove la catena su cui insiste.** `WeaponGripRig`
+si riporta in coda da solo a ogni frame (`EnsureModifierRunsLast`) invece di sperare nell'ordine
+della scena, e la suite verifica l'ordine di esecuzione con un messaggio che lo stampa per intero.
+
+Corollario: due IK sulle stesse ossa vogliono **un arbitro solo**, come il bacino (§4). Le mani le
+vogliono `WeaponGripRig` (sull'arma) e `VaultIkRig` (sul bordo): decide `CharacterAnimator`, e
+durante lo scavalcamento vince il bordo — `SupportActive` va a false, e un modificatore a influenza
+nulla non scrive niente qualunque sia il suo posto in coda.
+
+Corollario 2: **la mano di supporto sta sull'arma sempre**, non solo in mira. Era legata ad `Aiming`
+perché il polo del gomito, misurato sulla posa di mira, nel porto rilassato flippava; oggi il porto è
+derivato dalla mira ruotando le braccia in blocco, quindi arma e polo ci restano dentro. Misurato su
+porto e mira, fermi, in camminata, in corsa e in strafe: la mano resta entro **5 mm** dall'astina.
+
+### 1.6sexies Il polo del gomito vive nel frame dell'ARMA, non del corpo
+
+`WeaponGripRig.SupportElbowHint` è figlio di `GripPoint`, quindi **ruota con
+`GripRotationDegrees`**. Cambiare la presa senza rimisurare il polo lo manda dalla parte opposta e il
+gomito si piega **al contrario** — e nessun controllo di distanza se ne accorge, perché la mano
+continua a raggiungere l'astina lo stesso. È il difetto che si è visto solo a schermo, dopo che la
+presa nuova ha ruotato il frame dell'arma di ~180° attorno a Y.
+
+Il valore si misura insieme alla presa: lo stampa `tools/build_weapon_poses.gd`, ed è la posizione
+del gomito **nella posa animata**, che è il lato giusto per definizione. Lo copre
+`il gomito di supporto si piega dal lato della posa`, che confronta il gomito con IK acceso e con IK
+spento: col polo vecchio segna 110° (rovesciato), con quello misurato 4°.
+
 ### 1.7 `AnimationNodeSync.sync = false` su un nodo filtrato → gambe congelate
 
 `sync = false` ferma i frame dell'ingresso con peso 0. Su un nodo **filtrato** e' un bug: l'ingresso
@@ -154,6 +231,14 @@ giusta, l'angolo letto no. **Misura la direzione (`basis.z`), non l'angolo.**
 
 Costo storico: il rinculo ruotava il muso **in basso** invece che in alto, e nessuno se n'era accorto
 perche' il controllo misurava di quanto si sposta la presa, non in che direzione punta la canna.
+
+**Il beccheggio non si somma più all'Eulero**, ed è per questo. Sommare i gradi alla X della presa
+sembra equivalente e non lo è: nell'ordine YXZ l'effetto di quella somma **cambia segno con la Y
+della presa**. Con `GripRotationDegrees.Y = 37` alzava; alla prima presa nuova (`Y = 179`, misurata
+sulla posa di mira vera del fucile) abbassava, senza che nulla nel codice lo lasciasse vedere.
+Oggi `WeaponGripRig.PitchMuzzleUp` ruota attorno all'asse **`canna × alto`**, che porta la canna
+verso l'alto del mondo per costruzione: nessuna arma futura può più invertirne il segno. Vale sia
+per il rinculo sia per il "port arms".
 
 ### 1.9 Il frame in headless dura ~7 ms, non 16,7
 
@@ -219,7 +304,7 @@ fanno busto e braccia, e quello e' un **delta additivo**.
   **Perché una maschera e non un `Add2`, ed è misurato.** L'impugnatura è stata additiva per una
   versione, e non poteva funzionare: un delta costante applica al braccio una rotazione
   *relativa*, quindi riproduce la posa giusta solo quando la base coincide con la clip di
-  riferimento. Distanza fra le due mani, che reggendo un fucile **deve** valere 0,392 m (la
+  riferimento. Distanza fra le due mani, che reggendo un fucile **deve** restare costante (la
   lunghezza dell'astina, su cui è misurato `SupportGripOffset`):
 
   | base | delta additivo | maschera assoluta |
@@ -228,6 +313,10 @@ fanno busto e braccia, e quello e' un **delta additivo**.
   | `walk_fwd` | **0,58 m** | 0,392 m |
   | `run_fwd` | 0,39 m (per caso) | 0,392 m |
   | `crouch_fwd` | mani all'altezza del **bacino** | 0,392 m |
+
+  (Misure fatte quando la posa derivava da `rifle_idle`; oggi la posa di mira è un'altra e la
+  costante vale **0,254 m** — §1.6quater. Ciò che conta qui è la colonna, non il numero: la
+  maschera lo tiene fermo su qualunque base, il delta no.)
 
   L'oscillazione delle braccia della camminata resta nella base e si somma alla presa: le mani
   ballano attorno all'arma invece di stringerla. La presa è un **vincolo geometrico** — due mani
@@ -291,17 +380,23 @@ dettaglio di packaging:
 | `"add"` | clip **delta** additive (`add/aim_up`, `add/hit_front`, `add/rifle_fire`) | `tools/build_additive_clips.gd`, **in Godot** |
 | `"hold"` | pose **assolute delle sole braccia** (`hold/rifle_aim`, `hold/pistol`, …) | `tools/build_weapon_poses.gd`, **in Godot** |
 
-Le pose `hold/*` derivano dalle **due** clip Mixamo `rifle_idle` e `pistol_idle` — le stesse su cui
-sono misurati `GripRotationDegrees`, `SupportGripOffset` e il polo del gomito (§7), quindi quelle
-misure restano valide senza ritoccarle. Il porto rilassato si ottiene ruotando le braccia verso il
-basso di un angolo **tarato sulla quota delle mani** che il tool stampa, non scelto a occhio: la
-versione authorata in Blender usava 35°+15° e portava le mani a `y = +0,01 m` e `z = +0,04 m` dal
-bacino — braccia lungo il corpo e mani dentro i fianchi, il difetto segnalato. Oggi sono 16°+6° per
-il fucile e 34°+10° per la pistola, con le mani che restano **davanti** al corpo.
+Le pose `hold/*` derivano da **due** clip Mixamo: `rifle_fire` per il fucile e `pistol_idle` per la
+pistola. Non da `rifle_idle`, che è un porto con l'arma di traverso e non punta: il perché, con le
+misure, è §1.6quater. Le braccia del fucile vengono **riallineate** finché la canna coincide con
+l'avanti del busto, quindi `GripRotationDegrees` e `SupportGripOffset` vanno **rimisurati** — è il
+tool stesso a calcolarli e stamparli nella forma da ricopiare nei `.tres` (§7).
 
-Di conseguenza `rifle_lowered_idle`, `rifle_aim_idle` e `pistol_aim_idle` restano nel `.glb` ma
-**l'albero non le usa più**, come le otto clip di locomozione armata: non costano nulla e
-cancellarle dal `.glb` sarebbe irreversibile.
+Il porto rilassato si ottiene ruotando le braccia verso il basso di un angolo **tarato sulle misure
+che il tool stampa** (quota delle mani e inclinazione della canna), non scelto a occhio: la versione
+authorata in Blender usava 35°+15° e portava le mani a `y = +0,01 m` e `z = +0,04 m` dal bacino —
+braccia lungo il corpo e mani dentro i fianchi, il difetto segnalato. Oggi la rotazione va sulle
+**clavicole** (§1.6quater): 30° per il fucile, 34°+10° di avambraccio per la pistola, con le mani
+davanti al corpo e la canna inclinata verso terra.
+
+Di conseguenza `rifle_idle`, `rifle_lowered_idle`, `rifle_aim_idle` e `pistol_aim_idle` restano nel
+`.glb` ma **l'albero non le usa più**, come le otto clip di locomozione armata: non costano nulla e
+cancellarle dal `.glb` sarebbe irreversibile. Le tre procedurali `rifle_*_idle` sono per giunta
+**derivate da `rifle_idle`**, quindi ereditano il difetto di §1.6quater: non ricablarle.
 
 I delta non passano da Blender: il perche' e' §1.6, ed e' stato misurato. Il tool li calcola contro
 il rest pose vero di `Body_Base.glb` usando la semantica additiva di Godot, anch'essa **misurata**
@@ -402,10 +497,12 @@ Note che costano se ignorate:
   contatto nelle clip non si distingue il piede che appoggia da quello che vola. Il valore
   precedente (5) lo lasciava acceso in camminata, e su una rampa i raycast inchiodavano i piedi a
   quote diverse a ogni passo: il personaggio "scattava" in salita.
-- **La mano di supporto insegue l'astina solo in mira** (`WeaponGripRig.SupportActive`, scritto da
-  `CharacterAnimator` con `Aiming`): nel porto rilassato l'arma e' inclinata verso terra, il
-  bersaglio IK ruota con lei e il polo del gomito (misurato sulla posa di mira) puo' flippare,
-  portando il gomito sopra la canna.
+- **La mano di supporto insegue l'astina SEMPRE** (`WeaponGripRig.SupportActive`, scritto da
+  `CharacterAnimator`), non solo in mira: e' un vincolo fisico, non un effetto. Cede le mani solo
+  allo scavalcamento. Perche' regga anche nel porto rilassato, e perche' il polo del gomito non
+  flippi, vedi §1.6quinquies e §1.6sexies.
+- **`SupportHandIk` deve girare per ULTIMO**: e' un vincolo che si chiude sull'arma, e qualunque
+  modificatore successivo glielo porta via (§1.6quinquies).
 - **Il "port arms" abbassa anche la mira**: un'arma alzata contro un muro non sta piu' puntando il
   bersaglio, e inseguirlo col busto lo torcerebbe verso un punto che l'arma non guarda.
 
@@ -476,7 +573,7 @@ parametri, **copertura a triangoli di ogni BlendSpace2D**, **`sync` su ogni nodo
 **che cosa** filtra `HoldMask` (le otto ossa delle braccia e nient'altro: una maschera allargata al
 rachide o al bacino spegnerebbe la locomozione senza dare un solo errore).
 
-`verify_animation_runtime.gd` fa girare l'albero e misura le ossa (**146 controlli**): le
+`verify_animation_runtime.gd` fa girare l'albero e misura le ossa (**161 controlli**): le
 combinazioni che non devono essere la T-pose (ogni asse di camminata, corsa e crouch, aria, gli
 stessi assi con l'impugnatura accesa, i cinque estremi dell'aim offset), dieci secondi di
 camminata che non deve congelarsi, le gambe che continuano a muoversi con impugnatura e mira accese
@@ -484,13 +581,14 @@ e sotto una raffica, **l'isolamento dei layer additivi** (§ sotto), **la presa 
 locomozione** (`_verify_hold_mask`, § sotto), le quattro direzioni del flinch
 distinte a coppie opposte, il vault che e' full body e rientra, i one-shot che rientrano, la presa
 che segue la mano, il rinculo che **alza** il muso, la mano di supporto che raggiunge l'astina,
-l'asse dell'arma che passa fra le due mani, il busto che punta sulla mira anche in strafe, i piedi
+l'asse dell'arma che passa fra le due mani, il busto che punta sulla mira anche in strafe, **la
+canna che punta DOVE SI MIRA** su sei fra direzioni e locomozioni (§1.6quater), i piedi
 che riproducono un dislivello di 12 cm, l'arma che si alza contro un muro, l'NPC che si anima
 sullo stesso rig, e **una rampa a 20 gradi percorsa in salita e in discesa senza mai staccarsi da
 terra** (`_verify_slope`, §1.6ter).
 
 **Due controlli hanno le stesse mani come sonda, e non e' ridondanza.** `_verify_hold_mask` misura
-la **distanza fra le mani** (deve restare 0,392 m: e' il vincolo dell'astina) su fermi, camminata,
+la **distanza fra le mani** (deve restare 0,254 m: e' il vincolo dell'astina) su fermi, camminata,
 strafe, corsa, accovacciati e mira a fondo corsa; `_verify_grip` misura **dove** finisce l'arma. Il
 primo prende i difetti dell'albero (base sbagliata, filtro sbagliato), il secondo quelli dei rig
 procedurali. Il difetto dell'impugnatura additiva passava il secondo e falliva solo il primo — che
@@ -525,20 +623,27 @@ PATH e fa **crashare** Godot mono al caricamento di hostfxr. Lanciare con
    `WeaponDefinition.VisualScene` — senza, compare il placeholder.
 3. Fine. **Non toccare l'albero, non aggiungere clip, non toccare `CharacterAnimator`.**
 
-**`GripRotationDegrees` e `SupportGripOffset` si MISURANO dalla posa, non si indovinano.** I valori
-attuali vengono da una sonda che, nella posa di riferimento, allinea l'asse della presa alla
-congiungente fra le due mani e misura la loro distanza:
+**`GripRotationDegrees` e `SupportGripOffset` si MISURANO dalla posa, non si indovinano.** Non serve
+più una sonda a parte: li calcola e li stampa `tools/build_weapon_poses.gd` ogni volta che rigenera
+le pose, nella forma da ricopiare nei `.tres`. **Rigenerando le pose vanno riportati**, altrimenti
+posa e presa divergono in silenzio.
 
 | | `GripRotationDegrees` | `SupportGripOffset` |
 |---|---|---|
-| `two_handed.tres` (da `rifle_idle`) | `(-76.2, 37.1, 0)` | `(0, 0, 0.391)` |
-| `one_handed.tres` (da `pistol_idle`) | `(-61.8, 17.3, 0)` | `(0, 0, 0)` |
+| `two_handed.tres` (da `rifle_fire`, riallineata) | `(-66.1, 179.0, 0)` | `(0, 0, 0.254)` |
+| `one_handed.tres` (da `pistol_idle`) | `(-59.0, -158.8, 0)` | `(0, 0, 0)` |
 
-Allineare l'arma al **corpo** invece che alle mani sarebbe sbagliato: sotto l'impugnatura c'e' una
-locomozione qualsiasi, che il bacino lo ruota di decine di gradi (misurato: `pistol_idle` **54°**),
-e l'arma finirebbe di traverso. Il placeholder in `WeaponVisual` e' costruito **attorno alla presa**
-— calcio dietro, canna avanti, astina esattamente su `SupportGripOffset` — proprio perche' un
-disallineamento si veda a colpo d'occhio.
+La presa si allinea alla **congiungente fra le mani** per le armi a due mani (la mano di supporto sta
+sull'astina, e quello è il vincolo) e all'**avanti del busto** per quelle a una mano, dove l'altra
+mano non vincola nulla. Nella posa di mira del fucile le due coincidono per costruzione: è ciò che
+il riallineamento di §1.6quater impone.
+
+Allineare l'arma al **bacino** sarebbe sbagliato: sotto l'impugnatura c'e' una locomozione qualsiasi,
+che il bacino lo ruota di decine di gradi (misurato: `pistol_idle` **54°**), e l'arma finirebbe di
+traverso. L'osso di riferimento è `Spine2`, cioè il vertice della catena di `SpineAimModifier` —
+l'osso che i layer di mira portano davvero sul bersaglio. Il placeholder in `WeaponVisual` e'
+costruito **attorno alla presa** — calcio dietro, canna avanti, astina esattamente su
+`SupportGripOffset` — proprio perche' un disallineamento si veda a colpo d'occhio.
 
 Le misure restano valide dopo il passaggio ai layer additivi **perche' il delta e' costruito proprio
 da quelle pose**: `add/rifle_aim` sommato sull'idle riproduce `rifle_aim_idle` esattamente (§2.1),

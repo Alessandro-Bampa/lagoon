@@ -1,4 +1,4 @@
-[gd_resource type="AnimationLibrary" format=3]
+[gd_resource type="AnimationLibrary" format=3 uid="uid://dvquh0g0t5wl"]
 
 [sub_resource type="Animation" id="Animation_kv1a2"]
 loop_mode = 1

@@ -42,6 +42,15 @@ public partial class VaultIkRig : Node3D
     private Vector3 _ledge;
     private float _weight;
 
+    /// <summary>
+    /// Quanto le mani stanno sul BORDO invece che sull'arma, da 0 a 1.
+    ///
+    /// Lo legge <see cref="CharacterAnimator"/> per cedere le mani allo scavalcamento: sono due
+    /// vincoli sulle stesse ossa, e come per il bacino (<c>UpdatePelvisOffset</c>) devono avere un
+    /// arbitro solo, o si sovrascrivono a vicenda senza dare errori.
+    /// </summary>
+    public float HandsOnLedge => _weight;
+
     public override void _Ready()
     {
         _skeleton = SkeletonLocator.Find(this);

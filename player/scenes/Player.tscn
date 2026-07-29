@@ -1,23 +1,21 @@
-[gd_scene load_steps=20 format=3]
+[gd_scene format=3 uid="uid://d03rgeyyiw3d6"]
 
-[ext_resource type="Script" path="res://player/scripts/PlayerController.cs" id="1"]
-[ext_resource type="Script" path="res://player/scripts/PlayerInput.cs" id="2"]
-[ext_resource type="Script" path="res://player/scripts/PlayerNetworkSync.cs" id="3"]
+[ext_resource type="Script" uid="uid://ddgy3ykg7vn28" path="res://player/scripts/PlayerController.cs" id="1"]
+[ext_resource type="Script" uid="uid://d3tjql8a70ehi" path="res://player/scripts/PlayerInput.cs" id="2"]
+[ext_resource type="Script" uid="uid://qsh7pwaip67f" path="res://player/scripts/PlayerNetworkSync.cs" id="3"]
 [ext_resource type="PackedScene" path="res://player/scenes/PlayerCamera.tscn" id="4"]
-[ext_resource type="Script" path="res://inventory/scripts/PlayerInventory.cs" id="5"]
-[ext_resource type="Script" path="res://inventory/scripts/PlayerHud.cs" id="6"]
-[ext_resource type="Script" path="res://combat/scripts/WeaponVisual.cs" id="7"]
-[ext_resource type="Script" path="res://combat/scripts/HealthComponent.cs" id="8"]
-[ext_resource type="Script" path="res://combat/scripts/HitboxComponent.cs" id="9"]
-[ext_resource type="Script" path="res://combat/scripts/WeaponController.cs" id="10"]
-[ext_resource type="Script" path="res://combat/scripts/WeaponInput.cs" id="11"]
-[ext_resource type="Script" path="res://vehicles/scripts/VehicleInput.cs" id="12"]
-[ext_resource type="PackedScene" path="res://animation/scenes/CharacterRig.tscn" id="13"]
-[ext_resource type="Script" path="res://player/scripts/PlayerAnimationBridge.cs" id="14"]
+[ext_resource type="Script" uid="uid://dab6c3f7xmogr" path="res://inventory/scripts/PlayerInventory.cs" id="5"]
+[ext_resource type="Script" uid="uid://yk6qvc3e3agr" path="res://inventory/scripts/PlayerHud.cs" id="6"]
+[ext_resource type="Script" uid="uid://bm0gpvl5q1vkc" path="res://combat/scripts/WeaponVisual.cs" id="7"]
+[ext_resource type="Script" uid="uid://drqobdlh21vtg" path="res://combat/scripts/HealthComponent.cs" id="8"]
+[ext_resource type="Script" uid="uid://dhman5hfffs5m" path="res://combat/scripts/HitboxComponent.cs" id="9"]
+[ext_resource type="Script" uid="uid://c8n2dfplxjnx3" path="res://combat/scripts/WeaponController.cs" id="10"]
+[ext_resource type="Script" uid="uid://tugbi0hajuys" path="res://combat/scripts/WeaponInput.cs" id="11"]
+[ext_resource type="Script" uid="uid://b5a1itucnyqqo" path="res://vehicles/scripts/VehicleInput.cs" id="12"]
+[ext_resource type="PackedScene" uid="uid://csgvakdfxnyuu" path="res://animation/scenes/CharacterRig.tscn" id="13"]
+[ext_resource type="Script" uid="uid://cxa1xl5rry6tp" path="res://player/scripts/PlayerAnimationBridge.cs" id="14"]
 
 [sub_resource type="CapsuleShape3D" id="Shape_1"]
-radius = 0.5
-height = 2.0
 
 [sub_resource type="CapsuleShape3D" id="Shape_Headroom"]
 radius = 0.45
@@ -83,87 +81,76 @@ properties/5/path = NodePath(".:Reloading")
 properties/5/spawn = true
 properties/5/replication_mode = 1
 
-[node name="Player" type="CharacterBody3D"]
+[node name="Player" type="CharacterBody3D" unique_id=487784520]
 collision_layer = 2
 collision_mask = 39
 platform_floor_layers = 4294967263
 script = ExtResource("1")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1217359417]
 shape = SubResource("Shape_1")
 
-; Spazio sopra la testa: impedisce di rialzarsi da accovacciati sotto un ostacolo basso, che
-; incastrerebbe la capsula dentro il soffitto. Maschera: solo il mondo statico (layer 1) e i veicoli.
-[node name="Headroom" type="ShapeCast3D" parent="."]
+[node name="Headroom" type="ShapeCast3D" parent="." unique_id=1154341984]
 shape = SubResource("Shape_Headroom")
 target_position = Vector3(0, 0.8, 0)
 collision_mask = 33
 
-[node name="Visual" type="Node3D" parent="."]
+[node name="Visual" type="Node3D" parent="." unique_id=453308809]
 
-; Il rig ha l'origine ai PIEDI (vedi skill blender-pipeline), la capsula del
-; CharacterBody3D ha l'origine al CENTRO: senza questo offset il personaggio
-; sprofonderebbe di mezza altezza nel pavimento.
-[node name="CharacterRig" parent="Visual" instance=ExtResource("13")]
+[node name="CharacterRig" parent="Visual" unique_id=1696734293 instance=ExtResource("13")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1, 0)
 
-[node name="WeaponMount" type="Node3D" parent="Visual"]
+[node name="WeaponMount" type="Node3D" parent="Visual" unique_id=829403687]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.25, 0.15, 0.45)
 script = ExtResource("7")
 
-[node name="Input" type="Node" parent="."]
+[node name="Input" type="Node" parent="." unique_id=228946368]
 script = ExtResource("2")
 
-[node name="NetSync" type="Node" parent="."]
+[node name="NetSync" type="Node" parent="." unique_id=1039920002]
 script = ExtResource("3")
 
-[node name="Synchronizer" type="MultiplayerSynchronizer" parent="."]
-root_path = NodePath("..")
+[node name="Synchronizer" type="MultiplayerSynchronizer" parent="." unique_id=971525579]
 replication_config = SubResource("Repl_1")
 
-[node name="PlayerCamera" parent="." instance=ExtResource("4")]
+[node name="PlayerCamera" parent="." unique_id=892829673 instance=ExtResource("4")]
 
-[node name="Inventory" type="Node" parent="."]
+[node name="Inventory" type="Node" parent="." unique_id=2047303491]
 script = ExtResource("5")
 
-[node name="Health" type="Node" parent="."]
+[node name="Health" type="Node" parent="." unique_id=976182853]
 script = ExtResource("8")
 
-[node name="Sync" type="MultiplayerSynchronizer" parent="Health"]
-root_path = NodePath("..")
+[node name="Sync" type="MultiplayerSynchronizer" parent="Health" unique_id=1996320198]
 replication_config = SubResource("Repl_2")
 
-[node name="Hitbox" type="Area3D" parent="."]
+[node name="Hitbox" type="Area3D" parent="." unique_id=612555511]
 collision_layer = 8
 collision_mask = 0
 monitoring = false
 script = ExtResource("9")
-HealthPath = NodePath("../Health")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Hitbox"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Hitbox" unique_id=2036861363]
 shape = SubResource("Shape_1")
 
-[node name="Weapon" type="Node" parent="."]
+[node name="Weapon" type="Node" parent="." unique_id=41249952]
 script = ExtResource("10")
 
-[node name="Sync" type="MultiplayerSynchronizer" parent="Weapon"]
-root_path = NodePath("..")
+[node name="Sync" type="MultiplayerSynchronizer" parent="Weapon" unique_id=1736202310]
 replication_config = SubResource("Repl_3")
 
-[node name="WeaponInput" type="Node" parent="."]
+[node name="WeaponInput" type="Node" parent="." unique_id=426887637]
 script = ExtResource("11")
 
-[node name="Hud" type="Node" parent="."]
+[node name="Hud" type="Node" parent="." unique_id=863492513]
 script = ExtResource("6")
 
-; Riconoscimento del ponte su cui si sta (Fase 4). Maschera: SOLO il layer 6 "vehicle_deck", cosi' il
-; pavimento del mondo non produce mai un'ancora. Lunghezza 1.2 m = mezza capsula + 0.2 di margine.
-[node name="GroundProbe" type="RayCast3D" parent="."]
+[node name="GroundProbe" type="RayCast3D" parent="." unique_id=299609997]
 target_position = Vector3(0, -1.2, 0)
 collision_mask = 32
 
-[node name="VehicleInput" type="Node" parent="."]
+[node name="VehicleInput" type="Node" parent="." unique_id=80664865]
 script = ExtResource("12")
 
-[node name="AnimationBridge" type="Node" parent="."]
+[node name="AnimationBridge" type="Node" parent="." unique_id=924659811]
 script = ExtResource("14")
