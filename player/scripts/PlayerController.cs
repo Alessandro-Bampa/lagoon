@@ -294,11 +294,12 @@ public partial class PlayerController : CharacterMotor
         TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     public void BroadcastLand(float impactSpeed) => EmitSignal(SignalName.Landed, impactSpeed);
 
-    /// Il bordo scavalcato e' una misura geometrica (come la velocita' d'impatto), non un esito
-    /// di gioco: serve all'IK delle mani sul bordo su ogni peer.
+    /// La geometria dell'ostacolo superato (bordo, normale della parete, altezza) e' una misura,
+    /// non un esito di gioco: serve all'IK delle mani e alla scelta della posa su ogni peer.
     [Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = true,
         TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    public void BroadcastVault(Vector3 ledgePoint) => EmitSignal(SignalName.Vaulted, ledgePoint);
+    public void BroadcastVault(Vector3 ledgePoint, Vector3 wallNormal, float height) =>
+        EmitSignal(SignalName.Vaulted, ledgePoint, wallNormal, height);
 
     // Il motore condiviso non conosce la rete: segnala l'evento e basta. Qui lo si trasmette.
     protected override void OnJumpTriggered() => Rpc(MethodName.BroadcastJump);
@@ -306,8 +307,8 @@ public partial class PlayerController : CharacterMotor
     protected override void OnLandTriggered(float impactSpeed) =>
         Rpc(MethodName.BroadcastLand, impactSpeed);
 
-    protected override void OnVaultTriggered(Vector3 ledgePoint) =>
-        Rpc(MethodName.BroadcastVault, ledgePoint);
+    protected override void OnVaultTriggered(Vector3 ledgePoint, Vector3 wallNormal, float height) =>
+        Rpc(MethodName.BroadcastVault, ledgePoint, wallNormal, height);
 
     /// <summary>
     /// Al timone: nessuna gravita' e nessun <c>MoveAndSlide</c>, quindi il pilota non produce alcuna

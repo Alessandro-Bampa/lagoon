@@ -3,10 +3,11 @@ using Godot;
 namespace Lagoon;
 
 /// <summary>
-/// Appoggia le mani sul bordo dell'ostacolo durante lo scavalcamento.
+/// Appoggia le mani sul bordo dell'ostacolo durante scavalcamento e arrampicata.
 ///
-/// La clip <c>vault_low</c> e' generica e in place: le braccia si protendono nella direzione
-/// giusta, ma il punto di contatto vero lo conosce solo chi ha misurato l'ostacolo coi raycast.
+/// Le clip (<c>vault_low</c>, <c>mantle_high</c>) sono generiche e in place: le braccia si
+/// protendono nella direzione giusta, ma il punto di contatto vero — e l'orientamento del bordo su
+/// cui allineare le mani — li conosce solo chi ha misurato l'ostacolo con la sonda geometrica.
 /// Qui due catene di <c>TwoBoneIK3D</c> portano le mani ESATTAMENTE sul bordo, con l'influenza
 /// che sale e scende dentro la finestra di contatto della clip.
 ///
@@ -24,7 +25,9 @@ public partial class VaultIkRig : Node3D
     /// Distanza laterale di ciascuna mano dal punto centrale del bordo, in metri.
     [Export] public float HandSpacing { get; set; } = 0.24f;
 
-    /// Finestra di contatto, come frazioni della durata: le mani toccano fra In e Out.
+    /// Finestra di contatto DI DEFAULT, come frazioni della durata: le mani toccano fra In e Out.
+    /// La manovra puo' sovrascriverla in <see cref="Begin"/>: arrampicarsi tiene le mani sul bordo
+    /// molto piu' a lungo che scavalcare, ed e' una proprieta' della clip, non del rig.
     [Export] public float ContactIn { get; set; } = 0.12f;
 
     [Export] public float ContactOut { get; set; } = 0.55f;
@@ -39,8 +42,12 @@ public partial class VaultIkRig : Node3D
 
     private float _elapsed = -1f;
     private float _duration = 0.9f;
+    private float _contactIn;
+    private float _contactOut;
     private Vector3 _ledge;
+    private Vector3 _tangent = Vector3.Right;
     private float _weight;
+    private float _active;
 
     /// <summary>
     /// Quanto le mani stanno sul BORDO invece che sull'arma, da 0 a 1.
@@ -50,6 +57,16 @@ public partial class VaultIkRig : Node3D
     /// arbitro solo, o si sovrascrivono a vicenda senza dare errori.
     /// </summary>
     public float HandsOnLedge => _weight;
+
+    /// <summary>
+    /// Quanto e' in corso una manovra di parkour, da 0 a 1, sull'INTERA durata e non solo nella
+    /// finestra di contatto.
+    ///
+    /// E' distinto da <see cref="HandsOnLedge"/> perche' risponde a una domanda diversa: le mani
+    /// servono al bordo solo mentre lo toccano, ma l'arma va tolta di mezzo per tutto il gesto —
+    /// vederla ricomparire fra lo stacco e l'appoggio sarebbe peggio che non toglierla affatto.
+    /// </summary>
+    public float ParkourActive => _active;
 
     public override void _Ready()
     {
@@ -103,15 +120,32 @@ public partial class VaultIkRig : Node3D
     }
 
     /// <summary>
-    /// Avvia la finestra di contatto sul bordo misurato. <paramref name="duration"/> e' la durata
-    /// della clip di vault: la finestra e' espressa come sue frazioni, cosi' clip e IK restano
-    /// sincronizzate anche se la clip cambia lunghezza.
+    /// Avvia la finestra di contatto sul bordo misurato.
+    ///
+    /// <paramref name="duration"/> e' la durata della clip in corso: la finestra e' espressa come
+    /// sue frazioni, cosi' clip e IK restano sincronizzate anche se la clip cambia lunghezza.
     /// </summary>
-    public void Begin(Vector3 ledgePoint, float duration)
+    /// <param name="ledgePoint">Punto d'appiglio misurato, in coordinate mondo.</param>
+    /// <param name="wallNormal">
+    /// Normale orizzontale della parete: da' la tangente VERA del bordo. Prima si stimava con la
+    /// perpendicolare alla direzione corpo → bordo, che su un muro preso di sbieco metteva le mani
+    /// lungo una linea che col bordo non c'entrava nulla.
+    /// </param>
+    /// <param name="contactIn">Inizio del contatto, in frazioni della durata.</param>
+    /// <param name="contactOut">Fine del contatto, in frazioni della durata.</param>
+    public void Begin(Vector3 ledgePoint, Vector3 wallNormal, float duration,
+        float contactIn = -1f, float contactOut = -1f)
     {
         _ledge = ledgePoint;
         _duration = Mathf.Max(duration, 0.1f);
+        _contactIn = contactIn >= 0f ? contactIn : ContactIn;
+        _contactOut = contactOut >= 0f ? contactOut : ContactOut;
         _elapsed = 0f;
+
+        Vector3 flat = new Vector3(wallNormal.X, 0f, wallNormal.Z);
+        _tangent = flat.LengthSquared() > 0.0001f
+            ? flat.Normalized().Cross(Vector3.Up).Normalized()
+            : Vector3.Right;
     }
 
     public override void _Process(double delta)
@@ -121,32 +155,31 @@ public partial class VaultIkRig : Node3D
 
         float dt = (float)delta;
         bool inContact = false;
+        bool running = false;
 
         if (_elapsed >= 0f)
         {
             _elapsed += dt;
             float t = _elapsed / _duration;
-            inContact = t >= ContactIn && t <= ContactOut;
+            inContact = t >= _contactIn && t <= _contactOut;
+            running = t <= 1f;
             if (t > 1f)
                 _elapsed = -1f;
         }
 
-        _weight = Mathf.Lerp(_weight, inContact ? 1f : 0f, 1f - Mathf.Exp(-RampSpeed * dt));
+        float ramp = 1f - Mathf.Exp(-RampSpeed * dt);
+        _weight = Mathf.Lerp(_weight, inContact ? 1f : 0f, ramp);
+
+        // Il rientro dell'arma e' piu' lento della presa sul bordo: rimetterla in mano di scatto
+        // nell'ultimo fotogramma della clip si vede, lasciarla sparire un attimo in piu' no.
+        _active = Mathf.Lerp(_active, running ? 1f : 0f, running ? ramp : ramp * 0.35f);
         _ik.Influence = _weight;
 
         if (_weight <= 0.001f)
             return;
 
-        // Le mani si dispongono ai lati del punto di aggancio, lungo la tangente del bordo —
-        // che, non avendo misurato l'orientamento della parete, e' la perpendicolare alla
-        // direzione corpo -> bordo sul piano orizzontale.
-        Vector3 toLedge = _ledge - GlobalPosition;
-        toLedge.Y = 0f;
-        Vector3 tangent = toLedge.LengthSquared() > 0.0001f
-            ? toLedge.Normalized().Cross(Vector3.Up)
-            : Vector3.Right;
-
-        _leftTarget.GlobalPosition = _ledge + tangent * HandSpacing;
-        _rightTarget.GlobalPosition = _ledge - tangent * HandSpacing;
+        // Le mani si dispongono ai lati del punto di aggancio, lungo la tangente del bordo.
+        _leftTarget.GlobalPosition = _ledge + _tangent * HandSpacing;
+        _rightTarget.GlobalPosition = _ledge - _tangent * HandSpacing;
     }
 }

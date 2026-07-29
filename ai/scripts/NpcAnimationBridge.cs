@@ -91,5 +91,6 @@ public partial class NpcAnimationBridge : Node
     private void OnHitReaction(Vector3 worldDirection) =>
         _animator.TriggerHitReaction(worldDirection);
 
-    private void OnVaulted(Vector3 ledgePoint) => _animator.TriggerVault(ledgePoint);
+    private void OnVaulted(Vector3 ledgePoint, Vector3 wallNormal, float height) =>
+        _animator.TriggerVault(ledgePoint, wallNormal, height);
 }

@@ -99,7 +99,7 @@ FORCE_IN_PLACE = {"land_hard"}
 # SEMPRE recuperate dal .glb precedente, altrimenti un rebuild Mixamo le cancellerebbe
 # in silenzio. Aggiungendo una clip procedurale, aggiungila anche qui.
 PROCEDURAL = {"rifle_aim_idle", "rifle_lowered_idle", "pistol_aim_idle",
-              "pistol_fire", "land_soft", "vault_low"}
+              "pistol_fire", "land_soft", "vault_low", "mantle_high"}
 # NOTA: le clip DELTA additive non stanno qui e non passano da Blender. Vivono in
 # animation/resources/AdditiveClips.tres, generate da tools/build_additive_clips.gd
 # direttamente in Godot (il perche' e' nell'intestazione di quel tool).

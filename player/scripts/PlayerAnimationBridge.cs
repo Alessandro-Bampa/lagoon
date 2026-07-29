@@ -132,8 +132,10 @@ public partial class PlayerAnimationBridge : Node
     /// </summary>
     private void OnLanded(float impactSpeed) => _animator.TriggerLand(impactSpeed);
 
-    /// Scavalcamento: il punto del bordo (misura geometrica) alimenta l'IK delle mani.
-    private void OnVaulted(Vector3 ledgePoint) => _animator.TriggerVault(ledgePoint);
+    /// Parkour: bordo e normale (misure geometriche) alimentano l'IK delle mani, l'altezza sceglie
+    /// fra scavalcamento e arrampicata — come la velocita' d'impatto sceglie il tipo di atterraggio.
+    private void OnVaulted(Vector3 ledgePoint, Vector3 wallNormal, float height) =>
+        _animator.TriggerVault(ledgePoint, wallNormal, height);
 
     /// <summary>
     /// Lo sparo riusa il segnale gia' esistente di <see cref="WeaponController"/>, che l'host

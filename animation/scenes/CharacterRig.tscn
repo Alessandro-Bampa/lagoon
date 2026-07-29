@@ -59,6 +59,9 @@ parameters/LandPose/current_index = -1
 parameters/Vault/active = false
 parameters/Vault/internal_active = false
 parameters/Vault/request = 0
+parameters/VaultPose/current_state = ""
+parameters/VaultPose/transition_request = ""
+parameters/VaultPose/current_index = -1
 
 [node name="GripRig" type="Node3D" parent="." unique_id=305130680]
 script = ExtResource("5")

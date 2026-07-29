@@ -93,6 +93,17 @@ public partial class WeaponGripRig : Node3D
     public bool SupportActive { get; set; } = true;
 
     /// <summary>
+    /// L'arma e' momentaneamente riposta: la scrive <see cref="CharacterAnimator"/> durante il
+    /// parkour, e <see cref="WeaponVisual"/> la legge per non disegnarla.
+    ///
+    /// Non e' un rinfodero: lo stato di gioco non cambia affatto (l'arma resta equipaggiata, con
+    /// slot e caricatore intatti). E' solo resa, e passa da qui perche' il punto di presa e'
+    /// l'unica cosa che <c>WeaponVisual</c> gia' osserva — senza, servirebbe un secondo canale fra
+    /// <c>animation/</c> e <c>combat/</c> per dire la stessa cosa.
+    /// </summary>
+    public bool Stowed { get; set; }
+
+    /// <summary>
     /// Quanto la canna e' ostruita, da 0 a 1. Lo legge <see cref="CharacterAnimator"/> per abbassare
     /// la mira procedurale — un'arma alzata contro un muro non sta piu' puntando il bersaglio — e in
     /// prospettiva lo puo' leggere l'host per rifiutare il colpo.

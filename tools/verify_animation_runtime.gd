@@ -357,6 +357,7 @@ func _initialize() -> void:
 	await _verify_muzzle(rig)
 	await _verify_npc()
 	await _verify_slope()
+	await _verify_parkour_geometry()
 
 	print("")
 	print("%d controlli falliti" % _failures)
@@ -410,32 +411,45 @@ func _verify_hit_reaction() -> void:
 		"finestra piu' quieta = %.5f rad" % m)
 
 
-# Scavalcamento: la clip esiste, e' full body, parte e rientra.
+# Parkour: le due clip esistono, sono full body, partono e rientrano.
 #
 # La traiettoria della radice NON si verifica qui — la fa il motion warping di
 # CharacterMotor, che e' codice C# senza scheletro di mezzo. Qui si verifica la META'
 # animata: che il one-shot sia cablato, che copra il corpo intero (a differenza dei
-# layer additivi) e che non resti appeso, perche' un vault che non rientra
-# congelerebbe il personaggio in posa da scavalcamento per il resto della partita.
+# layer additivi) e che non resti appeso, perche' una manovra che non rientra
+# congelerebbe il personaggio in quella posa per il resto della partita.
+#
+# Le due clip condividono un solo one-shot e si scelgono col Transition VaultPose:
+# per questo si verificano entrambe con lo stesso corpo di controlli, cambiando solo
+# l'ingresso richiesto.
 func _verify_vault_clip() -> void:
 	print("")
-	print("== scavalcamento ==")
+	print("== parkour ==")
 
-	_check("la clip vault_low e' in libreria", _tree.has_animation("vault_low"))
-	if not _tree.has_animation("vault_low"):
+	# Durate dichiarate da CharacterMotor: VaultDuration e MantleDuration. Se divergono
+	# dalle clip, il warping distribuisce la traiettoria su un tempo sbagliato e le pose
+	# arrivano prima o dopo i punti di contatto.
+	await _verify_parkour_clip("vault_low", 0.9, "scavalcamento")
+	await _verify_parkour_clip("mantle_high", 1.4, "arrampicata")
+
+
+func _verify_parkour_clip(clip: String, expected: float, label: String) -> void:
+	_check("la clip %s e' in libreria" % clip, _tree.has_animation(clip))
+	if not _tree.has_animation(clip):
 		return
 
-	var length: float = _tree.get_animation("vault_low").length
-	_check("vault_low dura quanto dichiarato dal motore (0,9 s)",
-		absf(length - 0.9) < 0.15, "%.3f s" % length)
+	var length: float = _tree.get_animation(clip).length
+	_check("%s dura quanto dichiarato dal motore (%.1f s)" % [clip, expected],
+		absf(length - expected) < 0.15, "%.3f s" % length)
 
 	_drive(Vector2.ZERO, 0.0, 0.0)
+	_tree.set("parameters/VaultPose/transition_request", clip)
 	await _settle(30)
 	var before := _pose_snapshot(["Hips", "LeftUpLeg", "RightUpLeg", "Spine2", "RightArm"])
 
 	_tree.set("parameters/Vault/request", AnimationNodeOneShot.ONE_SHOT_REQUEST_FIRE)
 	await _settle(4)
-	_check("lo scavalcamento parte", _tree.get("parameters/Vault/active"))
+	_check("%s: parte" % label, _tree.get("parameters/Vault/active"))
 
 	# A meta' clip il corpo INTERO deve essersi mosso: e' la differenza con i layer
 	# additivi, che lasciano le gambe alla locomozione.
@@ -446,13 +460,13 @@ func _verify_vault_clip() -> void:
 		{"LeftUpLeg": mid["LeftUpLeg"], "RightUpLeg": mid["RightUpLeg"]})
 	var arms_moved: float = _max_pose_delta(
 		{"RightArm": before["RightArm"]}, {"RightArm": mid["RightArm"]})
-	_check("lo scavalcamento muove le gambe (e' full body)", legs_moved > 0.15,
+	_check("%s: muove le gambe (e' full body)" % label, legs_moved > 0.15,
 		"scarto sulle gambe = %.4f rad" % legs_moved)
-	_check("lo scavalcamento protende le braccia", arms_moved > 0.15,
+	_check("%s: protende le braccia" % label, arms_moved > 0.15,
 		"scarto sul braccio destro = %.4f rad" % arms_moved)
 
 	await _settle_seconds(length + 0.5)
-	_check("lo scavalcamento rientra", not _tree.get("parameters/Vault/active"),
+	_check("%s: rientra" % label, not _tree.get("parameters/Vault/active"),
 		"ancora attivo dopo la durata della clip piu' la dissolvenza")
 
 
@@ -1399,6 +1413,94 @@ func _verify_slope() -> void:
 
 	world.queue_free()
 	await _settle(4)
+
+
+# Geometria del parkour: la META' che le clip non coprono.
+#
+# Qui non si guarda nessuno scheletro: si guarda dove FINISCE il personaggio. E' l'unico
+# modo di verificare la sonda (ObstacleProbe), che e' tutta misura e nessuna posa —
+# altezza, spessore, spazio d'atterraggio — e i cui difetti si vedono solo come un corpo
+# che finisce dentro un muro o che non parte affatto.
+#
+# Quattro casi, che sono le quattro decisioni della sonda: muretto -> si scavalca e si
+# finisce OLTRE; muro medio -> ci si arrampica e si finisce SOPRA; muro troppo alto ->
+# non si fa niente; muretto con un muro subito dietro -> non si fa niente, perche' non
+# c'e' dove atterrare (senza questo controllo ci si incastrerebbe nella geometria).
+func _verify_parkour_geometry() -> void:
+	print("")
+	print("== geometria del parkour ==")
+
+	# Un solo pavimento sotto TUTTI i casi: quattro pavimenti separati lascerebbero il
+	# vuoto fra un ostacolo e l'altro, e un personaggio che cade non misura piu' niente.
+	var world := Node3D.new()
+	root.add_child(world)
+	_static_box(world, Vector3(60, 1, 100), Vector3(0, -0.5, -175), 0.0)
+
+	# Le partenze sono a 0,8 m dalla FACCIA del muro: dentro VaultReach (1,0 m).
+
+	# Muretto 0,9 m: sta nella banda di scavalcamento.
+	_static_box(world, Vector3(6, 0.9, 0.4), Vector3(0, 0.45, -200), 0.0)
+	var vaulted := await _parkour_attempt(world, Vector3(0, 1.05, -201.0), Vector3(0, 0, 1))
+	_check("il muretto si scavalca", vaulted.z > -199.5,
+		"z finale = %.2f (partenza -201,0, muro fra -200,2 e -199,8)" % vaulted.z)
+	_check("dopo lo scavalcamento si e' a terra", absf(vaulted.y - 1.0) < 0.35,
+		"y finale = %.2f" % vaulted.y)
+
+	# Muro 2 m: fuori dalla banda di scavalcamento, dentro quella di arrampicata.
+	_static_box(world, Vector3(6, 2.0, 1.2), Vector3(0, 1.0, -180), 0.0)
+	var mantled := await _parkour_attempt(world, Vector3(0, 1.05, -181.4), Vector3(0, 0, 1))
+	_check("il muro medio si arrampica", mantled.y > 2.2,
+		"y finale = %.2f (sommita' a 2,00 piu' mezza capsula)" % mantled.y)
+	_check("dopo l'arrampicata si e' SOPRA il muro, non oltre", mantled.z < -179.4,
+		"z finale = %.2f (muro fra -180,6 e -179,4)" % mantled.z)
+
+	# Muro 4 m: oltre MantleMaxHeight, non si aggancia nulla.
+	_static_box(world, Vector3(6, 4.0, 1.0), Vector3(0, 2.0, -160), 0.0)
+	var blocked := await _parkour_attempt(world, Vector3(0, 1.05, -161.3), Vector3(0, 0, 1))
+	_check("il muro troppo alto resta invalicabile", blocked.y < 1.5 and blocked.z < -161.0,
+		"posizione finale = (y %.2f, z %.2f)" % [blocked.y, blocked.z])
+
+	# Muretto scavalcabile con un muro subito dietro: non c'e' dove atterrare.
+	_static_box(world, Vector3(6, 0.9, 0.4), Vector3(0, 0.45, -140), 0.0)
+	_static_box(world, Vector3(6, 3.0, 0.4), Vector3(0, 1.5, -139.4), 0.0)
+	var trapped := await _parkour_attempt(world, Vector3(0, 1.05, -141.0), Vector3(0, 0, 1))
+	_check("senza spazio per atterrare non si scavalca", trapped.z < -140.2,
+		"z finale = %.2f (muretto a -140, muro cieco a -139,4)" % trapped.z)
+
+	world.queue_free()
+	await _settle(4)
+
+
+# Mette un NPC davanti all'ostacolo, gli chiede la manovra e restituisce dove finisce.
+#
+# Si usa l'NPC e non il giocatore perche' e' lo stesso CharacterMotor senza input, camera
+# ne' rete di mezzo: se il parkour funziona di qui, funziona per costruzione anche per il
+# giocatore — che e' l'invariante di ai-npc §1.
+func _parkour_attempt(world: Node3D, at: Vector3, direction: Vector3) -> Vector3:
+	var scene := load("res://ai/scenes/NpcCharacter.tscn") as PackedScene
+	if scene == null:
+		return Vector3.ZERO
+
+	var npc: Node3D = scene.instantiate()
+	npc.position = at
+	# Nessun waypoint: l'NPC resta fermo e non trascina la manovra con la propria
+	# navigazione. Qui si misura la traiettoria scriptata, non il cammino.
+	npc.set("Waypoints", PackedVector3Array())
+	world.add_child(npc)
+
+	for i in 30:
+		await physics_frame
+
+	npc.call("TryStartParkour", direction)
+
+	# Durata della clip piu' un margine per l'atterraggio e l'assestamento.
+	for i in 140:
+		await physics_frame
+
+	var final_position: Vector3 = npc.global_position
+	npc.queue_free()
+	await _settle(2)
+	return final_position
 
 
 func _static_box(parent: Node3D, size: Vector3, at: Vector3, roll_degrees: float) -> void:

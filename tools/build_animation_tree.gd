@@ -281,14 +281,27 @@ func _initialize() -> void:
 	tree.add_node("LandHardClip", _anim("land_hard"), Vector2(660, 440))
 	tree.add_node("LandSoftClip", _anim("land_soft"), Vector2(660, 510))
 
-	# Scavalcamento: full body, root IN PLACE — la traiettoria della radice la
-	# deforma il motion warping via codice, qui c'e' solo la sequenza di pose.
+	# Parkour: full body, root IN PLACE — la traiettoria della radice la deforma il
+	# motion warping via codice, qui c'e' solo la sequenza di pose.
+	#
+	# Un solo one-shot per due manovre, con un Transition sotto a scegliere la clip:
+	# stesso schema di Land + LandPose. Due one-shot separati costerebbero un secondo
+	# nodo in coda all'albero per un evento che non puo' MAI sovrapporsi a se stesso —
+	# non ci si arrampica mentre si scavalca.
 	var vault := AnimationNodeOneShot.new()
 	vault.fadein_time = 0.08
 	vault.fadeout_time = 0.20
 	vault.mix_mode = AnimationNodeOneShot.MIX_MODE_BLEND
 	tree.add_node("Vault", vault, Vector2(1440, 120))
-	tree.add_node("VaultClip", _anim("vault_low"), Vector2(1180, 380))
+
+	var vault_pose := AnimationNodeTransition.new()
+	vault_pose.input_count = 2
+	vault_pose.set_input_name(0, "vault_low")
+	vault_pose.set_input_name(1, "mantle_high")
+	vault_pose.xfade_time = 0.0
+	tree.add_node("VaultPose", vault_pose, Vector2(1180, 380))
+	tree.add_node("VaultClip", _anim("vault_low"), Vector2(920, 520))
+	tree.add_node("MantleClip", _anim("mantle_high"), Vector2(920, 590))
 
 	# --- Connessioni ---------------------------------------------------------
 	tree.connect_node("MoveBlend", 0, "WalkSpace")
@@ -322,8 +335,10 @@ func _initialize() -> void:
 	tree.connect_node("LandPose", 1, "LandSoftClip")
 	tree.connect_node("Land", 0, "Jump")
 	tree.connect_node("Land", 1, "LandPose")
+	tree.connect_node("VaultPose", 0, "VaultClip")
+	tree.connect_node("VaultPose", 1, "MantleClip")
 	tree.connect_node("Vault", 0, "Land")
-	tree.connect_node("Vault", 1, "VaultClip")
+	tree.connect_node("Vault", 1, "VaultPose")
 	tree.connect_node("output", 0, "Vault")
 
 	var err := ResourceSaver.save(tree, OUT_PATH)

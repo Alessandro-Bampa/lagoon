@@ -38,6 +38,7 @@ public partial class CharacterAnimator : Node3D
     private const string HitRequest = "parameters/Hit/request";
     private const string JumpRequest = "parameters/Jump/request";
     private const string VaultRequest = "parameters/Vault/request";
+    private const string VaultPoseRequest = "parameters/VaultPose/transition_request";
     private const string JumpTimeScale = "parameters/JumpScale/scale";
 
     // Escursione dell'aim offset, in gradi: DEVONO combaciare con AIM_YAW_DEG e AIM_PITCH_DEG di
@@ -51,6 +52,7 @@ public partial class CharacterAnimator : Node3D
     private const string CrouchSpaceNode = "CrouchSpace";
     private const string JumpClipName = "jump";
     private const string VaultClipName = "vault_low";
+    private const string MantleClipName = "mantle_high";
 
     /// Velocita' di transizione dei pesi di blend (crouch, arma), in frazione al secondo.
     [Export] public float BlendSpeed { get; set; } = 10.0f;
@@ -105,6 +107,17 @@ public partial class CharacterAnimator : Node3D
     /// Rotazione minima (rad/s) perche' il passo sintetico si attivi: sotto, il corpo e' fermo.
     [Export] public float TurnStepThreshold { get; set; } = 0.5f;
 
+    /// <summary>
+    /// Altezza dell'ostacolo, in metri, oltre la quale il parkour usa la clip di ARRAMPICATA invece
+    /// di quella di scavalcamento.
+    ///
+    /// Sta qui e non in chi si muove per la stessa ragione di <see cref="SoftLandingSpeed"/>: chi
+    /// si muove manda una misura geometrica (l'altezza), la scelta della posa e' una decisione di
+    /// resa. Va tenuta allineata a <c>CharacterMotor.VaultMaxHeight</c>, che decide quale delle due
+    /// TRAIETTORIE si percorre: se divergono, la clip di una manovra accompagna il moto dell'altra.
+    /// </summary>
+    [Export] public float MantleHeight { get; set; } = 1.2f;
+
     // ====================================================================================
     //  Stato in ingresso: lo scrive chi pilota, ogni frame
     // ====================================================================================
@@ -157,6 +170,14 @@ public partial class CharacterAnimator : Node3D
     /// pilota. Alimenta il passo sintetico del turn-in-place.
     /// </summary>
     public float TurnRate { get; set; }
+
+    /// <summary>
+    /// Quanto e' in corso una manovra di parkour, da 0 a 1. Zero se il rig non c'e'.
+    ///
+    /// Unico punto da cui il resto dell'animatore legge "sto scavalcando": la misura la tiene
+    /// <see cref="VaultIkRig"/>, che e' anche l'unico a sapere quanto dura davvero la clip.
+    /// </summary>
+    private float ParkourBlend => _vaultRig?.ParkourActive ?? 0f;
 
     /// <summary>
     /// Ricostruisce la direzione di mira in coordinate mondo da imbardata e inclinazione replicate.
@@ -274,8 +295,15 @@ public partial class CharacterAnimator : Node3D
         // torcerebbe il torso verso un punto che l'arma non sta piu' guardando.
         // Il busto insegue la mira SOLO in mira: fuori mira l'arma e' portata rilassata e il
         // torso appartiene alla locomozione.
+        //
+        // Durante il parkour la mira si spegne come in aria. Non basta la condizione su Grounded:
+        // chi scavalca si dichiara A TERRA per tutta la manovra (la posa la mette la clip, non il
+        // layer di caduta), quindi senza questo il busto continuerebbe a inseguire il cursore
+        // mentre le braccia sono su un muro.
         float clearance = 1f - (_gripRig?.MuzzleBlocked ?? 0f);
-        _aimRig.Weight = Aiming && WeaponPose != null && Grounded ? clearance : 0f;
+        _aimRig.Weight = Aiming && WeaponPose != null && Grounded && ParkourBlend < 0.05f
+            ? clearance
+            : 0f;
 
         // La mano di supporto sta sull'arma SEMPRE, non solo in mira: e' un vincolo fisico — la
         // mano sinistra impugna l'astina — e un vincolo che vale solo mirando lascia la mano a
@@ -287,12 +315,18 @@ public partial class CharacterAnimator : Node3D
         // punto di presa — ruota con l'arma. Verificato su porto e mira, fermi, in camminata e in
         // corsa: la mano resta entro 3 mm dall'astina.
         //
-        // L'unica eccezione e' lo SCAVALCAMENTO, dove le stesse mani le vuole VaultIkRig per
-        // metterle sul bordo. Due IK sulle stesse ossa vanno arbitrati da un punto solo — la
-        // stessa regola del bacino in UpdatePelvisOffset — e qui vince il bordo: e' l'appiglio a
-        // reggere il peso del personaggio, l'arma puo' aspettare mezzo secondo.
+        // L'unica eccezione e' il PARKOUR, dove le stesse mani le vuole VaultIkRig per metterle sul
+        // bordo. Due IK sulle stesse ossa vanno arbitrati da un punto solo — la stessa regola del
+        // bacino in UpdatePelvisOffset — e qui vince il bordo: e' l'appiglio a reggere il peso del
+        // personaggio, l'arma puo' aspettare mezzo secondo.
         if (_gripRig != null)
+        {
             _gripRig.SupportActive = WeaponPose != null && (_vaultRig?.HandsOnLedge ?? 0f) < 0.05f;
+
+            // Riposta per l'intera manovra, non solo mentre le mani toccano: vedere l'arma
+            // riapparire fra lo stacco e l'appoggio sarebbe peggio che non toglierla affatto.
+            _gripRig.Stowed = ParkourBlend >= 0.5f;
+        }
     }
 
     /// Alimenta i piedi a terra. In aria si spegne da solo: non c'e' suolo da assecondare.
@@ -427,7 +461,12 @@ public partial class CharacterAnimator : Node3D
 
         // Peso della maschera di impugnatura: da armati e' sempre acceso, con qualunque locomozione
         // sotto (in piedi, accovacciati, in aria). La posa la sceglie il Transition qui sopra.
-        float overlay = armed ? 1f : 0f;
+        //
+        // L'unica eccezione e' il PARKOUR: durante scavalcamento e arrampicata le braccia servono a
+        // reggere il peso del corpo, e tenere la posa d'impugnatura sopra la clip la annullerebbe.
+        // L'arma non viene rinfoderata davvero — resta equipaggiata, con caricatore e slot intatti:
+        // qui si toglie solo di mezzo, e WeaponVisual la nasconde dalla stessa misura.
+        float overlay = armed && ParkourBlend < 0.5f ? 1f : 0f;
         _weaponWeight = Mathf.Lerp(_weaponWeight, overlay, Damp(BlendSpeed, dt));
         _tree.Set(HoldAmount, _weaponWeight);
     }
@@ -552,19 +591,41 @@ public partial class CharacterAnimator : Node3D
     }
 
     /// <summary>
-    /// Scavalcamento. La clip e' IN PLACE e generica: la traiettoria della radice la deforma il
-    /// motion warping di chi pilota (che da <see cref="VaultClipLength"/> sa quanto dura la posa),
-    /// le mani le mette <see cref="VaultIkRig"/> sul bordo misurato che arriva qui.
+    /// Parkour: scavalcamento o arrampicata, scelti QUI dall'altezza misurata dell'ostacolo — allo
+    /// stesso modo in cui <see cref="TriggerLand"/> sceglie il tipo di atterraggio dalla sola
+    /// velocita' d'impatto. Chi si muove manda misure, non decisioni di resa.
+    ///
+    /// Le clip sono IN PLACE e generiche: la traiettoria della radice la deforma il motion warping
+    /// di chi pilota (che da <see cref="VaultClipLength"/> e <see cref="MantleClipLength"/> sa
+    /// quanto durano le pose), le mani le mette <see cref="VaultIkRig"/> sul bordo misurato.
     /// </summary>
-    public void TriggerVault(Vector3 ledgePoint)
+    /// <param name="ledgePoint">Punto d'appiglio sul bordo, in coordinate mondo.</param>
+    /// <param name="wallNormal">Normale orizzontale della parete: da' l'orientamento delle mani.</param>
+    /// <param name="height">Altezza dell'ostacolo rispetto ai piedi, in metri.</param>
+    public void TriggerVault(Vector3 ledgePoint, Vector3 wallNormal, float height)
     {
-        _vaultRig?.Begin(ledgePoint, VaultClipLength);
+        bool mantle = height > MantleHeight;
+
+        _tree.Set(VaultPoseRequest, mantle ? MantleClipName : VaultClipName);
+
+        // Arrampicandosi le mani reggono il peso quasi fino in cima; scavalcando l'appoggio e' un
+        // tocco a meta' traiettoria. La finestra e' una proprieta' della clip, non del rig.
+        if (mantle)
+            _vaultRig?.Begin(ledgePoint, wallNormal, MantleClipLength, 0.10f, 0.80f);
+        else
+            _vaultRig?.Begin(ledgePoint, wallNormal, VaultClipLength);
+
         Request(VaultRequest);
     }
 
     /// Durata della clip di scavalcamento, per sincronizzare il motion warping alla posa.
-    public float VaultClipLength =>
-        _tree.HasAnimation(VaultClipName) ? (float)_tree.GetAnimation(VaultClipName).Length : 0.9f;
+    public float VaultClipLength => ClipLength(VaultClipName, 0.9f);
+
+    /// Durata della clip di arrampicata. Finche' la clip non esiste, vale il valore dichiarato.
+    public float MantleClipLength => ClipLength(MantleClipName, 1.4f);
+
+    private float ClipLength(string clip, float fallback) =>
+        _tree.HasAnimation(clip) ? (float)_tree.GetAnimation(clip).Length : fallback;
 
     private void Request(string parameter) =>
         _tree.Set(parameter, (int)AnimationNodeOneShot.OneShotRequest.Fire);

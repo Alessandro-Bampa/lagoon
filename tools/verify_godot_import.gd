@@ -152,6 +152,7 @@ func _verify_rig() -> void:
 		"parameters/Hit/request",
 		"parameters/Jump/request",
 		"parameters/Vault/request",
+		"parameters/VaultPose/transition_request",
 		"parameters/JumpScale/scale",
 	]:
 		var found := false
@@ -360,10 +361,10 @@ func _verify_loop_modes(library: AnimationLibrary, clips: Array[StringName]) -> 
 		"rifle_aim_idle", "rifle_lowered_idle", "pistol_aim_idle",
 	]
 	# Clip a colpo singolo: devono finire, altrimenti il one-shot non rientra mai.
-	# vault_low e' fra queste: uno scavalcamento che ciclasse terrebbe il personaggio
-	# in posa da vault per il resto della partita.
+	# Le due di parkour sono fra queste: uno scavalcamento che ciclasse terrebbe il
+	# personaggio in quella posa per il resto della partita.
 	var must_not_loop := ["jump", "rifle_fire", "land_hard", "pistol_fire", "land_soft",
-		"vault_low"]
+		"vault_low", "mantle_high"]
 
 	# NOTA: le clip DELTA additive non compaiono qui perche' non stanno in questo .glb.
 	# Vivono in animation/resources/AdditiveClips.tres, generate da

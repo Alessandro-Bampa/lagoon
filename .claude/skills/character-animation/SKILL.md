@@ -287,7 +287,9 @@ JumpClip ─ JumpScale ─── Jump (OneShot BLEND) ────────�
 LandHardClip ─┐                                                         │
               ├─ LandPose (Transition) ─ Land (OneShot BLEND) ──────────┤
 LandSoftClip ─┘                                                         │
-VaultClip ────────────────── Vault (OneShot BLEND) ─────────────────────┴─ output
+VaultClip ────┐                                                         │
+              ├─ VaultPose (Transition) ─ Vault (OneShot BLEND) ────────┴─ output
+MantleClip ───┘
 ```
 
 **La locomozione e' UNA SOLA e non sa nulla delle armi.** E' il cambiamento piu' importante rispetto
@@ -339,10 +341,12 @@ fanno busto e braccia, e quello e' un **delta additivo**.
   in piedi, accovacciati, in corsa o mentre si mira, e sparare mirando in alto non riabbassa l'arma.
 - **`Jump`, `Land`, `Vault` restano `MIX_MODE_BLEND` full body**: sono movimenti che coinvolgono
   tutto il corpo e sostituiscono la locomozione, non la modificano.
-- **`FirePose`, `HitPose`, `LandPose`** sono `Transition` a xfade 0 davanti ai one-shot: la clip di
-  sparo la dichiara l'ARMA (`WeaponAnimationSet.FirePose`), la direzione del flinch la mappa
-  `TriggerHitReaction`, la clip d'atterraggio la sceglie `TriggerLand` dai regimi. **La richiesta va
-  impostata PRIMA di far partire il one-shot.**
+- **`FirePose`, `HitPose`, `LandPose`, `VaultPose`** sono `Transition` a xfade 0 davanti ai one-shot:
+  la clip di sparo la dichiara l'ARMA (`WeaponAnimationSet.FirePose`), la direzione del flinch la
+  mappa `TriggerHitReaction`, la clip d'atterraggio la sceglie `TriggerLand` dai regimi, quella di
+  parkour la sceglie `TriggerVault` dall'altezza misurata. **La richiesta va impostata PRIMA di far
+  partire il one-shot.** Due manovre che non possono mai sovrapporsi condividono un one-shot: e' il
+  motivo per cui il parkour non ne ha due.
 
 **Niente filtri sui nodi ADDITIVI, e non e' una dimenticanza.** La maschera upper-body vive nelle
 CLIP: quelle delta hanno solo le 13 track del busto e delle braccia, quindi un bone senza track non
@@ -477,7 +481,7 @@ autorita' e non vanno replicati.
 | `FootIkRig` | ogni piede cerca il suolo con un raggio, l'IK ce lo porta, il bacino scende verso il piede piu' basso | dipende dalla geometria sotto i piedi in quell'istante |
 | `WeaponGripRig` | aggancio dell'arma alla mano, IK della mano di supporto, rinculo, "port arms" | idem |
 | `WeaponSpaceProbe` | misura lo spazio davanti alla canna | idem |
-| `VaultIkRig` | durante lo scavalcamento porta le mani sul bordo VERO, dentro la finestra di contatto della clip | l'altezza e la distanza dell'ostacolo le conosce solo il raycast di quell'istante: e' cio' che permette **una sola** clip di vault |
+| `VaultIkRig` | durante scavalcamento e arrampicata porta le mani sul bordo VERO, orientate sulla normale della parete, dentro la finestra di contatto della clip | forma e giacitura dell'ostacolo le conosce solo la sonda di quell'istante: e' cio' che permette **una sola** clip per manovra |
 | lean (dentro `AimRig`) | inclina il busto contro l'accelerazione laterale | dipende da come si sta guidando il personaggio |
 
 Note che costano se ignorate:
@@ -554,7 +558,7 @@ che ogni peer riemette come segnale **locale**. Nel payload non viaggia mai un e
 | Evento | Payload | Emesso da |
 |---|---|---|
 | `Landed` | velocita' d'impatto (m/s) — decide solo quanto flette il bacino | `CharacterMotor` → RPC del derivato |
-| `Vaulted` | punto del bordo (mondo) — misurato dai raycast, alimenta l'IK delle mani | `CharacterMotor` → RPC del derivato |
+| `Vaulted` | bordo (mondo), normale della parete, altezza dell'ostacolo — tutte misurate dalla sonda: bordo e normale alimentano l'IK delle mani, l'altezza SCEGLIE la clip fra vault e mantle | `CharacterMotor` → RPC del derivato |
 | `HitReaction` | direzione di **volo** del proiettile (mondo) — **mai** l'ammontare di danno | `HealthComponent.BroadcastHitReaction`, host → tutti |
 
 `HitReaction` parte **dopo** che il danno e' stato applicato, dentro `ApplyDamage`: cosi' un colpo
@@ -653,9 +657,9 @@ che e' la posa su cui presa e polo del gomito sono stati misurati.
 
 Sono scelte, non dimenticanze. Non "sistemarle" senza leggere il motivo.
 
-**Budget clip: 34 assolute + 11 delta + 4 pose d'impugnatura.** Le assolute stanno nel `.glb`:
-28 Mixamo + 6 **procedurali** (`rifle_aim_idle`, `rifle_lowered_idle`, `pistol_aim_idle`,
-`pistol_fire`, `land_soft`, `vault_low`), generate da `tools/blender/build_procedural_clips.py`
+**Budget clip: 35 assolute + 11 delta + 4 pose d'impugnatura.** Le assolute stanno nel `.glb`:
+28 Mixamo + 7 **procedurali** (`rifle_aim_idle`, `rifle_lowered_idle`, `pistol_aim_idle`,
+`pistol_fire`, `land_soft`, `vault_low`, `mantle_high`), generate da `tools/blender/build_procedural_clips.py`
 (skill `blender-pipeline`) — Mixamo non e' piu' una sorgente disponibile, le clip nuove si
 costruiscono campionando pose da clip esistenti. Gli 11 delta stanno in `AdditiveClips.tres` e le 4
 pose d'impugnatura in `WeaponHoldPoses.tres`: tutte **calcolate** (§2.1), non authorate.
@@ -695,17 +699,49 @@ sprofondare il personaggio nel pavimento.
 crossfade i piedi possono risultare fuori fase per un istante. `sync = true` li fa avanzare ma **non**
 li mette in fase — servirebbe un ritaglio delle clip. Accettato.
 
-**Scavalcamento: una clip, il resto e' codice.** `CharacterMotor.TryStartVault` aggancia il vault a
-partire dalla richiesta di SALTO — stesso tasto, decide la geometria — con tre raycast: parete
-davanti entro `VaultReach`, sommita' dentro `[VaultMinHeight, VaultMaxHeight]` (0,5–1,2 m), e un
-punto d'atterraggio oltre il bordo. Se una qualunque delle tre misure manca, non e' un vault ed e' un
-salto normale. Poi `StepVault` **scrive** la posizione (movimento scriptato: `MoveAndSlide`
-combatterebbe contro l'ostacolo che si sta scavalcando) su una traiettoria start → bordo →
-atterraggio, e `VaultIkRig` mette le mani sul bordo vero.
+**Parkour: due clip, il resto e' codice.** `CharacterMotor.TryStartParkour` (pubblico: lo chiama il
+ramo del SALTO, ma anche un NPC potra' chiederlo dal proprio comportamento) misura l'ostacolo con
+`ObstacleProbe` — sonda statica in `core/Motion/`, geometria pura, nessuno stato — e poi applica le
+sole SOGLIE:
 
-**`VaultDuration` (0,9 s) deve combaciare con la durata di `vault_low`**: e' il tempo su cui il
-warping distribuisce la traiettoria, e se diverge dalla clip le pose arrivano prima o dopo i punti di
-contatto. La suite lo verifica.
+| Altezza misurata | Manovra | Traiettoria |
+|---|---|---|
+| < `VaultMinHeight` (0,5 m) | nessuna: ci pensa `TryStepUp` | — |
+| 0,5–1,2 m, spessore e atterraggio permettendo | **vault** (`vault_low`, 0,9 s) | si passa OLTRE: apice sopra il bordo, discesa sul suolo di la' |
+| fino a `MantleMaxHeight` (3 m), sommita' calpestabile | **mantle** (`mantle_high`, 1,4 s) | si resta IN CIMA: salita quasi verticale, poi rimessa in piedi |
+| oltre 3 m | nessuna: e' un muro | — |
+
+La sonda fa cinque misure e non tre, e le tre in piu' sono quelle che evitano i difetti visibili:
+**normale della parete** (ci si raddrizza sul muro prima di partire, e le mani si orientano sulla
+tangente vera invece che stimarla), **corner check a tre raggi** (senza, basta lo spigolo di un
+pilastro preso di striscio per agganciare una manovra verso il nulla), **spessore campionato a passi**
+(da cui si deriva dove atterrare: la vecchia distanza fissa dalla parete sbagliava dietro un muretto
+sottile e sopra un parapetto largo). Piu' una **query di forma** nel punto d'atterraggio: un raycast
+trova il suolo anche in fondo a un pertugio, e scavalcare li' incastra il personaggio.
+
+*Trappola misurata due volte*: la quota a cui si cerca la faccia del muro va tenuta **sotto** il piu'
+basso degli ostacoli che interessano (`VaultMinHeight * 0.7`), non a mezza banda — a mezza banda il
+raggio passa SOPRA i muretti e non trova niente. E il margine d'atterraggio si misura dalla
+**superficie** del corpo, cioe' sommandoci il raggio della capsula (0,5 m): a ridosso dello spigolo
+la capsula tocca ancora la parete appena scavalcata e nessun atterraggio risulta mai libero.
+
+Poi `StepVault` **scrive** la posizione (movimento scriptato: `MoveAndSlide` combatterebbe contro
+l'ostacolo che si sta superando). `CancelParkour()` e' l'aggancio dichiarato per interrompere la
+manovra dall'esterno (colpo incassato, morte); oggi non lo chiama nessuno.
+
+**`VaultDuration` (0,9 s) e `MantleDuration` (1,4 s) devono combaciare con le clip**: e' il tempo su
+cui il warping distribuisce la traiettoria, e se diverge dalla clip le pose arrivano prima o dopo i
+punti di contatto. La suite lo verifica, insieme alla geometria vera — quattro ostacoli costruiti a
+runtime e quattro esiti attesi, che e' l'unico modo di collaudare la sonda: i suoi difetti non si
+vedono su uno scheletro, si vedono su dove finisce il corpo.
+
+**Durante il parkour l'arma sparisce, ma NON viene rinfoderata.** `VaultIkRig.ParkourActive` copre
+l'intera manovra (a differenza di `HandsOnLedge`, che copre la sola finestra di contatto);
+`CharacterAnimator` la usa per azzerare `HoldMask`, spegnere la mira sul busto — che altrimenti
+resterebbe accesa, visto che chi scavalca si dichiara a terra — e alzare `WeaponGripRig.Stowed`, che
+`WeaponVisual` legge per non disegnare l'arma. Nessuno stato di gioco cambia: slot e caricatore
+restano intatti e si puo' sparare subito dopo. Un vero `Holster()` host-side sarebbe piu' "corretto"
+e romperebbe una cosa che nessuno chiede di rompere.
 
 **Danno direzionale: FATTO.** `HealthComponent.ApplyDamage` acquisisce la **direzione** del colpo,
 calcolata host-side in `WeaponController.RequestFire` (e' `shotDir`, dopo la dispersione);

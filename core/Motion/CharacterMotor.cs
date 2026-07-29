@@ -102,8 +102,12 @@ public partial class CharacterMotor : CharacterBody3D
     [Export] public float MaxStepHeight { get; set; } = 0.35f;
 
     // ====================================================================================
-    //  Scavalcamento (vault): UNA clip generica + motion warping, niente clip per altezza
+    //  Parkour: geometria MISURATA + motion warping, niente clip per altezza
     // ====================================================================================
+    //
+    //  Due manovre sulla stessa sonda (ObstacleProbe): sotto si scavalca passando OLTRE
+    //  l'ostacolo, sopra ci si arrampica per restare IN CIMA. La banda la decide l'altezza
+    //  misurata, non un tag messo a mano sul livello.
 
     /// Altezza minima di un ostacolo scavalcabile, in metri. Sotto ci pensa TryStepUp.
     [Export] public float VaultMinHeight { get; set; } = 0.5f;
@@ -111,7 +115,10 @@ public partial class CharacterMotor : CharacterBody3D
     /// Altezza massima scavalcabile, in metri (intervallo dichiarato della clip: 0,5-1,2).
     [Export] public float VaultMaxHeight { get; set; } = 1.2f;
 
-    /// Distanza massima dall'ostacolo perche' il vault si agganci, in metri.
+    /// Altezza massima a cui ci si arrampica restando in cima, in metri.
+    [Export] public float MantleMaxHeight { get; set; } = 3.0f;
+
+    /// Distanza massima dall'ostacolo perche' la manovra si agganci, in metri.
     [Export] public float VaultReach { get; set; } = 1.0f;
 
     /// <summary>
@@ -121,8 +128,30 @@ public partial class CharacterMotor : CharacterBody3D
     /// </summary>
     [Export] public float VaultDuration { get; set; } = 0.9f;
 
-    /// Quanto OLTRE il bordo si atterra, in metri (misurato dal punto di aggancio).
-    [Export] public float VaultLandingDepth { get; set; } = 0.9f;
+    /// Come sopra per l'arrampicata, sulla clip <c>mantle_high</c>. Piu' lunga: si sale piu' in alto.
+    [Export] public float MantleDuration { get; set; } = 1.4f;
+
+    /// <summary>
+    /// Aria fra il corpo e la parete appena scavalcata al momento dell'atterraggio, in metri.
+    ///
+    /// Non e' una distanza fissa dalla parete: lo spessore vero lo misura la sonda, e la distanza
+    /// fissa sbagliava in entrambi i versi — dietro un muretto sottile faceva atterrare troppo
+    /// lontano, su un parapetto largo faceva atterrare ancora sopra l'ostacolo. Ed e' misurata
+    /// dalla SUPERFICIE del corpo, non dal suo centro: sommandoci il raggio della capsula, il punto
+    /// d'atterraggio e' un punto in cui il personaggio ci sta davvero, che e' l'unico che abbia
+    /// senso verificare.
+    /// </summary>
+    [Export] public float VaultLandingMargin { get; set; } = 0.15f;
+
+    /// Spessore massimo di un ostacolo scavalcabile, in metri. Oltre e' una piattaforma, non un muro.
+    [Export] public float VaultMaxDepth { get; set; } = 1.5f;
+
+    /// <summary>
+    /// Velocita' orizzontale minima per agganciare una manovra, in m/s. A zero si scavalca anche
+    /// da fermi: e' il default perche' con la camera isometrica avvicinarsi a un muretto e premere
+    /// salto e' il gesto naturale, e pretendere la rincorsa si legge come un mancato input.
+    /// </summary>
+    [Export] public float MinParkourSpeed { get; set; }
 
     // ====================================================================================
     //  Stato replicato, comune a tutti i personaggi
@@ -189,12 +218,18 @@ public partial class CharacterMotor : CharacterBody3D
     public delegate void LandedEventHandler(float impactSpeed);
 
     /// <summary>
-    /// Scavalcamento: evento estetico con il punto del bordo in coordinate mondo. Il punto e' una
-    /// grandezza GEOMETRICA misurata dai raycast (come la velocita' d'impatto di Landed), non un
-    /// esito di gioco: serve solo all'IK delle mani sul bordo (CLAUDE.md §3).
+    /// Scavalcamento o arrampicata: evento estetico con la geometria misurata dell'ostacolo.
+    ///
+    /// Sono tutte grandezze GEOMETRICHE (come la velocita' d'impatto di Landed), non esiti di
+    /// gioco (CLAUDE.md §3): il bordo e la normale servono all'IK delle mani, l'altezza a scegliere
+    /// la posa. La scelta della clip la fa il RICEVITORE con soglie proprie, esattamente come
+    /// l'atterraggio sceglie fra morbido e duro a partire dalla sola velocita'.
     /// </summary>
+    /// <param name="ledgePoint">Punto d'appiglio sul bordo, in coordinate mondo.</param>
+    /// <param name="wallNormal">Normale orizzontale della parete, rivolta verso il personaggio.</param>
+    /// <param name="height">Altezza del bordo rispetto ai piedi, in metri.</param>
     [Signal]
-    public delegate void VaultedEventHandler(Vector3 ledgePoint);
+    public delegate void VaultedEventHandler(Vector3 ledgePoint, Vector3 wallNormal, float height);
 
     /// Nodo che ruota con l'avatar. Il corpo NON ruota mai: cosi' la camera figlia resta stabile.
     protected Node3D Visual = null!;
@@ -214,14 +249,28 @@ public partial class CharacterMotor : CharacterBody3D
     /// Stato dell'isteresi del turn-in-place (vedi <see cref="PlanAimFacing"/>).
     private bool _turningInPlace;
 
-    // Stato del vault in corso: tempo trascorso (< 0 = inattivo) e i tre punti della traiettoria.
-    private float _vaultTime = -1f;
+    /// Manovra di parkour in corso. Le due fasi hanno traiettorie diverse, non solo durate diverse.
+    private enum ParkourPhase
+    {
+        None,
+
+        /// Si passa OLTRE l'ostacolo: apice sopra il bordo, poi discesa sul suolo di la'.
+        Vault,
+
+        /// Si resta IN CIMA: salita quasi verticale sull'appiglio, poi rimessa in piedi sul bordo.
+        Mantle,
+    }
+
+    // Stato della manovra in corso: fase, tempo trascorso e i punti misurati della traiettoria.
+    private ParkourPhase _phase = ParkourPhase.None;
+    private float _phaseTime;
+    private float _phaseDuration = 1f;
     private Vector3 _vaultStart;
     private Vector3 _vaultLedge;
     private Vector3 _vaultEnd;
 
-    /// Vault in corso: il movimento e' scriptato e l'input di locomozione viene ignorato.
-    public bool Vaulting => _vaultTime >= 0f;
+    /// Manovra in corso: il movimento e' scriptato e l'input di locomozione viene ignorato.
+    public bool Vaulting => _phase != ParkourPhase.None;
 
     public override void _Ready()
     {
@@ -302,9 +351,10 @@ public partial class CharacterMotor : CharacterBody3D
             velocity.Y = 0f;
             if (wantJump && !SyncCrouching)
             {
-                // Saltare CONTRO un ostacolo scavalcabile diventa un vault: stesso tasto, la
-                // geometria decide. Se non c'e' niente da scavalcare, e' un salto normale.
-                if (TryStartVault(worldDirection))
+                // Saltare CONTRO un ostacolo diventa uno scavalcamento o un'arrampicata: stesso
+                // tasto, la geometria misurata decide quale. Se non c'e' niente da superare, e' un
+                // salto normale.
+                if (TryStartParkour(worldDirection))
                     return;
 
                 velocity.Y = JumpVelocity;
@@ -328,105 +378,185 @@ public partial class CharacterMotor : CharacterBody3D
     }
 
     /// <summary>
-    /// Prova ad agganciare uno scavalcamento nella direzione voluta (o del facing, da fermi).
+    /// Prova ad agganciare una manovra di parkour nella direzione voluta (o del facing, da fermi).
     ///
-    /// Tre misure, tutte raycast sul mondo statico: (1) c'e' una parete davanti entro
-    /// <see cref="VaultReach"/>; (2) la sua sommita' sta nell'intervallo scavalcabile; (3) oltre il
-    /// bordo esiste un punto d'atterraggio. Se una qualsiasi manca, niente vault — e chi ha chiesto
-    /// il salto salta. NON genera clip per altezza: la stessa clip viene warpata sui punti misurati.
+    /// E' pubblica perche' il tasto di salto non e' l'unico modo di chiederla: un NPC che trova la
+    /// strada sbarrata da un muretto la chiedera' dal proprio comportamento, senza passare da un
+    /// input che non ha. Chi la chiama esprime un INTENTO — la geometria decide se e' possibile —
+    /// e va chiamata solo dove si e' autoritativi, come tutto il resto del movimento.
+    ///
+    /// La geometria non la misura piu' questa classe: la misura <see cref="ObstacleProbe"/>, che
+    /// restituisce altezza, spessore, normale della parete e spazio d'atterraggio. Qui restano solo
+    /// le SOGLIE — cioe' la decisione di gioco — e la costruzione della traiettoria. Se nessuna
+    /// banda si applica, non era un ostacolo e chi ha chiesto il salto salta.
+    ///
+    /// NON genera clip per altezza: la stessa clip viene warpata sui punti misurati.
     /// </summary>
-    private bool TryStartVault(Vector3 worldDirection)
+    public bool TryStartParkour(Vector3 worldDirection)
     {
+        if (Vaulting)
+            return false;
+
+        // Sotto la velocita' minima si salta e basta: con MinParkourSpeed a zero (default) la
+        // condizione e' sempre vera e si scavalca anche da fermi.
+        Vector3 planarVelocity = new(Velocity.X, 0f, Velocity.Z);
+        if (planarVelocity.Length() < MinParkourSpeed)
+            return false;
+
         Vector3 forward = worldDirection.LengthSquared() > 0.01f
             ? worldDirection.Normalized()
             : new Vector3(Mathf.Sin(SyncFacing), 0f, Mathf.Cos(SyncFacing));
 
-        float feetY = GlobalPosition.Y - _standHeight * 0.5f;
-        var space = GetWorld3D().DirectSpaceState;
+        Vector3 feet = GlobalPosition - Vector3.Up * _standHeight * 0.5f;
 
-        // (1) La parete, sondata a meta' della fascia scavalcabile.
-        Vector3 chest = GlobalPosition + Vector3.Up * (VaultMinHeight + VaultMaxHeight) * 0.5f
-            - Vector3.Up * _standHeight * 0.5f;
-        var wallQuery = PhysicsRayQueryParameters3D.Create(
-            chest, chest + forward * VaultReach, CollisionLayers.World | CollisionLayers.VehicleDeck);
-        wallQuery.Exclude = new Godot.Collections.Array<Rid> { GetRid() };
-        Godot.Collections.Dictionary wall = space.IntersectRay(wallQuery);
-        if (wall.Count == 0)
+        // La faccia si cerca sotto il piu' basso degli ostacoli che interessano, non a mezza banda:
+        // un muretto di 90 cm passerebbe sotto un raggio all'altezza del petto.
+        ObstacleProbe.ObstacleInfo info = ObstacleProbe.Scan(
+            GetWorld3D(), GetRid(), feet, forward,
+            MantleMaxHeight, VaultMinHeight * 0.7f, VaultReach, VaultMaxDepth,
+            VaultLandingMargin + _capsule.Radius, _capsule);
+
+        if (!info.Found || info.Height < VaultMinHeight)
             return false;
 
-        var wallPoint = (Vector3)wall["position"];
+        // Scavalcare (si passa oltre) o arrampicarsi (si resta in cima): decide l'altezza misurata.
+        // Il muro spesso non si scavalca — ci si finirebbe sopra a meta' traiettoria — ma se e'
+        // abbastanza alto lo si arrampica, che e' esattamente il gesto giusto per un parapetto.
+        bool vault = info.Height <= VaultMaxHeight
+            && info.Depth <= VaultMaxDepth
+            && info.LandingClear;
+        bool mantle = info.Height <= MantleMaxHeight && info.TopStandable;
 
-        // (2) La sommita': raggio in giu' da sopra il bordo, appena OLTRE la parete.
-        Vector3 overLedge = wallPoint + forward * 0.15f;
-        overLedge.Y = feetY + VaultMaxHeight + 0.3f;
-        var topQuery = PhysicsRayQueryParameters3D.Create(
-            overLedge, overLedge + Vector3.Down * (VaultMaxHeight + 0.4f),
-            CollisionLayers.World | CollisionLayers.VehicleDeck);
-        Godot.Collections.Dictionary top = space.IntersectRay(topQuery);
-        if (top.Count == 0)
+        if (vault)
+        {
+            _phase = ParkourPhase.Vault;
+            _phaseDuration = VaultDuration;
+            // LandingPoint e' gia' il punto misurato OLTRE il bordo (la sonda ci ha applicato
+            // VaultLandingMargin e ne ha verificato l'ingombro): qui resta solo da alzarlo di
+            // mezza capsula, perche' la posizione del corpo e' il suo centro.
+            _vaultEnd = info.LandingPoint + Vector3.Up * _standHeight * 0.5f;
+        }
+        else if (mantle)
+        {
+            _phase = ParkourPhase.Mantle;
+            _phaseDuration = MantleDuration;
+
+            // Ci si ferma sulla sommita', rientrando quanto basta a non restare in bilico sul bordo.
+            _vaultEnd = info.LedgePoint
+                - info.WallNormal * Mathf.Min(info.Depth * 0.5f, 0.45f)
+                + Vector3.Up * _standHeight * 0.5f;
+        }
+        else
+        {
             return false;
-
-        var ledgeTop = (Vector3)top["position"];
-        float height = ledgeTop.Y - feetY;
-        if (height < VaultMinHeight || height > VaultMaxHeight)
-            return false;
-
-        // (3) L'atterraggio, oltre l'ostacolo. Senza suolo di la', non si scavalca alla cieca.
-        Vector3 beyond = wallPoint + forward * VaultLandingDepth;
-        beyond.Y = ledgeTop.Y + 0.3f;
-        var landQuery = PhysicsRayQueryParameters3D.Create(
-            beyond, beyond + Vector3.Down * (height + 1.2f),
-            CollisionLayers.World | CollisionLayers.VehicleDeck);
-        Godot.Collections.Dictionary landing = space.IntersectRay(landQuery);
-        if (landing.Count == 0)
-            return false;
-
-        var landPoint = (Vector3)landing["position"];
+        }
 
         _vaultStart = GlobalPosition;
-        _vaultLedge = new Vector3(wallPoint.X, ledgeTop.Y, wallPoint.Z);
-        _vaultEnd = landPoint + Vector3.Up * _standHeight * 0.5f;
-        _vaultTime = 0f;
+        _vaultLedge = info.LedgePoint;
+        _phaseTime = 0f;
         Velocity = Vector3.Zero;
-        OnVaultTriggered(_vaultLedge);
+
+        // Ci si raddrizza sulla parete PRIMA di partire: su un muro angolato la direzione di input
+        // non e' quella dell'ostacolo, e la traiettoria si vedrebbe entrare di sbieco nel muro.
+        SyncFacing = Mathf.Atan2(-info.WallNormal.X, -info.WallNormal.Z);
+
+        OnVaultTriggered(_vaultLedge, info.WallNormal, info.Height);
         return true;
     }
 
     /// <summary>
-    /// Un tick di vault: la radice segue il warp start -> bordo -> atterraggio.
+    /// Un tick di parkour: la radice segue il warp fra i punti misurati.
     ///
-    /// L'orizzontale avanza con uno smoothstep unico; la verticale sale sul bordo entro meta'
-    /// clip (la fase di appoggio/raccolta di <c>vault_low</c>) e ridiscende nella seconda meta'.
-    /// La posizione si SCRIVE (movimento kinematico scriptato): MoveAndSlide combatterebbe
-    /// contro l'ostacolo che si sta appunto scavalcando.
+    /// La posizione si SCRIVE (movimento kinematico scriptato): <c>MoveAndSlide</c> combatterebbe
+    /// contro l'ostacolo che si sta appunto superando. Le due fasi hanno profili verticali diversi:
+    /// il vault passa SOPRA il bordo e ridiscende, il mantle sale e basta.
     /// </summary>
     private void StepVault(float dt)
     {
-        _vaultTime += dt;
-        float t = Mathf.Clamp(_vaultTime / Mathf.Max(VaultDuration, 0.01f), 0f, 1f);
-        float horizontal = Mathf.SmoothStep(0f, 1f, t);
+        _phaseTime += dt;
+        float t = Mathf.Clamp(_phaseTime / Mathf.Max(_phaseDuration, 0.01f), 0f, 1f);
 
-        Vector3 flat = _vaultStart.Lerp(_vaultEnd, horizontal);
-        float apexY = _vaultLedge.Y + _standHeight * 0.5f + 0.08f;
-        float y = t < 0.5f
-            ? Mathf.Lerp(_vaultStart.Y, apexY, Mathf.SmoothStep(0f, 1f, t / 0.5f))
-            : Mathf.Lerp(apexY, _vaultEnd.Y, Mathf.SmoothStep(0f, 1f, (t - 0.5f) / 0.5f));
-
-        GlobalPosition = new Vector3(flat.X, y, flat.Z);
+        GlobalPosition = _phase == ParkourPhase.Mantle ? MantlePoint(t) : VaultPoint(t);
 
         // Per l'animazione si e' "a terra" per tutta la durata: la posa la mette la clip di
-        // vault, non il layer di caduta. Le gambe sotto il one-shot sono comunque coperte.
+        // parkour, non il layer di caduta. Le gambe sotto il one-shot sono comunque coperte.
         SyncGrounded = true;
         SyncLocalVelocity = Vector2.Zero;
         Velocity = Vector3.Zero;
 
         if (t >= 1f)
+            EndParkour();
+    }
+
+    /// <summary>
+    /// Traiettoria del vault: orizzontale con uno smoothstep unico, verticale che sale sul bordo
+    /// entro meta' clip (la fase di appoggio/raccolta di <c>vault_low</c>) e ridiscende nella seconda.
+    /// </summary>
+    private Vector3 VaultPoint(float t)
+    {
+        Vector3 flat = _vaultStart.Lerp(_vaultEnd, Mathf.SmoothStep(0f, 1f, t));
+        float apexY = _vaultLedge.Y + _standHeight * 0.5f + 0.08f;
+        float y = t < 0.5f
+            ? Mathf.Lerp(_vaultStart.Y, apexY, Mathf.SmoothStep(0f, 1f, t / 0.5f))
+            : Mathf.Lerp(apexY, _vaultEnd.Y, Mathf.SmoothStep(0f, 1f, (t - 0.5f) / 0.5f));
+
+        return new Vector3(flat.X, y, flat.Z);
+    }
+
+    /// <summary>
+    /// Traiettoria del mantle, in due tempi come il gesto vero: prima ci si issa quasi in verticale
+    /// fino ad avere il petto all'altezza dell'appiglio (l'orizzontale quasi non avanza, ci si tira
+    /// su contro il muro), poi ci si rimette in piedi portando il baricentro oltre il bordo.
+    ///
+    /// Diviso in due invece che su una curva unica perche' e' la differenza che si legge a schermo:
+    /// con una curva sola il personaggio scivolerebbe in diagonale attraverso lo spigolo.
+    /// </summary>
+    private Vector3 MantlePoint(float t)
+    {
+        const float pullUp = 0.62f; // frazione della clip spesa a issarsi
+
+        // Fine della salita: petto sul bordo, ancora appoggiati alla faccia del muro.
+        Vector3 hang = new(_vaultStart.X, _vaultLedge.Y + _standHeight * 0.5f, _vaultStart.Z);
+
+        if (t < pullUp)
         {
-            _vaultTime = -1f;
-            _wasGrounded = true;
-            _fallSpeed = 0f;
-            _airTime = 0f;
+            float k = Mathf.SmoothStep(0f, 1f, t / pullUp);
+            Vector3 rise = _vaultStart.Lerp(hang, k);
+
+            // Un filo di avvicinamento al muro, per non restare appesi a mezzo metro dalla parete.
+            Vector3 approach = _vaultStart.Lerp(new Vector3(_vaultLedge.X, _vaultStart.Y, _vaultLedge.Z), k * 0.5f);
+            return new Vector3(approach.X, rise.Y, approach.Z);
         }
+
+        float s = Mathf.SmoothStep(0f, 1f, (t - pullUp) / (1f - pullUp));
+        Vector3 from = new(
+            Mathf.Lerp(_vaultStart.X, _vaultLedge.X, 0.5f),
+            hang.Y,
+            Mathf.Lerp(_vaultStart.Z, _vaultLedge.Z, 0.5f));
+
+        return from.Lerp(_vaultEnd, s);
+    }
+
+    /// <summary>
+    /// Interrompe la manovra in corso restituendo il controllo fisico normale.
+    ///
+    /// Serve a chi deve poterla annullare dall'esterno — un colpo incassato a meta' scavalcamento,
+    /// la morte — senza conoscere lo stato interno. Chiamarla quando non c'e' nulla in corso non fa
+    /// nulla. Il personaggio resta dov'e': non si teletrasporta indietro.
+    /// </summary>
+    public void CancelParkour()
+    {
+        if (_phase != ParkourPhase.None)
+            EndParkour();
+    }
+
+    private void EndParkour()
+    {
+        _phase = ParkourPhase.None;
+        _phaseTime = 0f;
+        _wasGrounded = true;
+        _fallSpeed = 0f;
+        _airTime = 0f;
     }
 
     /// <summary>
@@ -615,9 +745,9 @@ public partial class CharacterMotor : CharacterBody3D
     /// gioco: decide soltanto quanto flette il bacino (CLAUDE.md §3).
     protected virtual void OnLandTriggered(float impactSpeed) => EmitSignal(SignalName.Landed, impactSpeed);
 
-    /// Come sopra per lo scavalcamento: il bordo e' una misura geometrica per l'IK delle mani.
-    protected virtual void OnVaultTriggered(Vector3 ledgePoint) =>
-        EmitSignal(SignalName.Vaulted, ledgePoint);
+    /// Come sopra per il parkour: bordo, normale e altezza sono misure geometriche (vedi Vaulted).
+    protected virtual void OnVaultTriggered(Vector3 ledgePoint, Vector3 wallNormal, float height) =>
+        EmitSignal(SignalName.Vaulted, ledgePoint, wallNormal, height);
 
     /// Smorzamento esponenziale, indipendente dal frame rate.
     protected static float Damp(float speed, float dt) => 1.0f - Mathf.Exp(-speed * dt);

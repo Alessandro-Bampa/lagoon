@@ -476,6 +476,66 @@ _, n = bake_clip(ours, "vault_low", {
 log["created"].append({"clip": "vault_low", "fcurves": n, "loop": False})
 
 # ============================================================================
+#  mantle_high: arrampicata su muro medio, full-body, IN PLACE
+# ============================================================================
+# Seconda e ULTIMA clip di parkour (skill: 1,2-3 m). Come vault_low e' generica e in
+# place: il codice deforma la traiettoria della radice sui punti misurati, qui c'e'
+# solo la sequenza di pose. La differenza col vault non e' l'altezza (quella la mette
+# il warping) ma il GESTO: li' si passa oltre con un appoggio a meta', qui ci si issa
+# e ci si rimette in piedi, quindi le braccia restano protese quasi fino alla fine.
+#
+# Pose CAMPIONATE come sempre: gambe da jump/crouch/fall, mai keyframate a occhio.
+UPPER_BONES = {"Spine", "Spine1", "Spine2", "Neck", "Head",
+               "LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand",
+               "RightShoulder", "RightArm", "RightForeArm", "RightHand"}
+
+# Slancio: ci si allunga verso l'appiglio. Braccia in alto-avanti, busto esteso.
+apply_pose(ours, idle_neutral)
+rotate_bone_world(ours, "Spine", LATERAL, -6.0)
+reach_up = (FORWARD * 0.45 + VERTICAL * 0.89).normalized()
+for side in ("Right", "Left"):
+    aim_bone_at(ours, side + "Arm", reach_up)
+    aim_bone_at(ours, side + "ForeArm", reach_up)
+reach = snapshot_pose(ours)
+
+# Trazione: appesi al bordo, ginocchia raccolte contro il muro e braccia che si
+# piegano. Le gambe vengono dal culmine del salto (sono gia' raccolte), il busto si
+# flette in avanti sopra l'appiglio.
+apply_pose(ours, merge_pose(reach, jump_mid, LEG_BONES - {"Hips"}))
+rotate_bone_world(ours, "Spine", LATERAL, 22.0)
+for side in ("Right", "Left"):
+    rotate_bone_world(ours, side + "ForeArm", LATERAL, 55.0)
+pull = snapshot_pose(ours)
+
+# Ginocchio sul bordo: gambe accovacciate (ci si sta salendo sopra), busto ancora
+# avanti, braccia che scendono a puntellarsi sul bordo davanti al corpo.
+apply_pose(ours, merge_pose(pull, crouch_idle, LEG_BONES))
+rotate_bone_world(ours, "Spine", LATERAL, 12.0)
+push_dir = (FORWARD * 0.35 - VERTICAL * 0.94).normalized()
+for side in ("Right", "Left"):
+    aim_bone_at(ours, side + "Arm", push_dir)
+    aim_bone_at(ours, side + "ForeArm", push_dir)
+knee = snapshot_pose(ours)
+
+# Rimessa in piedi: gambe che si estendono verso la idle, parte alta gia' rientrata.
+stand = merge_pose(blend_pose(knee, idle_neutral, 0.6), idle_neutral, UPPER_BONES)
+
+M_REACH = max(int(round(0.25 * fps)), 1)
+M_PULL = max(int(round(0.70 * fps)), M_REACH + 2)
+M_KNEE = max(int(round(1.05 * fps)), M_PULL + 2)
+M_STAND = max(int(round(1.25 * fps)), M_KNEE + 2)
+M_END = max(int(round(1.40 * fps)), M_STAND + 2)
+_, n = bake_clip(ours, "mantle_high", {
+    0: idle_neutral,
+    M_REACH: reach,
+    M_PULL: pull,
+    M_KNEE: knee,
+    M_STAND: stand,
+    M_END: idle_neutral,
+})
+log["created"].append({"clip": "mantle_high", "fcurves": n, "loop": False})
+
+# ============================================================================
 #  Export: tutte le azioni insieme (recuperate + procedurali)
 # ============================================================================
 
