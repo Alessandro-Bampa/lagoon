@@ -21,3 +21,5 @@ addons/**/~*
 # Cache Python degli script Blender (tools/blender/)
 __pycache__/
 *.pyc
+
+demo/*

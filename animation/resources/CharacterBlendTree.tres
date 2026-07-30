@@ -1,4 +1,4 @@
-[gd_resource type="AnimationNodeBlendTree" format=3]
+[gd_resource type="AnimationNodeBlendTree" format=3 uid="uid://bpvgvamixgopo"]
 
 [sub_resource type="AnimationNodeAdd2" id="AnimationNodeAdd2_68c3a"]
 sync = true
