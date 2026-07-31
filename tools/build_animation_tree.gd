@@ -14,10 +14,11 @@
 #   I layer procedurali (SpineAim, FootIk, GripRig) NON stanno qui: sono
 #   SkeletonModifier3D che girano dopo l'albero.
 #
-# Le clip generate vivono in DUE librerie separate, entrambe montate su AnimationTree:
-#   `add/`  delta additivi     (animation/resources/AdditiveClips.tres)
-#   `hold/` pose d'impugnatura (animation/resources/WeaponHoldPoses.tres)
-# Nessuna delle due passa da Blender: il perche' sta nell'intestazione dei rispettivi
+# Le clip generate vivono in TRE librerie separate, tutte montate su AnimationTree:
+#   `add/`    delta additivi      (animation/resources/AdditiveClips.tres)
+#   `hold/`   pose d'impugnatura  (animation/resources/WeaponHoldPoses.tres)
+#   `crouch/` locomozione accovacciata con le braccia animate (animation/resources/CrouchClips.tres)
+# Nessuna delle tre passa da Blender: il perche' sta nell'intestazione dei rispettivi
 # tool. Rigenerare l'albero dopo aver rigenerato le clip.
 #
 # Perche' generato e non scritto a mano nel .tscn: l'albero e' fatto di path di
@@ -77,7 +78,12 @@ const HOLD_MASK := [
 # add_triangle rifiuta ogni indice perche' i punti non esistono ancora. Il risultato
 # e' uno spazio a zero triangoli, cioe' la T-pose. La rete di sicurezza e' il
 # controllo di copertura in tools/verify_godot_import.gd.
-func _directional_space(idle: String, prefix: String, radius: float) -> AnimationNodeBlendSpace2D:
+#
+# `separator` esiste perche' il crouch non pesca piu' dal .glb ma dalla libreria
+# `crouch` generata da tools/build_crouch_clips.gd, dove le clip si chiamano
+# `crouch/fwd` e non `crouch_fwd`.
+func _directional_space(idle: String, prefix: String, radius: float,
+		separator := "_") -> AnimationNodeBlendSpace2D:
 	var space := AnimationNodeBlendSpace2D.new()
 	space.min_space = Vector2(-radius, -radius)
 	space.max_space = Vector2(radius, radius)
@@ -85,10 +91,10 @@ func _directional_space(idle: String, prefix: String, radius: float) -> Animatio
 	space.blend_mode = AnimationNodeBlendSpace2D.BLEND_MODE_INTERPOLATED
 	space.auto_triangles = true
 	space.add_blend_point(_anim(idle), Vector2(0, 0), -1, "idle")
-	space.add_blend_point(_anim(prefix + "_fwd"), Vector2(0, radius), -1, prefix + "_fwd")
-	space.add_blend_point(_anim(prefix + "_back"), Vector2(0, -radius), -1, prefix + "_back")
-	space.add_blend_point(_anim(prefix + "_left"), Vector2(-radius, 0), -1, prefix + "_left")
-	space.add_blend_point(_anim(prefix + "_right"), Vector2(radius, 0), -1, prefix + "_right")
+	for entry in [["fwd", Vector2(0, radius)], ["back", Vector2(0, -radius)],
+			["left", Vector2(-radius, 0)], ["right", Vector2(radius, 0)]]:
+		var clip: String = prefix + separator + str(entry[0])
+		space.add_blend_point(_anim(clip), entry[1], -1, clip)
 	return space
 
 
@@ -142,8 +148,14 @@ func _initialize() -> void:
 	# Anche il crouch e' direzionale a 4 assi, con le clip prese TUTTE dallo stesso
 	# set: mischiare famiglie diverse cambia l'altezza dell'accovacciamento fra un
 	# punto di blend e l'altro, e nelle direzioni intermedie il bacino scatta.
+	#
+	# Le clip NON sono piu' quelle del .glb: le cinque `crouch_*` di Mixamo hanno le
+	# braccia ferme (una sola chiave di rotazione per osso), quindi da disarmati le mani
+	# restavano immobili lungo il corpo mentre le gambe camminavano. La libreria `crouch`
+	# le rigenera con l'oscillazione delle braccia trapiantata dalle clip in piedi
+	# (tools/build_crouch_clips.gd): stesso corpo, stessa fase, braccia vive.
 	tree.add_node("CrouchSpace",
-		_directional_space("crouch_idle", "crouch", CROUCH_SPEED), Vector2(-880, 400))
+		_directional_space("crouch/idle", "crouch", CROUCH_SPEED, "/"), Vector2(-880, 400))
 
 	var crouch_blend := AnimationNodeBlend2.new()
 	crouch_blend.sync = true

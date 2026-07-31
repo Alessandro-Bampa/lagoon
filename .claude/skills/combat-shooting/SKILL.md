@@ -65,6 +65,7 @@ client            WeaponInput: cursore -> AimResolver.ResolveAimPoint (raycast)
   │
 host              validazioni in ordine: mittente == proprietario · arma è un WeaponDefinition ·
   │               l'istanza è ANCORA nel suo slot equip · non in ricarica · caricatore > 0 ·
+  │               mani libere (non si scavalca: SyncVaulting replicato) ·
   │               cadenza (RPM, tolleranza 10% per il jitter) · aimPoint finito ·
   │               distanza > MaxRange -> CLAMP, non rifiuto (mirare al cielo è legittimo)
   │               origine = PlayerController.SyncPosition + 1.1 m   ← stato REPLICATO, mai
@@ -76,6 +77,16 @@ host              validazioni in ordine: mittente == proprietario · arma è un 
 ```
 
 Le RPC di `WeaponController` seguono la stessa triade di `PlayerInventory`: `SubmitX()` (host = locale, client = `RpcId(host)`) → `RequestX` (`AnyPeer`, `ValidateSender()`) → proprietà replicate.
+
+`HandsFree()` è il guard che rifiuta fuoco e ricarica mentre è in corso uno scavalcamento o
+un'arrampicata: durante la manovra le mani reggono l'ostacolo (`VaultIkRig` ce le porta davvero) e
+l'arma è nascosta. Legge `CharacterMotor.SyncVaulting`, cioè lo **stato replicato**, e non
+`Vaulting`: il movimento è client-authoritative, quindi per un tiratore remoto l'host non esegue la
+manovra e lo stato locale sarebbe sempre falso — è la stessa ragione per cui l'origine del colpo
+viene da `ResolvedSyncPosition`. `WeaponInput.Suppressed` fa da lato locale della stessa regola,
+perché la vampa alla bocca è immediata (§5) e senza si vedrebbe sparare un colpo che l'host non
+conta. **`RequestHold` NON lo consulta**: cambiare slot non produce un colpo, e rifiutarlo lascerebbe
+host e client in disaccordo su cosa si ha in mano.
 
 `HoldStillValid()` è il guard che decade l'impugnatura se l'arma esce dal suo slot equip (spostata, lasciata cadere, messa nello zaino). È chiamato prima di sparare e di ricaricare, e su ogni `PlayerInventory.HostStateChanged`.
 

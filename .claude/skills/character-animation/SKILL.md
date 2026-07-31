@@ -1,6 +1,6 @@
 ---
 name: character-animation
-description: Sistema di animazione del personaggio — AnimationTree a LAYER (locomozione unica agnostica dall'arma, impugnatura come posa assoluta mascherata sulle braccia, aim offset e one-shot additivi), clip delta, layer procedurali (mira sul rachide, piedi a terra, presa dell'arma, mani sul bordo, reazione ai muri). Carica questa skill quando tocchi animation/, il CharacterRig, il BlendTree, le clip additive o AdditiveClips.tres, le pose d'impugnatura o WeaponHoldPoses.tres, HoldMask, CharacterAnimator, PlayerAnimationBridge, SpineAimModifier, AimRig, FootIkRig, WeaponGripRig, VaultIkRig, WeaponSpaceProbe, WeaponAnimationSet, quando aggiungi o rinomini una clip, quando il personaggio va in T-pose o le animazioni si fermano, quando un SkeletonModifier3D "non applica", quando agganci un'arma alla mano, o quando lavori su rinculo, mira verticale, piedi a terra, reazione ai colpi, scavalcamento o ragdoll.
+description: Sistema di animazione del personaggio — AnimationTree a LAYER (locomozione unica agnostica dall'arma, impugnatura come posa assoluta mascherata sulle braccia, aim offset e one-shot additivi), clip delta, layer procedurali (mira sul rachide, piedi a terra, presa dell'arma, mani sul bordo, reazione ai muri). Carica questa skill quando tocchi animation/, il CharacterRig, il BlendTree, le clip additive o AdditiveClips.tres, le pose d'impugnatura o WeaponHoldPoses.tres, HoldMask, CharacterAnimator, PlayerAnimationBridge, SpineAimModifier, AimRig, FootIkRig, WeaponGripRig, ShoulderLiftModifier, VaultIkRig, WeaponSpaceProbe, WeaponAnimationSet, le clip di crouch o CrouchClips.tres, quando aggiungi o rinomini una clip, quando il personaggio va in T-pose o le animazioni si fermano, quando un SkeletonModifier3D "non applica", quando agganci un'arma alla mano, o quando lavori su rinculo, mira verticale, piedi a terra, reazione ai colpi, scavalcamento o ragdoll.
 ---
 
 # Animazione del personaggio
@@ -215,6 +215,39 @@ del gomito **nella posa animata**, che è il lato giusto per definizione. Lo cop
 `il gomito di supporto si piega dal lato della posa`, che confronta il gomito con IK acceso e con IK
 spento: col polo vecchio segna 110° (rovesciato), con quello misurato 4°.
 
+### 1.6septies Le clip di crouch di Mixamo hanno le BRACCIA FERME, e il busto piegato di 59°
+
+Due difetti che si vedono **solo accovacciati**, entrambi con la stessa radice — le cinque clip
+`crouch_*` non sono fatte per un personaggio armato — e nessuno intercettabile dai controlli che
+c'erano, perché tutti misuravano le **gambe** ("ti stai ancora muovendo?" è vero anche con le
+braccia morte) o la presa **in mira**, dove la correzione procedurale del busto è già accesa.
+
+- **Braccia immobili.** Le clip portano **una sola chiave di rotazione** su braccia e avambracci
+  (ampiezza 0,00°), mentre bacino e gambe ne hanno 20-30. Da disarmati le mani restano ferme lungo
+  il corpo mentre le gambe camminano. Le rigenera `tools/build_crouch_clips.gd` (§2.1).
+- **Arma fra le gambe.** Il busto è piegato in avanti di **35°** (`crouch_idle`) e **59°**
+  (`crouch_fwd`), misurato sull'avanti di `Spine2`, e le ginocchia stanno alte davanti al petto. La
+  posa d'impugnatura è una posa delle **sole braccia**, figlie di `Spine2`: quella piega se la porta
+  dietro, e nel porto rilassato avambracci e canna finiscono dentro le cosce. Misurata la distanza
+  minima fra l'asse dell'arma e le gambe, col fucile: **0,358 m in piedi**, 0,204 accovacciati
+  fermi, **0,035** accovacciati in movimento.
+
+**Il rimedio è locale alle BRACCIA, non al busto.** Raddrizzare il rachide funziona benissimo sulla
+misura — riaccendendo `SpineAimModifier` fuori mira la distanza risaliva a 0,285 — ed è stato
+**provato a schermo e scartato**: il personaggio si accovaccia con la schiena dritta e la posa non
+legge più come un accovacciamento. Oggi `WeaponGripRig.CrouchLift` (scritto da `CharacterAnimator`
+col peso del crouch, e solo **fuori mira**) alza due cose:
+
+| | effetto | valore |
+|---|---|---|
+| `CrouchArmLiftDegrees` → `ShoulderLiftModifier` | ruota le **clavicole**, cioè alza il blocco braccia conservando la presa | 35° |
+| `CrouchMuzzleUpDegrees` → `PitchMuzzleUp` | alza la sola **canna**, che è lunga e nel porto punta a terra | 25° |
+
+Risultato misurato: 0,204 → **0,302 m** fermi, 0,035 → **0,199 m** in movimento. Il secondo resta il
+caso stretto, ed è il residuo dei 59° di `crouch_fwd`: convive con la scelta di non toccare il busto.
+Sulle clavicole e non sui bracci per la stessa ragione di §1.6quater. In mira tutto questo è a zero:
+lì la canna deve puntare dove punta il giocatore.
+
 ### 1.7 `AnimationNodeSync.sync = false` su un nodo filtrato → gambe congelate
 
 `sync = false` ferma i frame dell'ingresso con peso 0. Su un nodo **filtrato** e' un bug: l'ingresso
@@ -373,16 +406,30 @@ Il resto delle scelte:
 - **`JumpScale`**: `jump` e' un arco di 1,03 s ma il volo vero dura `2·v/g` (~0,6 s). Senza
   riscalare, si atterra a clip ancora in aria.
 
-### 2.1 Le clip generate: tre librerie, tre sorgenti
+### 2.1 Le clip generate: quattro librerie, tre sorgenti
 
-L'`AnimationTree` monta **tre** `AnimationLibrary`, ed e' una divisione di responsabilita', non un
-dettaglio di packaging:
+L'`AnimationTree` monta **quattro** `AnimationLibrary`, ed e' una divisione di responsabilita', non
+un dettaglio di packaging:
 
 | Libreria | Contenuto | Generata da |
 |---|---|---|
 | `""` (senza prefisso) | clip **assolute** full body: Mixamo + procedurali (`walk_fwd`, `rifle_idle`, `vault_low`, …) | Blender → `.glb` |
 | `"add"` | clip **delta** additive (`add/aim_up`, `add/hit_front`, `add/rifle_fire`) | `tools/build_additive_clips.gd`, **in Godot** |
 | `"hold"` | pose **assolute delle sole braccia** (`hold/rifle_aim`, `hold/pistol`, …) | `tools/build_weapon_poses.gd`, **in Godot** |
+| `"crouch"` | locomozione accovacciata con le braccia animate (`crouch/idle`, `crouch/fwd`, …) | `tools/build_crouch_clips.gd`, **in Godot** |
+
+**`CrouchSpace` non pesca piu' dal `.glb`**: le `crouch_*` di Mixamo hanno le braccia ferme
+(§1.6septies). Le clip di `crouch/` sono le stesse, con le sole track delle otto ossa delle braccia
+riscritte trapiantandoci l'oscillazione della clip **in piedi** corrispondente — non in assoluto ma
+come **delta attorno alla propria media**, `q = q_crouch × (media⁻¹ × q_sorgente(u))`, la stessa
+composizione della semantica additiva. Cosi' la posa media resta esattamente quella authorata (le
+braccia non "diventano" quelle di un personaggio in piedi, che su un busto piegato finirebbero nelle
+cosce) e ci si somma solo il movimento. La fase si conserva perche' le due famiglie di clip sono in
+fase fra loro: misurata la Z della caviglia, `walk_fwd` e `crouch_fwd` hanno massimo e minimo nello
+stesso ottavo di ciclo. `crouch_idle` e' l'eccezione — `idle_neutral` dura 9,96 s contro 2,13, quindi
+la si percorre **avanti e indietro** su una finestra lunga quanto la destinazione, che chiude il loop
+per costruzione. L'ampiezza non e' scelta a occhio: il tool la **taglia da solo**, clip per clip,
+alla massima che tiene le mani a 0,15 m dalle gambe (misurato: a piena ampiezza si scendeva a 0,10).
 
 Le pose `hold/*` derivano da **due** clip Mixamo: `rifle_fire` per il fucile e `pistol_idle` per la
 pistola. Non da `rifle_idle`, che è un porto con l'arma di traverso e non punta: il perché, con le
@@ -424,10 +471,11 @@ python tools/blender/blender_client.py tools/blender/build_procedural_clips.py  
 Godot --path . --headless --import                                               # reimport del .glb
 Godot --path . --headless --script tools/build_weapon_poses.gd                   # pose d'impugnatura
 Godot --path . --headless --script tools/build_additive_clips.gd                 # delta
+Godot --path . --headless --script tools/build_crouch_clips.gd                   # crouch
 Godot --path . --headless --script tools/build_animation_tree.gd                 # albero
 ```
-I tre tool Godot non richiedono Blender: se si tocca solo l'impugnatura, la mira o il rinculo bastano
-gli ultimi tre comandi.
+I quattro tool Godot non richiedono Blender: se si tocca solo l'impugnatura, la mira, il rinculo o il
+crouch bastano gli ultimi quattro comandi.
 Saltare il reimport in mezzo e' il modo tipico di generare delta contro clip vecchie.
 
 ## 3. Parametri esposti
@@ -479,7 +527,7 @@ autorita' e non vanno replicati.
 |---|---|---|
 | `AimRig` + `SpineAimModifier` | misura dove punta il busto nella posa di **questo** frame e lo ruota sulla mira, spalmando l'errore su `Spine`/`Spine1`/`Spine2` | l'errore dipende da quale clip sta girando e con che peso: nessuna posa registrata puo' conoscerlo |
 | `FootIkRig` | ogni piede cerca il suolo con un raggio, l'IK ce lo porta, il bacino scende verso il piede piu' basso | dipende dalla geometria sotto i piedi in quell'istante |
-| `WeaponGripRig` | aggancio dell'arma alla mano, IK della mano di supporto, rinculo, "port arms" | idem |
+| `WeaponGripRig` | aggancio dell'arma alla mano, IK della mano di supporto, rinculo, "port arms", sollevamento delle braccia da accovacciati (`ShoulderLiftModifier`, §1.6septies) | idem |
 | `WeaponSpaceProbe` | misura lo spazio davanti alla canna | idem |
 | `VaultIkRig` | durante scavalcamento e arrampicata porta le mani sul bordo VERO, orientate sulla normale della parete, dentro la finestra di contatto della clip | forma e giacitura dell'ostacolo le conosce solo la sonda di quell'istante: e' cio' che permette **una sola** clip per manovra |
 | lean (dentro `AimRig`) | inclina il busto contro l'accelerazione laterale | dipende da come si sta guidando il personaggio |
@@ -577,7 +625,7 @@ parametri, **copertura a triangoli di ogni BlendSpace2D**, **`sync` su ogni nodo
 **che cosa** filtra `HoldMask` (le otto ossa delle braccia e nient'altro: una maschera allargata al
 rachide o al bacino spegnerebbe la locomozione senza dare un solo errore).
 
-`verify_animation_runtime.gd` fa girare l'albero e misura le ossa (**161 controlli**): le
+`verify_animation_runtime.gd` fa girare l'albero e misura le ossa (**180 controlli**): le
 combinazioni che non devono essere la T-pose (ogni asse di camminata, corsa e crouch, aria, gli
 stessi assi con l'impugnatura accesa, i cinque estremi dell'aim offset), dieci secondi di
 camminata che non deve congelarsi, le gambe che continuano a muoversi con impugnatura e mira accese
@@ -587,7 +635,10 @@ distinte a coppie opposte, il vault che e' full body e rientra, i one-shot che r
 che segue la mano, il rinculo che **alza** il muso, la mano di supporto che raggiunge l'astina,
 l'asse dell'arma che passa fra le due mani, il busto che punta sulla mira anche in strafe, **la
 canna che punta DOVE SI MIRA** su sei fra direzioni e locomozioni (§1.6quater), i piedi
-che riproducono un dislivello di 12 cm, l'arma che si alza contro un muro, l'NPC che si anima
+che riproducono un dislivello di 12 cm, **le braccia che si muovono da accovacciati** e **l'arma che
+da accovacciati resta fuori dalle gambe** (`_verify_crouch`, §1.6septies — misura anche che il
+sollevamento faccia davvero qualcosa, cosi' il giorno che il porto rilassato cambiasse non resterebbe
+un rimedio inutile acceso in silenzio), l'arma che si alza contro un muro, l'NPC che si anima
 sullo stesso rig, e **una rampa a 20 gradi percorsa in salita e in discesa senza mai staccarsi da
 terra** (`_verify_slope`, §1.6ter).
 
@@ -662,7 +713,9 @@ Sono scelte, non dimenticanze. Non "sistemarle" senza leggere il motivo.
 `pistol_fire`, `land_soft`, `vault_low`, `mantle_high`), generate da `tools/blender/build_procedural_clips.py`
 (skill `blender-pipeline`) — Mixamo non e' piu' una sorgente disponibile, le clip nuove si
 costruiscono campionando pose da clip esistenti. Gli 11 delta stanno in `AdditiveClips.tres` e le 4
-pose d'impugnatura in `WeaponHoldPoses.tres`: tutte **calcolate** (§2.1), non authorate.
+pose d'impugnatura in `WeaponHoldPoses.tres`: tutte **calcolate** (§2.1), non authorate. Le 5 clip di
+`CrouchClips.tres` non entrano nel budget: sono le stesse `crouch_*` del `.glb` con le sole braccia
+riscritte, non clip nuove.
 
 Le **otto clip di locomozione armata** (`rifle_walk_*`, `rifle_run_*`) sono ancora nel `.glb` ma
 **l'albero non le usa piu'**: le ha sostituite la maschera d'impugnatura. Restano perche' cancellarle
@@ -694,6 +747,16 @@ nello spazio locale di `Hips` e' su **X e Z**, non su Y.
 Hard parte `land_soft`; sotto resta la sola flessione procedurale del bacino. Sono **alternativi**,
 non sommati: la clip contiene gia' la propria flessione, e sommarci quella procedurale farebbe
 sprofondare il personaggio nel pavimento.
+
+**Nel regime DURO il movimento e' bloccato per tutta la clip.** `CharacterMotor.HardLandingLockSeconds`
+(2,03 s, la durata di `land_hard`) va tenuto allineato alla clip esattamente come `VaultDuration`:
+se scade prima, il corpo scivola via mentre e' ancora a terra a rialzarsi; se scade dopo, l'input
+resta muto a personaggio gia' in piedi. Il blocco azzera la **direzione voluta**, non la velocita':
+la frenata resta quella esponenziale di sempre, quindi l'inerzia della caduta si scarica e la
+`SyncLocalVelocity` pubblicata rientra con continuita' invece di saltare a zero in un frame. La
+soglia e' la stessa che sceglie la clip (`HardLandingSpeed`, che i bridge riallineano fra motore e
+animatore): movimento e posa si accendono sullo stesso criterio, mai su due. Gravita', collisioni,
+crouch e mira continuano a funzionare — si e' bloccati, non sospesi.
 
 **Fase di camminata e corsa non allineate.** `walk_fwd` dura 1,067 s e `run_fwd` 0,667 s: nel
 crossfade i piedi possono risultare fuori fase per un istante. `sync = true` li fa avanzare ma **non**
@@ -734,6 +797,17 @@ cui il warping distribuisce la traiettoria, e se diverge dalla clip le pose arri
 punti di contatto. La suite lo verifica, insieme alla geometria vera — quattro ostacoli costruiti a
 runtime e quattro esiti attesi, che e' l'unico modo di collaudare la sonda: i suoi difetti non si
 vedono su uno scheletro, si vedono su dove finisce il corpo.
+
+**Durante il parkour non si spara.** Le mani sono sull'ostacolo, e il `VaultIkRig` ce le porta
+davvero: un colpo partito da lì non avrebbe un'arma da cui partire. Il veto è **host-side**
+(`WeaponController.HandsFree`, skill `combat-shooting` §3) e legge `CharacterMotor.SyncVaulting`,
+proprietà replicata aggiunta apposta — `Vaulting` è locale a chi calcola il movimento, che essendo
+client-authoritative non è l'host. `WeaponInput.Suppressed` ne è il lato locale, perché la vampa alla
+bocca è immediata. **Anche la mira è sospesa**, e non è un di più: `TryStartParkour` raddrizza il
+corpo sulla normale della parete, e `UpdateAiming` — che gira anche durante la manovra, perché solo
+`StepMotion` esce presto — lo riportava verso il cursore, cioè faceva entrare la traiettoria di
+sbieco nel muro. Durante il parkour `PlayerController` tiene `SyncAiming` falso, riallinea
+`SyncAimYaw` a `SyncFacing` e lascia rientrare il pitch. Resta lecito il solo cambio d'arma.
 
 **Durante il parkour l'arma sparisce, ma NON viene rinfoderata.** `VaultIkRig.ParkourActive` copre
 l'intera manovra (a differenza di `HandsOnLedge`, che copre la sola finestra di contatto);

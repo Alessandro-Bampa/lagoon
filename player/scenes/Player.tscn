@@ -49,6 +49,9 @@ properties/7/replication_mode = 1
 properties/8/path = NodePath(".:SyncAiming")
 properties/8/spawn = true
 properties/8/replication_mode = 1
+properties/9/path = NodePath(".:SyncVaulting")
+properties/9/spawn = true
+properties/9/replication_mode = 1
 
 [sub_resource type="SceneReplicationConfig" id="Repl_2"]
 properties/0/path = NodePath(".:CurrentHealth")

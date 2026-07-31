@@ -107,6 +107,7 @@ public partial class CharacterAnimator : Node3D
     /// Rotazione minima (rad/s) perche' il passo sintetico si attivi: sotto, il corpo e' fermo.
     [Export] public float TurnStepThreshold { get; set; } = 0.5f;
 
+
     /// <summary>
     /// Altezza dell'ostacolo, in metri, oltre la quale il parkour usa la clip di ARRAMPICATA invece
     /// di quella di scavalcamento.
@@ -294,16 +295,18 @@ public partial class CharacterAnimator : Node3D
         // Contro un muro l'arma si alza in "port arms": inseguire ancora il bersaglio col busto
         // torcerebbe il torso verso un punto che l'arma non sta piu' guardando.
         // Il busto insegue la mira SOLO in mira: fuori mira l'arma e' portata rilassata e il
-        // torso appartiene alla locomozione.
+        // torso appartiene alla locomozione. Da accovacciati e' stato provato a raddrizzarlo, per
+        // togliere l'arma dalle gambe: a schermo peggiora — il personaggio si accovaccia con la
+        // schiena dritta e la posa non legge piu' come un accovacciamento. La correzione giusta
+        // e' locale alle braccia (WeaponGripRig.CrouchLift), non al busto.
         //
         // Durante il parkour la mira si spegne come in aria. Non basta la condizione su Grounded:
         // chi scavalca si dichiara A TERRA per tutta la manovra (la posa la mette la clip, non il
         // layer di caduta), quindi senza questo il busto continuerebbe a inseguire il cursore
         // mentre le braccia sono su un muro.
         float clearance = 1f - (_gripRig?.MuzzleBlocked ?? 0f);
-        _aimRig.Weight = Aiming && WeaponPose != null && Grounded && ParkourBlend < 0.05f
-            ? clearance
-            : 0f;
+        bool armedOnFoot = WeaponPose != null && Grounded && ParkourBlend < 0.05f;
+        _aimRig.Weight = armedOnFoot && Aiming ? clearance : 0f;
 
         // La mano di supporto sta sull'arma SEMPRE, non solo in mira: e' un vincolo fisico — la
         // mano sinistra impugna l'astina — e un vincolo che vale solo mirando lascia la mano a
@@ -322,6 +325,12 @@ public partial class CharacterAnimator : Node3D
         if (_gripRig != null)
         {
             _gripRig.SupportActive = WeaponPose != null && (_vaultRig?.HandsOnLedge ?? 0f) < 0.05f;
+
+            // Braccia e canna alzate da accovacciati, e solo fuori mira: li' le ginocchia stanno
+            // alte davanti al petto e il porto rilassato porta avambracci e canna dentro le
+            // cosce. In mira resta a zero — l'arma deve guardare dove guarda il giocatore, e la
+            // posa di mira tiene gia' le braccia alte.
+            _gripRig.CrouchLift = armedOnFoot && !Aiming ? _crouchWeight : 0f;
 
             // Riposta per l'intera manovra, non solo mentre le mani toccano: vedere l'arma
             // riapparire fra lo stacco e l'appoggio sarebbe peggio che non toglierla affatto.

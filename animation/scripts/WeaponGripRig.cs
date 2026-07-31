@@ -49,6 +49,39 @@ public partial class WeaponGripRig : Node3D
     [Export] public float PortArmsSpeed { get; set; } = 9.0f;
 
     /// <summary>
+    /// Di quanto si alzano le BRACCIA da accovacciati fuori mira, in gradi.
+    ///
+    /// E' la correzione principale del porto rilassato da accovacciati: le ginocchia stanno alte
+    /// davanti al petto e il busto della clip e' piegato in avanti, quindi le braccia — che la posa
+    /// d'impugnatura muove da sole, essendo figlie di Spine2 — finiscono dentro le cosce. Misurata
+    /// la distanza minima fra l'asse dell'arma e le gambe con la pistola su crouch_idle: 0,076 m
+    /// senza sollevamento, 0,277 m a 35 gradi, contro 0,492 in piedi.
+    ///
+    /// Ruota le CLAVICOLE, non i bracci, quindi conserva la presa: vedi
+    /// <see cref="ShoulderLiftModifier"/>.
+    /// </summary>
+    [Export] public float CrouchArmLiftDegrees { get; set; } = 35.0f;
+
+    /// <summary>
+    /// Di quanto si alza la canna da accovacciati fuori mira, in gradi.
+    ///
+    /// Da accovacciati le ginocchia stanno alte davanti al petto e il porto rilassato punta l'arma
+    /// verso terra, quindi la canna passa dentro il ginocchio anche quando le braccia sono gia'
+    /// alzate. Misurata la distanza minima fra l'asse dell'arma e le gambe su <c>crouch_idle</c>
+    /// col fucile al porto e le braccia a 25 gradi: 0,259 m senza questo, 0,288 m con — contro
+    /// 0,358 in piedi, che e' il riferimento.
+    ///
+    /// Il solo sollevamento delle braccia non basta col fucile, che ha una canna lunga e nel porto
+    /// punta a terra: misurato su crouch_fwd, braccia a 35 gradi lasciano l'asse dell'arma a 0,090 m
+    /// dalle gambe, che con 20 gradi di canna diventano 0,193.
+    ///
+    /// Vale SOLO fuori mira: mirando la canna deve puntare dove punta il giocatore, e alzarla
+    /// vorrebbe dire mostrare un'arma che guarda altrove rispetto al colpo (che l'host calcola dalla
+    /// mira, non dalla posa).
+    /// </summary>
+    [Export] public float CrouchMuzzleUpDegrees { get; set; } = 25.0f;
+
+    /// <summary>
     /// IK della mano di supporto sull'astina.
     ///
     /// Era spento finche' l'IK era un modificatore scritto in casa che sembrava non applicare la
@@ -104,6 +137,17 @@ public partial class WeaponGripRig : Node3D
     public bool Stowed { get; set; }
 
     /// <summary>
+    /// Quanto si e' accovacciati col porto rilassato, da 0 a 1: lo scrive
+    /// <see cref="CharacterAnimator"/> ed e' il peso di <see cref="CrouchArmLiftDegrees"/> e
+    /// <see cref="CrouchMuzzleUpDegrees"/>.
+    ///
+    /// E' separato da <see cref="MuzzleBlocked"/> apposta: quello e' una misura della SONDA, che
+    /// <c>CharacterAnimator</c> rilegge per abbassare la mira procedurale. Qui la mira e' gia'
+    /// spenta (si e' fuori mira per definizione) e non c'e' niente da abbassare.
+    /// </summary>
+    public float CrouchLift { get; set; }
+
+    /// <summary>
     /// Quanto la canna e' ostruita, da 0 a 1. Lo legge <see cref="CharacterAnimator"/> per abbassare
     /// la mira procedurale — un'arma alzata contro un muro non sta piu' puntando il bersaglio — e in
     /// prospettiva lo puo' leggere l'host per rifiutare il colpo.
@@ -115,6 +159,7 @@ public partial class WeaponGripRig : Node3D
     private Node3D? _supportTarget;
     private Node3D? _supportElbow;
     private TwoBoneIK3D? _supportIk;
+    private ShoulderLiftModifier? _shoulderLift;
     private WeaponAnimationSet? _weapon;
     private float _supportWeight;
 
@@ -183,6 +228,18 @@ public partial class WeaponGripRig : Node3D
         // si sposta di 3 mm e l'errore al bersaglio non cala). Con il polo l'errore va a zero.
         _supportIk.SetTargetNode(0, _supportIk.GetPathTo(_supportTarget));
         _supportIk.SetPoleNode(0, _supportIk.GetPathTo(_supportElbow));
+
+        // Sollevamento delle braccia da accovacciati. Sta PRIMA della catena IK nell'ordine di
+        // esecuzione — e ci resta, perche' EnsureModifierRunsLast riporta l'IK in coda a ogni
+        // frame: la mano di supporto e' un vincolo che si chiude sull'arma, e va risolto dopo
+        // tutto cio' che muove le braccia (skill character-animation §1.6quinquies).
+        _shoulderLift = new ShoulderLiftModifier
+        {
+            Name = "CrouchShoulderLift",
+            Influence = 0f,
+            LiftDegrees = CrouchArmLiftDegrees,
+        };
+        _skeleton.AddChild(_shoulderLift);
     }
 
     /// <summary>
@@ -272,6 +329,14 @@ public partial class WeaponGripRig : Node3D
 
         float dt = (float)delta;
 
+        // Braccia alzate da accovacciati. Il peso non si smorza qui: arriva gia' smorzato, perche'
+        // e' il peso del crouch di CharacterAnimator.
+        if (_shoulderLift != null)
+        {
+            _shoulderLift.LiftDegrees = CrouchArmLiftDegrees;
+            _shoulderLift.Influence = _weapon != null ? Mathf.Clamp(CrouchLift, 0f, 1f) : 0f;
+        }
+
         // Rientro esponenziale del rinculo: indipendente dal frame rate, come lo smorzamento di
         // CharacterAnimator.
         if (_weapon != null)
@@ -298,7 +363,9 @@ public partial class WeaponGripRig : Node3D
             Mathf.DegToRad(gripRotation.Y),
             Mathf.DegToRad(gripRotation.Z)));
 
-        basis = PitchMuzzleUp(basis, _kickUp + Mathf.DegToRad(PortArmsPitchDegrees) * blocked);
+        basis = PitchMuzzleUp(basis, _kickUp
+            + Mathf.DegToRad(PortArmsPitchDegrees) * blocked
+            + Mathf.DegToRad(CrouchMuzzleUpDegrees) * Mathf.Clamp(CrouchLift, 0f, 1f));
 
         GripPoint.Transform = new Transform3D(
             basis, grip - new Vector3(0f, 0f, _kickBack + PortArmsPullBack * blocked));

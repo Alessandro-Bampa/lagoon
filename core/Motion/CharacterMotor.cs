@@ -41,6 +41,18 @@ public partial class CharacterMotor : CharacterBody3D
     [Export] public float HardLandingSpeed { get; set; } = 9.0f;
 
     /// <summary>
+    /// Per quanto tempo il movimento resta bloccato dopo un atterraggio DURO, in secondi.
+    ///
+    /// E' il tempo in cui il personaggio si rialza: sopra <see cref="HardLandingSpeed"/> parte la
+    /// clip <c>land_hard</c>, che dura 2,03 s, e finche' quella e' in corso l'input di locomozione
+    /// non produce movimento — altrimenti si vedrebbe il corpo scivolare via mentre e' ancora a
+    /// terra. DEVE combaciare con la durata della clip, per lo stesso motivo di
+    /// <see cref="VaultDuration"/>: e' l'unico punto in cui movimento e posa si accordano.
+    /// Zero disattiva del tutto il blocco.
+    /// </summary>
+    [Export] public float HardLandingLockSeconds { get; set; } = 2.03f;
+
+    /// <summary>
     /// Scarto di imbardata fra mira e corpo oltre il quale, DA FERMI in mira, il corpo comincia a
     /// ruotare (turn-in-place). Sotto questa soglia ci pensa il busto (SpineAimModifier), che
     /// corregge fino a 70 gradi: 55 lascia margine perche' parte della correzione serve al pitch.
@@ -180,6 +192,18 @@ public partial class CharacterMotor : CharacterBody3D
     [Export] public bool SyncGrounded { get; set; } = true;
 
     /// <summary>
+    /// Stato replicato: manovra di parkour in corso (scavalcamento o arrampicata).
+    ///
+    /// Non e' un dato per l'animazione — quella lo sa gia' dal proprio one-shot — ma uno stato di
+    /// GIOCO: durante la manovra le mani sono sull'ostacolo, quindi non si spara e non si ricarica,
+    /// e l'host deve poterlo verificare senza credere al client (CLAUDE.md §3). Il movimento e'
+    /// client-autoritativo, quindi l'host non esegue <see cref="StepMotion"/> per un avatar remoto e
+    /// <see cref="Vaulting"/> li' sarebbe sempre falso: senza questa proprieta' replicata la
+    /// validazione host-side non avrebbe nulla su cui lavorare.
+    /// </summary>
+    [Export] public bool SyncVaulting { get; set; }
+
+    /// <summary>
     /// Inclinazione della mira, in radianti: positiva verso l'alto, zero all'orizzonte.
     ///
     /// E' l'UNICO dato replicato aggiunto per l'animazione, e c'e' perche' non e' derivabile da
@@ -249,6 +273,9 @@ public partial class CharacterMotor : CharacterBody3D
     /// Stato dell'isteresi del turn-in-place (vedi <see cref="PlanAimFacing"/>).
     private bool _turningInPlace;
 
+    /// Tempo residuo del blocco d'atterraggio duro (vedi <see cref="HardLandingLockSeconds"/>).
+    private float _landLock;
+
     /// Manovra di parkour in corso. Le due fasi hanno traiettorie diverse, non solo durate diverse.
     private enum ParkourPhase
     {
@@ -270,7 +297,14 @@ public partial class CharacterMotor : CharacterBody3D
     private Vector3 _vaultEnd;
 
     /// Manovra in corso: il movimento e' scriptato e l'input di locomozione viene ignorato.
+    /// E' lo stato LOCALE del peer che calcola il movimento; per gli altri c'e' <see cref="SyncVaulting"/>.
     public bool Vaulting => _phase != ParkourPhase.None;
+
+    /// <summary>
+    /// Rialzata in corso da un atterraggio duro: il movimento e' bloccato per tutta la durata della
+    /// clip. Come <see cref="Vaulting"/> e' lo stato locale di chi calcola il movimento.
+    /// </summary>
+    public bool LandingLocked => _landLock > 0f;
 
     public override void _Ready()
     {
@@ -313,6 +347,18 @@ public partial class CharacterMotor : CharacterBody3D
         }
 
         bool grounded = IsOnFloor();
+
+        // Atterraggio duro: finche' la clip di rialzata e' in corso l'input non produce movimento.
+        // Si azzera la DIREZIONE VOLUTA invece della velocita': cosi' la frenata resta quella
+        // esponenziale di sempre (il corpo scarica l'inerzia della caduta invece di inchiodarsi) e
+        // la locomozione pubblicata rientra con continuita' verso lo zero. Gravita', collisioni e
+        // gradini continuano a funzionare: si e' bloccati, non sospesi.
+        if (_landLock > 0f)
+        {
+            _landLock -= dt;
+            worldDirection = Vector3.Zero;
+            wantJump = false;
+        }
 
         UpdateCrouch(dt, grounded, wantCrouch);
 
@@ -454,6 +500,7 @@ public partial class CharacterMotor : CharacterBody3D
         _vaultStart = GlobalPosition;
         _vaultLedge = info.LedgePoint;
         _phaseTime = 0f;
+        SyncVaulting = true;
         Velocity = Vector3.Zero;
 
         // Ci si raddrizza sulla parete PRIMA di partire: su un muro angolato la direzione di input
@@ -554,6 +601,7 @@ public partial class CharacterMotor : CharacterBody3D
     {
         _phase = ParkourPhase.None;
         _phaseTime = 0f;
+        SyncVaulting = false;
         _wasGrounded = true;
         _fallSpeed = 0f;
         _airTime = 0f;
@@ -647,7 +695,15 @@ public partial class CharacterMotor : CharacterBody3D
         bool grounded = onFloor || (_airTime < GroundedGraceSeconds && Velocity.Y <= 0.01f);
 
         if (grounded && !_wasGrounded)
+        {
+            // Il blocco si arma QUI, non nel ricevitore dell'evento: la soglia e' la stessa che a
+            // valle sceglie la clip land_hard (CharacterAnimator.HardLandingSpeed, riallineata dai
+            // bridge), quindi movimento e posa si accendono sullo stesso criterio.
+            if (_fallSpeed >= HardLandingSpeed)
+                _landLock = HardLandingLockSeconds;
+
             OnLandTriggered(_fallSpeed);
+        }
 
         if (grounded)
             _fallSpeed = 0f;

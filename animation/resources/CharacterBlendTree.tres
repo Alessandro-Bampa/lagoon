@@ -1,4 +1,4 @@
-[gd_resource type="AnimationNodeBlendTree" format=3 uid="uid://bpvgvamixgopo"]
+[gd_resource type="AnimationNodeBlendTree" format=3]
 
 [sub_resource type="AnimationNodeAdd2" id="AnimationNodeAdd2_68c3a"]
 sync = true
@@ -43,19 +43,19 @@ sync = true
 sync = true
 
 [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_ggcnb"]
-animation = &"crouch_idle"
+animation = &"crouch/idle"
 
 [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_to8q8"]
-animation = &"crouch_fwd"
+animation = &"crouch/fwd"
 
 [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_h1n7a"]
-animation = &"crouch_back"
+animation = &"crouch/back"
 
 [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_412ea"]
-animation = &"crouch_left"
+animation = &"crouch/left"
 
 [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_fxqqf"]
-animation = &"crouch_right"
+animation = &"crouch/right"
 
 [sub_resource type="AnimationNodeBlendSpace2D" id="AnimationNodeBlendSpace2D_2b3kl"]
 min_space = Vector2(-2, -2)
@@ -65,16 +65,16 @@ blend_point_0/pos = Vector2(0, 0)
 blend_point_0/name = &"idle"
 blend_point_1/node = SubResource("AnimationNodeAnimation_to8q8")
 blend_point_1/pos = Vector2(0, 2)
-blend_point_1/name = &"crouch_fwd"
+blend_point_1/name = &"crouch/fwd"
 blend_point_2/node = SubResource("AnimationNodeAnimation_h1n7a")
 blend_point_2/pos = Vector2(0, -2)
-blend_point_2/name = &"crouch_back"
+blend_point_2/name = &"crouch/back"
 blend_point_3/node = SubResource("AnimationNodeAnimation_412ea")
 blend_point_3/pos = Vector2(-2, 0)
-blend_point_3/name = &"crouch_left"
+blend_point_3/name = &"crouch/left"
 blend_point_4/node = SubResource("AnimationNodeAnimation_fxqqf")
 blend_point_4/pos = Vector2(2, 0)
-blend_point_4/name = &"crouch_right"
+blend_point_4/name = &"crouch/right"
 
 [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_awo50"]
 animation = &"fall_idle"

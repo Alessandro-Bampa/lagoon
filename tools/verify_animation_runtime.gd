@@ -31,6 +31,23 @@ const MOTION_EPSILON := 0.002
 
 const LEGS := ["LeftUpLeg", "LeftLeg", "RightUpLeg", "RightLeg"]
 
+# Ossa delle braccia, per la sonda "le braccia si muovono": sono le stesse otto della
+# maschera d'impugnatura, cioe' quelle che le clip di crouch di Mixamo lasciavano ferme.
+const ARMS := [
+	"LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand",
+	"RightShoulder", "RightArm", "RightForeArm", "RightHand",
+]
+
+# Margine minimo fra l'asse dell'arma e le gambe da accovacciati, in metri.
+#
+# In piedi, col fucile al porto, la stessa misura vale 0,358 m; senza sollevamento delle
+# braccia scende a 0,204 fermi e 0,035 in movimento, cioe' canna e avambracci dentro le
+# cosce. Col sollevamento risale a 0,302 e 0,199: il caso in movimento resta il piu'
+# stretto perche' crouch_fwd piega il busto in avanti di 59 gradi, e le braccia — figlie di
+# Spine2 — quella piega se la portano dietro comunque. Raddrizzare il busto la toglierebbe,
+# ma e' stato provato a schermo e il personaggio non sembrava piu' accovacciato.
+const CROUCH_WEAPON_CLEARANCE := 0.18
+
 # Distanza fra le due mani reggendo il fucile, cioe' la lunghezza dell'astina. DEVE
 # combaciare con SupportGripOffset.z di animation/resources/two_handed.tres: e' la stessa
 # grandezza vista da due parti, la posa d'impugnatura e il bersaglio dell'IK. La misura
@@ -355,6 +372,7 @@ func _initialize() -> void:
 	await _verify_aim(rig)
 	await _verify_feet(rig)
 	await _verify_muzzle(rig)
+	await _verify_crouch(rig)
 	await _verify_npc()
 	await _verify_slope()
 	await _verify_parkour_geometry()
@@ -1222,6 +1240,135 @@ func _add_slab(body: StaticBody3D, pos: Vector3, size: Vector3) -> void:
 
 # Reazione ai muri (WeaponSpaceProbe -> "port arms").
 #
+# Accovacciati: braccia vive da disarmati, arma fuori dalle gambe da armati.
+#
+# Sono i DUE difetti che si vedevano solo accovacciati, e nessun controllo esistente poteva
+# prenderli: tutti misuravano le gambe ("ti stai ancora muovendo?" e' vero anche con le
+# braccia morte) oppure la presa in mira, dove la correzione procedurale del busto e' gia'
+# accesa e nasconde il problema.
+#
+#   1. le cinque clip crouch_* di Mixamo hanno le braccia FERME — una sola chiave di
+#      rotazione per osso — quindi da disarmati le mani restavano immobili lungo il corpo
+#      mentre le gambe camminavano. Le rigenera tools/build_crouch_clips.gd;
+#   2. il busto di quelle clip e' piegato in avanti di 35-59 gradi, e la posa
+#      d'impugnatura e' una posa delle sole BRACCIA: figlie di Spine2, si portano dietro la
+#      piega e finiscono l'arma fra le gambe. Misurato prima della correzione: 0,064 m fra
+#      l'asse dell'arma e le gambe camminando accovacciati, contro 0,358 in piedi.
+func _verify_crouch(rig: Node) -> void:
+	print("")
+	print("== accovacciati ==")
+
+	# --- 1. da disarmati le braccia si muovono ------------------------------
+	for caso in [["fermi", Vector2.ZERO], ["in movimento", Vector2(0, CROUCH_SPEED)]]:
+		_drive(caso[1], 1.0, 0.0)
+		await _settle(30)
+		var m := await _arms_motion(6, 20)
+		_check("accovacciati %s le braccia si muovono" % caso[0], m > MOTION_EPSILON,
+			"finestra piu' quieta = %.5f rad" % m)
+
+	# --- 2. da armati l'arma resta fuori dalle gambe ------------------------
+	var grip_rig: Node3D = rig.get_node_or_null("GripRig")
+	var grip: Node3D = _skel.get_node_or_null("RightHandAttachment/GripPoint")
+	_check("GripRig e punto di presa presenti", grip_rig != null and grip != null)
+	if grip_rig == null or grip == null:
+		return
+
+	for bone in ["LeftUpLeg", "LeftLeg", "LeftFoot", "RightUpLeg", "RightLeg", "RightFoot"]:
+		_watch_bone(bone)
+
+	grip_rig.call("ApplyWeapon", load("res://animation/resources/two_handed.tres"))
+	_tree.set("parameters/WeaponPose/transition_request", "rifle_lowered")
+
+	# Si replica cio' che scrive CharacterAnimator da accovacciati FUORI mira: CrouchLift,
+	# cioe' braccia e canna alzate. Qui lo script del rig e' tolto, quindi va scritto a mano.
+	# Il BUSTO non si tocca: raddrizzarlo toglieva l'arma dalle gambe ma a schermo il
+	# personaggio non sembrava piu' accovacciato.
+	var grezzo := 0.0
+	for caso in [["fermi", Vector2.ZERO], ["in movimento", Vector2(0, CROUCH_SPEED)]]:
+		for correzione in [false, true]:
+			grip_rig.set("CrouchLift", 1.0 if correzione else 0.0)
+			_drive(caso[1], 1.0, 1.0)
+			await _settle(60)
+
+			if not correzione:
+				grezzo = _weapon_leg_clearance(grip)
+				continue
+
+			var clearance := _weapon_leg_clearance(grip)
+			_check("accovacciati %s l'arma resta fuori dalle gambe" % caso[0],
+				clearance >= CROUCH_WEAPON_CLEARANCE,
+				"distanza arma-gambe = %.3f m (senza correzione %.3f)" % [clearance, grezzo])
+			# La correzione deve anche FARE qualcosa: un giorno che il porto rilassato
+			# cambiasse e il difetto sparisse da solo, questo controllo si accorgerebbe
+			# che sta misurando un rimedio ormai inutile.
+			_check("accovacciati %s il sollevamento ha effetto" % caso[0],
+				clearance > grezzo + 0.02,
+				"da %.3f a %.3f m" % [grezzo, clearance])
+
+	grip_rig.set("CrouchLift", 0.0)
+	grip_rig.call("ApplyWeapon", null)
+	_drive(Vector2.ZERO, 0.0, 0.0)
+	await _settle(30)
+
+
+# Movimento delle BRACCIA: il minimo, fra piu' finestre, di quanto si allontanano dalla
+# posa con cui la finestra e' cominciata.
+#
+# Si misura lo SPOSTAMENTO nella finestra e non lo scarto fra due frame consecutivi come
+# per le gambe, ed e' la differenza fra misurare un ciclo di passo e misurare un respiro:
+# il braccio di un idle percorre pochi gradi in due secondi, quindi da un frame all'altro
+# si muove meno del rumore anche quando a schermo si vede benissimo.
+func _arms_motion(windows: int, window_frames: int) -> float:
+	var quietest := INF
+	for w in windows:
+		var start := _arms_snapshot()
+		var moved := 0.0
+		for i in window_frames:
+			await process_frame
+			var now := _arms_snapshot()
+			for j in ARMS.size():
+				moved = maxf(moved, (start[j] as Quaternion).angle_to(now[j]))
+		quietest = minf(quietest, moved)
+	return quietest
+
+
+func _arms_snapshot() -> Array:
+	var out := []
+	for bone in ARMS:
+		out.append(_skel.get_bone_pose_rotation(_skel.find_bone(bone)))
+	return out
+
+
+# Distanza minima fra l'ARMA e le gambe, in metri.
+#
+# L'arma si rappresenta con il segmento calcio -> volata attorno al punto di presa, che e'
+# come e' costruito il placeholder di WeaponVisual, e le gambe con le due catene
+# coscia -> ginocchio -> piede. Le pose delle gambe vengono da DOPO i modificatori (§1.1),
+# quelle dell'arma dal BoneAttachment3D, che i modificatori li segue gia'.
+func _weapon_leg_clearance(grip: Node3D) -> float:
+	var barrel: Vector3 = grip.global_transform.basis.z.normalized()
+	var stock: Vector3 = grip.global_position - barrel * 0.2
+	var muzzle: Vector3 = grip.global_position + barrel * 0.75
+
+	var closest := INF
+	for catena in [["LeftUpLeg", "LeftLeg", "LeftFoot"], ["RightUpLeg", "RightLeg", "RightFoot"]]:
+		for i in 2:
+			closest = minf(closest, _segment_distance(stock, muzzle,
+				_bone_after_modifiers(catena[i]), _bone_after_modifiers(catena[i + 1])))
+	return closest
+
+
+# Distanza fra due segmenti, campionata. Basta e avanza: qui interessa sapere se due
+# volumi si compenetrano, non il punto esatto in cui lo fanno.
+func _segment_distance(a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> float:
+	var closest := INF
+	for i in 21:
+		var p: Vector3 = a.lerp(b, i / 20.0)
+		for j in 21:
+			closest = minf(closest, p.distance_to(c.lerp(d, j / 20.0)))
+	return closest
+
+
 # Si mette un muro davanti alla canna e si pretende che l'arma si alzi e si ritragga, e che
 # torni giu' quando il muro sparisce. E' la seconda meta' del "reagire all'ambiente": la
 # prima sono i piedi sul terreno.

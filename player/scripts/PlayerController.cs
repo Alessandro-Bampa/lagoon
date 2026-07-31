@@ -243,6 +243,23 @@ public partial class PlayerController : CharacterMotor
 
         if (_hipFireTimer > 0f)
             _hipFireTimer -= (float)delta;
+
+        // Durante scavalcamento e arrampicata l'orientamento lo decide la GEOMETRIA: TryStartParkour
+        // ha raddrizzato il corpo sulla normale della parete, e la traiettoria si percorre lungo
+        // quella. Lasciar girare la mira lo riporterebbe verso il cursore, cioe' farebbe entrare la
+        // manovra di sbieco nel muro — che e' esattamente il difetto che quel raddrizzamento evita.
+        // Il busto si riallinea al corpo (SyncAimYaw = SyncFacing) e il pitch rientra, cosi' i peer
+        // remoti non vedono l'arma puntata a un residuo stantio; l'arma comunque non si vede e non
+        // spara (WeaponController.HandsFree).
+        if (Vaulting)
+        {
+            SyncAiming = false;
+            SyncAimPitch = Mathf.Lerp(SyncAimPitch, 0f, Damp(8f, (float)delta));
+            UpdateFacing(SyncFacing, delta);
+            SyncAimYaw = SyncFacing;
+            return;
+        }
+
         bool aiming = armed && (_input.ReadAim() || _hipFireTimer > 0f);
         SyncAiming = aiming;
 

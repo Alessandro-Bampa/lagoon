@@ -29,7 +29,42 @@ UI_SETTINGS_VOLUME_MUSIC,Music,Musica
 UI_SETTINGS_VOLUME_SFX,Effects,Effetti
 UI_SETTINGS_PERCENT,{0}%,{0}%
 UI_SETTINGS_HINT,The UI has a fixed pixel size: raise the scale on 2K/4K displays.,La UI ha dimensione in pixel fissa: alza la scala su schermi 2K/4K.
+UI_SETTINGS_AIM_TOGGLE,Aim as toggle,Toggle Mira 
+UI_SETTINGS_CROUCH_TOGGLE,Crouch as toggle,Toggle Accovacciato
+UI_SETTINGS_BINDINGS,Key bindings,Comandi
 UI_SETTINGS_BACK,Back,Indietro
+UI_BIND_TITLE,KEY BINDINGS,COMANDI
+UI_BIND_HINT,Click a command and press the new key. Esc cancels.,Clicca un comando e premi il nuovo tasto. Esc annulla.
+UI_BIND_PRESS,Press a key…,Premi un tasto…
+UI_BIND_CONFLICT,{0} is already used by: {1},{0} è già assegnato a: {1}
+UI_BIND_RESET,Restore defaults,Ripristina predefiniti
+UI_BIND_GROUP_MOVEMENT,Movement,Movimento
+UI_BIND_GROUP_COMBAT,Combat,Combattimento
+UI_BIND_GROUP_INVENTORY,Inventory and interaction,Inventario e interazione
+UI_ACTION_MOVE_UP,Forward,Avanti
+UI_ACTION_MOVE_DOWN,Backward,Indietro
+UI_ACTION_MOVE_LEFT,Left,Sinistra
+UI_ACTION_MOVE_RIGHT,Right,Destra
+UI_ACTION_JUMP,Jump,Salto
+UI_ACTION_SPRINT,Sprint,Corsa
+UI_ACTION_CROUCH,Crouch,Accovacciarsi
+UI_ACTION_FIRE,Fire,Fuoco
+UI_ACTION_AIM,Aim,Mira
+UI_ACTION_RELOAD,Reload,Ricarica
+UI_ACTION_WEAPON_SLOT_1,Primary weapon,Arma primaria
+UI_ACTION_WEAPON_SLOT_2,Secondary weapon,Arma secondaria
+UI_ACTION_WEAPON_SLOT_3,Sidearm,Arma da fianco
+UI_ACTION_TOGGLE_INVENTORY,Inventory,Inventario
+UI_ACTION_INTERACT,Interact,Interagisci
+UI_ACTION_ROTATE_ITEM,Rotate item,Ruota oggetto
+UI_ACTION_QUICK_DROP,Quick drop,Getta rapido
+UI_ACTION_QUICK_SLOT_4,Quick slot 4,Slot rapido 4
+UI_ACTION_QUICK_SLOT_5,Quick slot 5,Slot rapido 5
+UI_ACTION_QUICK_SLOT_6,Quick slot 6,Slot rapido 6
+UI_ACTION_QUICK_SLOT_7,Quick slot 7,Slot rapido 7
+UI_ACTION_QUICK_SLOT_8,Quick slot 8,Slot rapido 8
+UI_ACTION_QUICK_SLOT_9,Quick slot 9,Slot rapido 9
+UI_ACTION_QUICK_SLOT_0,Quick slot 0,Slot rapido 0
 UI_WINDOW_CLOSE_TOOLTIP,Close,Chiudi
 UI_INV_COL_GEAR,GEAR,EQUIPAGGIAMENTO
 UI_INV_COL_STORAGE,POCKETS AND CONTAINERS,TASCHE E CONTENITORI

@@ -11,12 +11,22 @@ public partial class PlayerInput : Node
 {
     private bool _isLocalAuthority;
     private GameManager _game = null!;
+    private SettingsService _settings = null!;
+
+    // Stato degli interruttori (modalita' "toggle" di mira e accovacciamento) e fronte di salita del
+    // tasto corrispondente. Vedi UpdateToggles.
+    private bool _aimLatched;
+    private bool _crouchLatched;
+    private bool _aimWasPressed;
+    private bool _crouchWasPressed;
+    private ulong _lastToggleFrame = ulong.MaxValue;
 
     public override void _Ready()
     {
         // L'autorita' del root e' gia' stata impostata nel suo _EnterTree.
         _isLocalAuthority = GetParent().IsMultiplayerAuthority();
         _game = GetNode<GameManager>("/root/GameManager");
+        _settings = GetNode<SettingsService>("/root/SettingsService");
     }
 
     /// <summary>
@@ -50,11 +60,69 @@ public partial class PlayerInput : Node
     /// Corsa (Shift tenuto). Come il movimento, e' soppressa al timone.
     public bool ReadSprint() => ReadHeld("sprint");
 
-    /// Mira (tasto destro del mouse, tenuto). Stesse guardie della corsa.
-    public bool ReadAim() => ReadHeld("aim");
+    /// <summary>
+    /// Mira (tasto destro del mouse). A pressione mantenuta, oppure a interruttore se
+    /// <see cref="SettingsService.AimToggle"/> e' attivo.
+    /// </summary>
+    public bool ReadAim()
+    {
+        UpdateToggles();
+        return _settings.AimToggle ? _aimLatched && !Blocked() : ReadHeld("aim");
+    }
 
-    /// Accovacciamento (Ctrl tenuto): a pressione mantenuta, non a interruttore.
-    public bool ReadCrouch() => ReadHeld("crouch");
+    /// <summary>
+    /// Accovacciamento (Ctrl). A pressione mantenuta, oppure a interruttore se
+    /// <see cref="SettingsService.CrouchToggle"/> e' attivo.
+    /// </summary>
+    public bool ReadCrouch()
+    {
+        UpdateToggles();
+        return _settings.CrouchToggle ? _crouchLatched && !Blocked() : ReadHeld("crouch");
+    }
+
+    /// <summary>
+    /// Aggiorna gli interruttori di mira e accovacciamento una volta per frame di fisica.
+    ///
+    /// Il fronte di salita si calcola qui e non con <c>IsActionJustPressed</c> dentro le Read*: quelle
+    /// sono chiamate piu' volte per frame dal <see cref="PlayerController"/> (e in ordine non
+    /// garantito), e un interruttore che commuta a ogni lettura commuterebbe due volte. La guardia sul
+    /// numero di frame rende l'aggiornamento indipendente da quante volte lo si chiede.
+    ///
+    /// Lo stato dei tasti si campiona SEMPRE, anche quando l'input di gameplay e' bloccato: cosi'
+    /// rilasciare il tasto dentro l'inventario non si presenta come una nuova pressione alla chiusura.
+    /// Cio' che si sospende e' solo la commutazione, non il campionamento.
+    /// </summary>
+    private void UpdateToggles()
+    {
+        ulong frame = Engine.GetPhysicsFrames();
+        if (frame == _lastToggleFrame)
+            return;
+        _lastToggleFrame = frame;
+
+        bool aimPressed = Input.IsActionPressed("aim");
+        bool crouchPressed = Input.IsActionPressed("crouch");
+        bool blocked = Blocked();
+
+        if (aimPressed && !_aimWasPressed && !blocked && _settings.AimToggle)
+            _aimLatched = !_aimLatched;
+
+        if (crouchPressed && !_crouchWasPressed && !blocked && _settings.CrouchToggle)
+            _crouchLatched = !_crouchLatched;
+
+        _aimWasPressed = aimPressed;
+        _crouchWasPressed = crouchPressed;
+
+        // Passare da interruttore a pressione mantenuta (o salire al timone) non deve lasciare
+        // l'avatar bloccato in mira o accovacciato.
+        if (!_settings.AimToggle || MovementSuppressed)
+            _aimLatched = false;
+        if (!_settings.CrouchToggle || MovementSuppressed)
+            _crouchLatched = false;
+    }
+
+    /// True quando l'input di gameplay locale non va letto (non e' il proprio avatar, UI modale
+    /// aperta, oppure si e' al timone).
+    private bool Blocked() => !_isLocalAuthority || _game.UiModalOpen || MovementSuppressed;
 
     /// <summary>
     /// Salto (Spazio). E' un evento, non uno stato: si consuma alla lettura tramite
@@ -62,17 +130,8 @@ public partial class PlayerInput : Node
     /// </summary>
     public bool ReadJumpPressed()
     {
-        if (!_isLocalAuthority || _game.UiModalOpen || MovementSuppressed)
-            return false;
-
-        return Input.IsActionJustPressed("jump");
+        return !Blocked() && Input.IsActionJustPressed("jump");
     }
 
-    private bool ReadHeld(string action)
-    {
-        if (!_isLocalAuthority || _game.UiModalOpen || MovementSuppressed)
-            return false;
-
-        return Input.IsActionPressed(action);
-    }
+    private bool ReadHeld(string action) => !Blocked() && Input.IsActionPressed(action);
 }

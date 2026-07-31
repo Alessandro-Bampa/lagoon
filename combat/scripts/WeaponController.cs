@@ -216,7 +216,7 @@ public partial class WeaponController : Node
         if (weapon == null || !HoldStillValid())
             return;
 
-        if (Reloading || MagazineAmmo <= 0)
+        if (Reloading || MagazineAmmo <= 0 || !HandsFree())
             return;
 
         // Cadenza di fuoco: il 10% di tolleranza assorbe il jitter di rete senza aprire la porta
@@ -285,7 +285,7 @@ public partial class WeaponController : Node
             return;
 
         WeaponDefinition? weapon = HeldWeapon;
-        if (weapon == null || !HoldStillValid() || Reloading)
+        if (weapon == null || !HoldStillValid() || Reloading || !HandsFree())
             return;
         if (MagazineAmmo >= weapon.MagazineSize)
             return;
@@ -364,6 +364,24 @@ public partial class WeaponController : Node
         Holster();
         return false;
     }
+
+    /// <summary>
+    /// True se le mani sono libere di usare l'arma. Durante uno scavalcamento o un'arrampicata non
+    /// lo sono: reggono l'ostacolo (e infatti <c>VaultIkRig</c> le porta sul bordo e l'arma sparisce
+    /// dalla vista), quindi sparare e ricaricare vanno rifiutati.
+    ///
+    /// Si legge <see cref="CharacterMotor.SyncVaulting"/>, cioe' lo stato REPLICATO, e non
+    /// <c>Vaulting</c>: il movimento e' client-autoritativo, quindi per un tiratore remoto l'host non
+    /// esegue la manovra e lo stato locale sarebbe sempre falso. Vale lo stesso limite di §7 della
+    /// skill (nessuna lag compensation): lo stato e' vecchio fino a ~1 RTT, il che al piu' sposta di
+    /// un'inezia i bordi della finestra in cui il colpo viene rifiutato.
+    ///
+    /// Non e' un veto sull'IMPUGNATURA: <c>RequestHold</c> non lo consulta, perche' cambiare slot non
+    /// produce un colpo e rifiutarlo lascerebbe l'host e il client in disaccordo su cosa si ha in
+    /// mano. Il rinfodero implicito del parkour resta quello che era, cioe' puramente visivo
+    /// (skill character-animation §8): slot e caricatore non si toccano.
+    /// </summary>
+    private bool HandsFree() => !_player.SyncVaulting;
 
     private void Holster()
     {

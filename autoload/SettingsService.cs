@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Godot;
 
 namespace Lagoon;
@@ -20,6 +21,8 @@ public partial class SettingsService : Node
     private const string SectionDisplay = "display";
     private const string SectionAudio = "audio";
     private const string SectionLocale = "locale";
+    private const string SectionGameplay = "gameplay";
+    private const string SectionInput = "input";
 
     /// Valore di <see cref="Language"/> che significa "segui la lingua del sistema operativo".
     public const string SystemLanguage = "system";
@@ -72,12 +75,30 @@ public partial class SettingsService : Node
     public float MusicVolume { get; set; } = 1.0f;
     public float SfxVolume { get; set; } = 1.0f;
 
+    /// <summary>
+    /// Mira a interruttore invece che a pressione mantenuta: un clic entra in mira, il successivo ne
+    /// esce. Letta da <see cref="PlayerInput"/>, che e' l'unico posto in cui la differenza esiste.
+    /// </summary>
+    public bool AimToggle { get; set; }
+
+    /// Accovacciamento a interruttore invece che a pressione mantenuta. Vedi <see cref="AimToggle"/>.
+    public bool CrouchToggle { get; set; }
+
+    /// <summary>
+    /// Comandi riassegnati dal giocatore: azione -> evento in forma testuale
+    /// (<see cref="InputBindings.Serialize"/>). Contiene SOLO gli scostamenti dai binding di progetto,
+    /// cosi' un domani cambiare un default lo propaga a chi non l'ha mai toccato.
+    /// </summary>
+    private readonly Dictionary<string, string> _bindingOverrides = new();
+
     public override void _Ready()
     {
         Instance = this;
         // Il menu impostazioni deve restare reattivo anche se in futuro qualcosa mettesse in pausa.
         ProcessMode = ProcessModeEnum.Always;
 
+        // Prima di Load: dopo aver applicato gli override non sarebbero piu' i predefiniti.
+        InputBindings.CaptureDefaults();
         Load();
         // Le impostazioni finestra vanno applicate a viewport gia' pronto.
         CallDeferred(MethodName.ApplyAll);
@@ -101,6 +122,53 @@ public partial class SettingsService : Node
         ApplyUiScale();
         ApplyWindow();
         ApplyVolumes();
+        ApplyBindings();
+    }
+
+    /// <summary>
+    /// Riporta l'InputMap ai binding di progetto e ci riapplica sopra gli override. Passare dai
+    /// default e' cio' che rende l'operazione idempotente: si puo' richiamare a ogni ApplyAll senza
+    /// accumulare eventi sulle azioni.
+    /// </summary>
+    private void ApplyBindings()
+    {
+        InputBindings.RestoreAllDefaults();
+
+        foreach ((string action, string serialized) in _bindingOverrides)
+        {
+            InputEvent? inputEvent = InputBindings.Deserialize(serialized);
+            if (inputEvent == null)
+            {
+                GD.PushWarning($"[SettingsService] Binding illeggibile per '{action}': \"{serialized}\"");
+                continue;
+            }
+
+            InputBindings.Assign(action, inputEvent);
+        }
+    }
+
+    /// <summary>
+    /// Riassegna un'azione e applica subito il nuovo tasto. Il salvataggio su disco resta a carico
+    /// di chi chiude il menu, come per tutte le altre impostazioni.
+    /// </summary>
+    public void SetBinding(string action, InputEvent inputEvent)
+    {
+        string? serialized = InputBindings.Serialize(inputEvent);
+        if (serialized == null)
+            return;
+
+        InputBindings.Assign(action, inputEvent);
+        if (InputBindings.DiffersFromDefault(action))
+            _bindingOverrides[action] = serialized;
+        else
+            _bindingOverrides.Remove(action); // ri-assegnato al suo predefinito: non e' piu' uno scostamento
+    }
+
+    /// Riporta tutti i comandi ai binding di progetto.
+    public void ResetBindings()
+    {
+        _bindingOverrides.Clear();
+        InputBindings.RestoreAllDefaults();
     }
 
     /// <summary>
@@ -183,6 +251,14 @@ public partial class SettingsService : Node
         MasterVolume = (float)config.GetValue(SectionAudio, "master", MasterVolume);
         MusicVolume = (float)config.GetValue(SectionAudio, "music", MusicVolume);
         SfxVolume = (float)config.GetValue(SectionAudio, "sfx", SfxVolume);
+
+        AimToggle = (bool)config.GetValue(SectionGameplay, "aim_toggle", AimToggle);
+        CrouchToggle = (bool)config.GetValue(SectionGameplay, "crouch_toggle", CrouchToggle);
+
+        _bindingOverrides.Clear();
+        if (config.HasSection(SectionInput))
+            foreach (string action in config.GetSectionKeys(SectionInput))
+                _bindingOverrides[action] = (string)config.GetValue(SectionInput, action, "");
     }
 
     public void Save()
@@ -197,6 +273,13 @@ public partial class SettingsService : Node
         config.SetValue(SectionAudio, "master", MasterVolume);
         config.SetValue(SectionAudio, "music", MusicVolume);
         config.SetValue(SectionAudio, "sfx", SfxVolume);
+
+        config.SetValue(SectionGameplay, "aim_toggle", AimToggle);
+        config.SetValue(SectionGameplay, "crouch_toggle", CrouchToggle);
+
+        // Solo gli scostamenti: le azioni mai toccate restano governate da project.godot.
+        foreach ((string action, string serialized) in _bindingOverrides)
+            config.SetValue(SectionInput, action, serialized);
 
         Error error = config.Save(ConfigPath);
         if (error != Error.Ok)

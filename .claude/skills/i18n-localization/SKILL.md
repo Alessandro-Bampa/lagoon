@@ -47,6 +47,8 @@ Lo stesso vale per i commenti dentro `project.godot`: l'editor li elimina riscri
 | `UI_HUD_*` | HUD di gioco, prompt nel mondo, pannello arma |
 | `NET_ERR_*` | Errori di rete mostrati in UI |
 | `SLOT_*` / `CATEGORY_*` / `UI_MOUSE_*` | Derivate da un enum (vedi §4) |
+| `UI_BIND_*` | Schermata di rimappatura dei comandi |
+| `UI_ACTION_<AZIONE>` | Nome di un'azione dell'InputMap, derivato dal nome dell'azione (`InputBindings.LabelKey`) |
 | `ITEM_<ITEMID>_NAME` / `_DESC` / `_EFFECT` | Oggetti (vedi §3) |
 | `DLG_*` | Dialoghi, solo nei `.po` |
 
@@ -184,5 +186,5 @@ Lo script è in **ASCII puro** di proposito: Windows PowerShell 5.1 legge gli sc
 
 - **Nessun sistema di dialogo.** I `.po` contengono tre voci `DLG_SAMPLE_*` di esempio, che validano il flusso end-to-end ma non sono usate da nessuna UI. Il runtime (NPC, scelte, avanzamento) arriverà con le quest, e riuserà questi file senza rework di i18n.
 - **Nessun plurale in uso.** `Loc.N` esiste ed è corretto, ma richiede chiavi con `msgid_plural` in un `.po`; nessuna stringa attuale ne ha bisogno. Non risolvere i plurali con un `if (n == 1)` nel codice: le regole di pluralità non coincidono fra lingue.
-- **Nessuna traduzione dei nomi delle azioni di input**: non esiste ancora una schermata di rimappatura tasti.
+- I nomi delle azioni di input sono tradotti per convenzione (`UI_ACTION_<AZIONE>`, vedi `InputBindings.LabelKey`): aggiungere un'azione riassegnabile significa aggiungere una riga a `ui.csv`. Nessun controllo automatico segnala quella dimenticata — la schermata Comandi mostrerebbe la chiave grezza.
 - `Loc.KeyFor` copre tastiera e mouse; **non copre il gamepad** (nessun supporto controller nel progetto).

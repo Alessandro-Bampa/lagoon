@@ -16,6 +16,7 @@ namespace Lagoon;
 public partial class WeaponInput : Node
 {
     private WeaponController _weapon = null!;
+    private PlayerController _player = null!;
     private PlayerHud _hud = null!;
     private IsometricCamera _camera = null!;
     private HitboxComponent? _ownHitbox;
@@ -41,6 +42,7 @@ public partial class WeaponInput : Node
         }
 
         _weapon = GetNode<WeaponController>("../Weapon");
+        _player = GetParent<PlayerController>();
         _hud = GetNode<PlayerHud>("../Hud");
         _camera = GetNode<IsometricCamera>("../PlayerCamera");
         _ownHitbox = GetParent().GetNodeOrNull<HitboxComponent>("Hitbox");
@@ -119,7 +121,16 @@ public partial class WeaponInput : Node
         }
     }
 
+    /// <summary>
     /// L'input di combattimento tace quando una modale (menu di pausa, skill ui-hud) o l'inventario
-    /// stanno assorbendo l'attenzione del giocatore.
-    private bool Suppressed => _game.UiModalOpen || _hud.InventoryOpen;
+    /// stanno assorbendo l'attenzione del giocatore, e mentre le mani sono impegnate a scavalcare o
+    /// ad arrampicarsi.
+    ///
+    /// Il parkour e' gia' rifiutato dall'host (<c>WeaponController.HandsFree</c>): questo e' il lato
+    /// LOCALE della stessa regola, e serve perche' la vampa alla bocca e' immediata (skill
+    /// combat-shooting §5) — senza, il proprietario vedrebbe l'arma sparare mentre le mani sono sul
+    /// bordo, per un colpo che l'host non conta. Si legge lo stato locale del motore, che sul peer
+    /// proprietario e' sempre quello vero.
+    /// </summary>
+    private bool Suppressed => _game.UiModalOpen || _hud.InventoryOpen || _player.Vaulting;
 }
