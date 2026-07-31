@@ -58,16 +58,17 @@ size = Vector3(3.5, 0.1, 2)
 [sub_resource type="StandardMaterial3D" id="Mat_Water"]
 transparency = 1
 cull_mode = 2
+depth_draw_mode = 1
 albedo_color = Color(0.1, 0.35, 0.55, 0.45)
 
 [sub_resource type="PlaneMesh" id="Mesh_Water"]
 size = Vector2(60, 60)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_54j0a"]
-size = Vector3(4.452362, 1.6103516, 1)
+size = Vector3(7.2803802, 2.7910156, 1)
 
 [sub_resource type="BoxMesh" id="BoxMesh_3yu8t"]
-size = Vector3(4.4571533, 1.6016235, 1)
+size = Vector3(7.271057, 2.794464, 1)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_vuql3"]
 size = Vector3(2.6269598, 0.70080566, 0.20172119)
@@ -168,11 +169,11 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 31, 0.2, 0)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1463003, -15.799978)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Wall" unique_id=586267636]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.72406, -0.34228516, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.1380692, 0.24804688, 0)
 shape = SubResource("BoxShape3D_54j0a")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Wall" unique_id=1359636378]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.7285767, -0.34039593, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.1355286, 0.25602436, 0)
 mesh = SubResource("BoxMesh_3yu8t")
 
 [node name="Wall2" type="StaticBody3D" parent="." unique_id=1180583776]

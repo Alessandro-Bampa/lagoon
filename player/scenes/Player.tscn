@@ -14,6 +14,9 @@
 [ext_resource type="Script" uid="uid://b5a1itucnyqqo" path="res://vehicles/scripts/VehicleInput.cs" id="12"]
 [ext_resource type="PackedScene" uid="uid://csgvakdfxnyuu" path="res://animation/scenes/CharacterRig.tscn" id="13"]
 [ext_resource type="Script" uid="uid://cxa1xl5rry6tp" path="res://player/scripts/PlayerAnimationBridge.cs" id="14"]
+[ext_resource type="Script" path="res://vision/scripts/VisionSource.cs" id="15"]
+[ext_resource type="Script" path="res://vision/scripts/ShroudRenderer.cs" id="16"]
+[ext_resource type="Script" path="res://vision/scripts/VisibilityGate.cs" id="17"]
 
 [sub_resource type="CapsuleShape3D" id="Shape_1"]
 
@@ -116,7 +119,21 @@ script = ExtResource("3")
 [node name="Synchronizer" type="MultiplayerSynchronizer" parent="." unique_id=971525579]
 replication_config = SubResource("Repl_1")
 
+; Campo visivo. Dichiarato PRIMA di PlayerCamera cosi' il suo _Ready precede quello dello
+; ShroudRenderer, che lo interroga.
+[node name="Vision" type="Node3D" parent="."]
+script = ExtResource("15")
+
 [node name="PlayerCamera" parent="." unique_id=892829673 instance=ExtResource("4")]
+
+; Lo shroud sta sotto la CAMERA, non sotto la root: il quad fullscreen la deve seguire.
+[node name="Shroud" type="Node3D" parent="PlayerCamera"]
+script = ExtResource("16")
+
+; Nasconde gli avatar degli ALTRI giocatori fuori dal proprio campo visivo. Sul proprio avatar
+; non fa nulla: il gate riconosce il possessore della sorgente locale e lo lascia sempre visibile.
+[node name="VisibilityGate" type="Node" parent="."]
+script = ExtResource("17")
 
 [node name="Inventory" type="Node" parent="." unique_id=2047303491]
 script = ExtResource("5")

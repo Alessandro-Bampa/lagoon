@@ -92,7 +92,7 @@ public partial class PlayerController : CharacterMotor
     /// di <see cref="SyncPosition"/> in ogni calcolo host-side (vedi <c>WeaponController.RequestFire</c>):
     /// per un giocatore su un'imbarcazione <see cref="SyncPosition"/> e' locale allo scafo.
     /// </summary>
-    public Vector3 ResolvedSyncPosition
+    public override Vector3 ResolvedSyncPosition
     {
         get
         {

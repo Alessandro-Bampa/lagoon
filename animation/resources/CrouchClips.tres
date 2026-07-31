@@ -1,4 +1,4 @@
-[gd_resource type="AnimationLibrary" format=3]
+[gd_resource type="AnimationLibrary" format=3 uid="uid://dqs68ols4mkpl"]
 
 [sub_resource type="Animation" id="Animation_eb82g"]
 resource_name = "crouch_back"

@@ -107,6 +107,7 @@ I nomi delle cartelle in `scenes/` e `scripts/` sono **per sistema di gameplay**
 ├── combat/          # Armi, tiro, salute, hitbox        -> skill `combat-shooting`
 ├── inventory/       # Griglia, item, equipaggiamento, HUD -> skill `inventory-tarkov`
 ├── vehicles/        # Barche, acqua, galleggiamento           -> skill `vehicles-boats`
+├── vision/          # Campo visivo, nebbia dinamica, occultamento -> skill `vision-fog`
 ├── ai/              # NPC umani e navigazione                          -> skill `ai-npc`
 ├── world/           # Livelli, spawn di giocatori e oggetti
 ├── quests/          # Riservato, non implementare ora (post-prototipo)
@@ -173,5 +174,6 @@ La documentazione d'ambito vive in `.claude/skills/<nome>/SKILL.md`. **Carica la
 | `blender-pipeline` | `assets/models/`, `tools/blender/` — pipeline Blender→`.glb`→Godot, `Body_Base`, `Armature_Character`, rig e animazioni Mixamo, scala/unità di un modello importato, dialogo con Blender via MCP |
 | `character-animation` | `animation/` — AnimationTree e BlendSpace, stance armata, layer e filtri, clip e loop, aggancio dell'arma alla mano, IK e modificatori di scheletro, mira e piedi procedurali, T-pose o animazioni ferme |
 | `ai-npc` | `ai/` — NPC umani, navigazione, waypoint, autorita' host sui personaggi non giocanti |
+| `vision-fog` | `vision/` — campo visivo, cono di mira, linea di vista e occlusione, nebbia dinamica (shroud), occultamento dei nemici, shader di post-process |
 
 Ambiti ancora senza skill perché non implementati: quest, base building. Quando uno di questi viene prototipato, la sua documentazione va in una skill nuova, non qui.

@@ -43,6 +43,22 @@ public static class CollisionLayers
     /// hitbox. L'acqua non compare qui perche' non ha alcun corpo fisico (vedi WaterVolume).
     public const uint AimMask = World | Hitbox | Vehicles | VehicleDeck;
 
+    /// <summary>
+    /// Cosa blocca la LINEA DI VISTA (sistema di visione, vedi skill <c>vision-fog</c>).
+    ///
+    /// Volutamente DIVERSA da <see cref="AimMask"/>, per due ragioni entrambe di gioco:
+    /// <list type="bullet">
+    /// <item><see cref="Hitbox"/> non c'e': un nemico non deve nascondere un altro nemico, altrimenti
+    /// due sagome in fila diventano una sola e la visibilita' dipende dall'ordine di attraversamento.</item>
+    /// <item><see cref="VehicleDeck"/> non c'e': i raggi corrono all'altezza del petto e il parapetto
+    /// della barca sta su quel layer, quindi includerlo renderebbe CIECHI stando al timone.</item>
+    /// </list>
+    /// Ne discende un limite dichiarato: cio' che ferma un proiettile e cio' che ferma lo sguardo
+    /// coincidono per mondo e scafi, ma non sono lo stesso concetto. Una rete metallica (si vede
+    /// attraverso, ferma i colpi) richiedera' un layer proprio, non un ritocco a questa costante.
+    /// </summary>
+    public const uint VisionBlockerMask = World | Vehicles;
+
     /// Maschera di collisione del corpo di un giocatore: mondo, altri corpi e ponte dei veicoli —
     /// <b>mai</b> lo scafo. NOTA: le scene scrivono il valore come letterale, quindi cambiare qui non
     /// basta, va aggiornato anche <c>collision_mask</c> in <c>player/scenes/Player.tscn</c>.

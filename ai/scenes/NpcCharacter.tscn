@@ -1,10 +1,11 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://ai/scripts/NpcController.cs" id="1"]
 [ext_resource type="PackedScene" path="res://animation/scenes/CharacterRig.tscn" id="2"]
 [ext_resource type="Script" path="res://ai/scripts/NpcAnimationBridge.cs" id="3"]
 [ext_resource type="Script" path="res://combat/scripts/HealthComponent.cs" id="4"]
 [ext_resource type="Script" path="res://combat/scripts/HitboxComponent.cs" id="5"]
+[ext_resource type="Script" path="res://vision/scripts/VisibilityGate.cs" id="6"]
 
 [sub_resource type="CapsuleShape3D" id="Shape_Body"]
 radius = 0.5
@@ -94,3 +95,8 @@ shape = SubResource("Shape_Body")
 
 [node name="AnimationBridge" type="Node" parent="."]
 script = ExtResource("3")
+
+; Occultamento locale: nasconde il nodo Visual quando l'avatar del giocatore locale non vede
+; questo personaggio. NON tocca la hitbox — vedi il commento in VisibilityGate.
+[node name="VisibilityGate" type="Node" parent="."]
+script = ExtResource("6")

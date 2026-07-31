@@ -172,6 +172,19 @@ public partial class CharacterMotor : CharacterBody3D
     /// Posizione autoritativa. I derivati possono esprimerla in un riferimento proprio.
     [Export] public Vector3 SyncPosition { get; set; }
 
+    /// <summary>
+    /// Posizione autoritativa in coordinate MONDO. Esiste perche' <see cref="SyncPosition"/> puo'
+    /// essere espressa in un riferimento proprio del derivato (per il giocatore: locale allo scafo
+    /// di un'imbarcazione), e chi legge lo stato replicato dall'esterno non ha modo di saperlo.
+    ///
+    /// Qui la ridefinizione e' l'identita': un NPC non sale in barca, quindi la sua SyncPosition e'
+    /// gia' in coordinate mondo. La sovrascrive <c>PlayerController</c>.
+    ///
+    /// Serve al sistema di visione, che lavora sia su giocatori sia su NPC e non deve conoscerne
+    /// il tipo concreto.
+    /// </summary>
+    public virtual Vector3 ResolvedSyncPosition => SyncPosition;
+
     /// Imbardata dell'avatar, sempre in coordinate MONDO.
     [Export] public float SyncFacing { get; set; }
 

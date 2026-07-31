@@ -94,7 +94,11 @@ func _directional_space(idle: String, prefix: String, radius: float,
 	for entry in [["fwd", Vector2(0, radius)], ["back", Vector2(0, -radius)],
 			["left", Vector2(-radius, 0)], ["right", Vector2(radius, 0)]]:
 		var clip: String = prefix + separator + str(entry[0])
-		space.add_blend_point(_anim(clip), entry[1], -1, clip)
+		# L'ETICHETTA del punto non puo' essere il percorso della clip: set_blend_point_name
+		# rifiuta i nomi che contengono '/' o '.', e col separatore "/" del crouch la clip
+		# `crouch/fwd` faceva scattare un errore a ogni caricamento. Il percorso resta sul nodo
+		# AnimationNodeAnimation (dove lo slash serve: e' libreria/clip), l'etichetta no.
+		space.add_blend_point(_anim(clip), entry[1], -1, prefix + "_" + str(entry[0]))
 	return space
 
 
