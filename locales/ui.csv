@@ -48,6 +48,8 @@ UI_ACTION_MOVE_RIGHT,Right,Destra
 UI_ACTION_JUMP,Jump,Salto
 UI_ACTION_SPRINT,Sprint,Corsa
 UI_ACTION_CROUCH,Crouch,Accovacciarsi
+UI_ACTION_CAMERA_ROTATE_LEFT,Rotate camera left,Ruota camera a sinistra
+UI_ACTION_CAMERA_ROTATE_RIGHT,Rotate camera right,Ruota camera a destra
 UI_ACTION_FIRE,Fire,Fuoco
 UI_ACTION_AIM,Aim,Mira
 UI_ACTION_RELOAD,Reload,Ricarica

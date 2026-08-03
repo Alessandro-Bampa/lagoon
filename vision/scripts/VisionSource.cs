@@ -9,11 +9,14 @@ namespace Lagoon;
 /// figlio del root del personaggio e legge il motore genitore.
 ///
 /// LA REGOLA DA NON ROMPERE: <see cref="CanSeePoint"/> e' la FONTE DI VERITA'. Il ventaglio di
-/// raggi (<see cref="Radii"/>) e' solo la sua discretizzazione per il rendering dello shroud.
-/// Non esistono due raggi, due aperture o due maschere di collisione: se un giorno il rendering
-/// avesse parametri propri, nemici visibili a schermo risulterebbero "non visti" dal gioco e
-/// viceversa. La sola incoerenza accettata e' la risoluzione angolare del ventaglio
-/// (<see cref="RayCount"/>).
+/// raggi (<see cref="Radii"/>) e' solo la sua discretizzazione, e da qui esce UNA SOLA VOLTA — nella
+/// maschera polare di <see cref="VisionMask"/> — per servire tutti i consumatori a schermo: lo
+/// shroud (cosa e' al buio) e il materiale di mondo (quali superfici si aprono).
+///
+/// Non esistono due raggi, due aperture o due maschere di collisione. Se il rendering avesse
+/// parametri propri si otterrebbero nemici visibili a schermo ma "non visti" dal gioco, o superfici
+/// che si aprono su terreno che resta nero. La sola incoerenza accettata e' la risoluzione angolare
+/// del ventaglio (<see cref="RayCount"/>).
 ///
 /// RETE: questo nodo non ha stato proprio da replicare e non contiene nessuna RPC. Legge SOLO
 /// proprieta' gia' replicate del motore (posizione, imbardata della mira, stance di mira),
@@ -201,9 +204,12 @@ public partial class VisionSource : Node3D
         if (distance > RadiusAt(angle))
             return false;
 
-        // L'occlusione si verifica verso il punto reale (con la sua quota), non verso la sua
-        // proiezione: un bersaglio dietro un muretto basso deve risultare visibile.
-        return !IsBlocked(eye, new Vector3(worldPoint.X, Mathf.Max(worldPoint.Y, eye.Y - 1f), worldPoint.Z));
+        // L'occlusione si verifica verso il punto REALE, quota compresa, senza alcun rialzo: il
+        // raggio deve poter scendere. Un tempo la quota era clampata a eye.Y - 1 e il risultato era
+        // che dal piano di sopra si vedeva quello di sotto — il raggio restava sopra il solaio
+        // invece di attraversarlo. Il caso che quel clamp voleva salvare (un bersaglio in piedi
+        // dietro un muretto basso) e' gia' coperto da CanSee, che mira all'altezza dell'occhio.
+        return !IsBlocked(eye, worldPoint);
     }
 
     /// <summary>
@@ -216,6 +222,12 @@ public partial class VisionSource : Node3D
         Vector3 at = target is CharacterMotor motor ? motor.ResolvedSyncPosition : target.GlobalPosition;
         return CanSeePoint(at + Vector3.Up * EyeHeight);
     }
+
+    // NOTA: qui stava ClearReachAt, che leggeva il ventaglio togliendo SurfaceBias. Non serve piu' a
+    // nessuno lato C#: la sottrazione e' scesa nello shader, dentro `vision_visibility`
+    // (vision/shaders/vision.gdshaderinc), dove ora vive l'unica copia della regola. Chi tornasse a
+    // leggere Radii da C# deve ricordarsi di rifarla: chi si tiene il bias tratta come visibile un
+    // metro DIETRO ogni muro.
 
     /// <summary>
     /// Raggio di visione all'angolo dato (convenzione shader). E' l'UNICO punto in cui si combinano

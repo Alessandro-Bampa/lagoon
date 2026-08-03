@@ -38,6 +38,7 @@ public static class InputBindings
         new("UI_BIND_GROUP_MOVEMENT", new[]
         {
             "move_up", "move_down", "move_left", "move_right", "jump", "sprint", "crouch",
+            "camera_rotate_left", "camera_rotate_right",
         }),
         new("UI_BIND_GROUP_COMBAT", new[]
         {

@@ -185,6 +185,20 @@ public partial class CharacterMotor : CharacterBody3D
     /// </summary>
     public virtual Vector3 ResolvedSyncPosition => SyncPosition;
 
+    /// <summary>
+    /// Quota dei PIEDI secondo lo stato replicato, in coordinate mondo.
+    ///
+    /// L'origine del <c>CharacterBody3D</c> sta a meta' capsula, non a terra, e accovacciandosi non
+    /// si sposta (e' la forma che si accorcia verso l'alto, vedi <c>ApplyCrouchShape</c>): sottrarre
+    /// meta' <see cref="StandHeight"/> da' sempre il suolo su cui si poggia. Serve a chi ragiona per
+    /// quote — il piano di ripiego della mira, le bande di piano del cutaway degli edifici — dove
+    /// usare il centro del corpo sbaglierebbe di un metro buono.
+    /// </summary>
+    public float ResolvedFeetY => ResolvedSyncPosition.Y - StandHeight * 0.5f;
+
+    /// Altezza della capsula in piedi, letta una volta dalla scena. Zero prima di <c>_Ready</c>.
+    public float StandHeight => _standHeight;
+
     /// Imbardata dell'avatar, sempre in coordinate MONDO.
     [Export] public float SyncFacing { get; set; }
 

@@ -6,28 +6,49 @@ namespace Lagoon;
 /// Disegna lo shroud: scurisce a schermo cio' che sta fuori dal campo visivo dell'avatar locale.
 /// Va montato come figlio della <c>PlayerCamera</c>, cosi' il quad la segue senza calcoli.
 ///
+/// Non possiede nulla del campo visivo: legge le globali pubblicate da <see cref="VisionMask"/>.
+/// Qui c'e' solo il quad e la sua taratura.
+///
 /// SOLO AVATAR LOCALE, e non e' un'ottimizzazione ma una condizione di correttezza: un
 /// <c>MeshInstance3D</c> sotto la camera di un avatar REMOTO verrebbe comunque disegnato dalla MIA
-/// camera. Con quattro giocatori si otterrebbero quattro quad fullscreen sovrapposti, ciascuno con
-/// lo shroud centrato su un altro giocatore.
+/// camera. Con quattro giocatori si otterrebbero quattro quad fullscreen sovrapposti.
 ///
-/// Non nasconde nulla: scurire non e' nascondere. Un nemico dentro l'ombra resta visibile, solo
-/// piu' scuro. A farlo sparire e' <see cref="VisibilityGate"/>, che e' un sistema separato e
-/// interroga la stessa <see cref="VisionSource"/>.
+/// Non nasconde nulla: scurire non e' nascondere. A far sparire i personaggi non visti e'
+/// <see cref="VisibilityGate"/>, che e' un sistema separato e interroga la stessa
+/// <see cref="VisionSource"/>.
 ///
-/// NOTA su <c>PlayerNetworkSync</c>: quello sovrascrive <c>MaterialOverride</c> su tutte le mesh
-/// del rig per colorare gli avatar. Oggi itera solo il sottoalbero di <c>Visual</c>, quindi questo
-/// quad e' al sicuro — ma se un giorno passasse a iterare l'intero Player, colorerebbe lo shroud.
+/// NOTA su <c>PlayerNetworkSync</c>: quello sovrascrive <c>MaterialOverride</c> su tutte le mesh del
+/// rig per colorare gli avatar. Oggi itera solo il sottoalbero di <c>Visual</c>, quindi questo quad
+/// e' al sicuro — ma se un giorno passasse a iterare l'intero Player, colorerebbe lo shroud.
 /// </summary>
 public partial class ShroudRenderer : Node3D
 {
     /// Percorso dello shader. Unico punto in cui compare.
     private const string ShaderPath = "res://vision/shaders/Shroud.gdshader";
 
-    /// Quanto si scurisce fuori dal campo visivo (vedi la uniform omonima nello shader).
+    /// <summary>
+    /// Quanto si scurisce fuori dal campo visivo. Deve restare un'OMBRA, non un nero pieno: cio' che
+    /// e' fuori dalla linea di vista si intravede in penombra e si legge come atmosfera, mentre a 1.0
+    /// il mondo attorno diventa una parete nera e l'inquadratura si chiude addosso al giocatore.
+    /// Provato a 1.0 e scartato.
+    ///
+    /// Conseguenza accettata: l'interno di un edificio che si intravede attraverso una superficie
+    /// aperta non e' nero, e' in penombra. Si legge la pianta della stanza anche senza vederla
+    /// davvero. Se un giorno la si volesse negare, la strada NON e' alzare questo valore — che vale
+    /// per tutto il mondo — ma dare allo shroud il modo di sapere quali frammenti stanno dentro un
+    /// edificio, che oggi non ha.
+    ///
+    /// Si tara A OCCHIO e non si calcola: il quad moltiplica in HDR lineare PRIMA del tonemap Filmic,
+    /// che ricomprime, quindi un x0.7 lineare non si legge come "30% piu' scuro".
+    /// </summary>
     [Export(PropertyHint.Range, "0,1,0.01")] public float Darkness { get; set; } = 0.55f;
 
-    /// Sfumatura del bordo, in metri.
+    /// <summary>
+    /// Sfumatura del bordo, in METRI (non in texel: e' il vantaggio della forma polare). Va tenuta
+    /// LARGA: qui si sfuma una luce vera, e un bordo netto sul limite del raggio si legge come un
+    /// muro invisibile. E' l'opposto della morbidezza del dither sulle superfici, che va tenuta
+    /// stretta.
+    /// </summary>
     [Export] public float EdgeSoftness { get; set; } = 0.9f;
 
     /// Tinta della zona in ombra (moltiplicatore lineare, non un colore sRGB).
@@ -36,13 +57,8 @@ public partial class ShroudRenderer : Node3D
     /// Spegnibile a caldo per confrontare con/senza durante la taratura.
     [Export] public bool Enabled { get; set; } = true;
 
-    private VisionSource _vision = null!;
-    private CharacterMotor _motor = null!;
     private ShaderMaterial _material = null!;
     private MeshInstance3D _quad = null!;
-    private ImageTexture _radiiTexture = null!;
-    private Image _radiiImage = null!;
-    private float[] _pixels = [];
 
     public override void _Ready()
     {
@@ -55,27 +71,7 @@ public partial class ShroudRenderer : Node3D
             return;
         }
 
-        _motor = (CharacterMotor)player;
-        _vision = player.GetNode<VisionSource>("Vision");
-
-        BuildMask();
         BuildQuad();
-    }
-
-    /// <summary>
-    /// Texture polare: una riga di raggi, larga quanto il ventaglio. Si crea UNA volta; poi si
-    /// aggiorna in place. Ricrearla ogni frame allocherebbe una RID nuova a ogni frame.
-    /// </summary>
-    private void BuildMask()
-    {
-        // Si legge RayCount e non Radii.Length: RayCount e' un [Export], quindi valido subito,
-        // mentre Radii viene allocato in VisionSource._Ready e questo nodo non deve dipendere
-        // dall'ordine di _Ready fra due rami diversi della scena.
-        int width = Mathf.Max(_vision.RayCount, 8);
-        _pixels = new float[width];
-
-        _radiiImage = Image.CreateEmpty(width, 1, false, Image.Format.Rf);
-        _radiiTexture = ImageTexture.CreateFromImage(_radiiImage);
     }
 
     private void BuildQuad()
@@ -86,8 +82,6 @@ public partial class ShroudRenderer : Node3D
             // Ultimo nella passata trasparente: sopra acqua, traccianti e particelle.
             RenderPriority = 127,
         };
-        _material.SetShaderParameter("radii_tex", _radiiTexture);
-        _material.SetShaderParameter("radius_scale", _vision.MaxRange);
 
         _quad = new MeshInstance3D
         {
@@ -106,47 +100,17 @@ public partial class ShroudRenderer : Node3D
             CustomAabb = new Aabb(new Vector3(-1e4f, -1e4f, -1e4f), new Vector3(2e4f, 2e4f, 2e4f)),
         };
 
+        // Nessun Layers impostato: il quad eredita il render layer 1 (RenderLayers.Always) e deve
+        // restarci. Chi tocca il CullMask della camera deve tenere quel bit sempre acceso, o la
+        // nebbia sparisce del tutto.
         AddChild(_quad);
     }
 
-    /// <summary>
-    /// In <c>_Process</c> e non in <c>_PhysicsProcess</c>: l'origine deve combaciare con la
-    /// posizione che la camera usa per disegnare QUESTO frame, altrimenti la maschera vibra a
-    /// 60 Hz rispetto alla geometria. Il ventaglio, invece, resta nel passo di fisica.
-    /// </summary>
     public override void _Process(double delta)
     {
-        Vector3 eye = _motor.ResolvedSyncPosition;
-        _material.SetShaderParameter("origin_xz", new Vector2(eye.X, eye.Z));
         _material.SetShaderParameter("darkness", Darkness);
         _material.SetShaderParameter("edge_softness", EdgeSoftness);
         _material.SetShaderParameter("shroud_tint", new Vector3(ShroudTint.R, ShroudTint.G, ShroudTint.B));
         _material.SetShaderParameter("enabled", Enabled);
-
-        UploadRadii();
-    }
-
-    private void UploadRadii()
-    {
-        float[] radii = _vision.Radii;
-        if (radii.Length != _pixels.Length)
-            return;
-
-        float scale = _vision.MaxRange;
-        if (scale <= 0f)
-            return;
-
-        for (int i = 0; i < radii.Length; i++)
-            _pixels[i] = radii[i] / scale;
-
-        _radiiImage.SetData(_pixels.Length, 1, false, Image.Format.Rf, FloatsToBytes(_pixels));
-        _radiiTexture.Update(_radiiImage);
-    }
-
-    private static byte[] FloatsToBytes(float[] values)
-    {
-        var bytes = new byte[values.Length * sizeof(float)];
-        System.Buffer.BlockCopy(values, 0, bytes, 0, bytes.Length);
-        return bytes;
     }
 }

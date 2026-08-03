@@ -7,7 +7,7 @@ namespace Lagoon;
 /// fisico**.
 ///
 /// L'assenza di collider e' una scelta, non una semplificazione da colmare: senza corpo non serve un
-/// collision layer per l'acqua, non c'e' niente da escludere da <see cref="CollisionLayers.AimMask"/>
+/// collision layer per l'acqua, non c'e' niente da escludere da <see cref="CollisionLayers.ShotMask"/>
 /// e un raggio di mira non puo' agganciare il piano d'acqua. Il galleggiamento ha bisogno di un solo
 /// numero, <see cref="SurfaceY"/>, e la mesh trasparente e' pura presentazione.
 ///

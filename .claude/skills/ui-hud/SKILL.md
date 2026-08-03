@@ -48,7 +48,8 @@ Qualunque nuova UI modale deve alzare `GameManager.UiModalOpen`, mai `GetTree().
 
 | Azione | Tasto | Gestita da | Note |
 |---|---|---|---|
-| `move_up/down/left/right` | WASD / frecce | `PlayerInput` | Ruotate di `CameraYawDegrees` |
+| `move_up/down/left/right` | WASD / frecce | `PlayerInput` | Ruotate di `IsometricCamera.CurrentYawDegrees`, non di una costante: la camera ruota |
+| `camera_rotate_left/right` | **Q / E** | `IsometricCamera._UnhandledInput` | Scatti di 45° attorno all'avatar. Solo la camera `Current` reagisce |
 | `toggle_inventory` | Tab | `PlayerHud._Input` | |
 | `interact` | **F** | `PlayerHud._Input` | Breve = raccogli/apri, lunga = menu contestuale. Consumata **solo se il pickup vince sul timone** — vedi sotto |
 | `interact` | **F** | `VehicleInput._UnhandledInput` | Prendi / lascia il timone. Raggiunta quando `PlayerHud` non consuma |

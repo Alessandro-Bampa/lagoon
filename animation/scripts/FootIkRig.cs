@@ -213,7 +213,7 @@ public partial class FootIkRig : Node3D
         var query = PhysicsRayQueryParameters3D.Create(
             ankle + Vector3.Up * ProbeAbove,
             ankle - Vector3.Up * ProbeBelow,
-            CollisionLayers.World | CollisionLayers.VehicleDeck);
+            CollisionLayers.World | CollisionLayers.VehicleDeck | CollisionLayers.BuildingCover);
 
         Godot.Collections.Dictionary hit = GetWorld3D().DirectSpaceState.IntersectRay(query);
         if (hit.Count == 0)

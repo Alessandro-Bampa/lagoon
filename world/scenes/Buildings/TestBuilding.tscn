@@ -1,0 +1,322 @@
+[gd_scene format=3 uid="uid://b1lqcut4wybdg"]
+
+; Le superfici usano world/shaders/WorldSurface.gdshader e non StandardMaterial3D: e' il materiale
+; che sa sfumare quando copre cio' che il giocatore deve vedere (skill `building-cutaway`). Una mesh
+; con un materiale qualunque non sfuma mai e NON lo segnala.
+[ext_resource type="Script" uid="uid://btfan1bp30l6" path="res://world/scripts/BuildingVolume.cs" id="1"]
+[ext_resource type="Shader" uid="uid://dxdi6ct6cealg" path="res://world/shaders/WorldSurface.gdshader" id="2"]
+
+[sub_resource type="BoxShape3D" id="Shape_WallX"]
+size = Vector3(0.3, 3, 10)
+
+[sub_resource type="ShaderMaterial" id="Mat_Wall"]
+shader = ExtResource("2")
+shader_parameter/albedo = Color(0.62, 0.6, 0.56, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_WallX"]
+size = Vector3(0.30429688, 3, 10)
+
+[sub_resource type="BoxShape3D" id="Shape_WallZ"]
+size = Vector3(10, 3, 0.3)
+
+[sub_resource type="BoxMesh" id="Mesh_WallZ"]
+size = Vector3(10, 2.9923706, 0.27683106)
+
+[sub_resource type="BoxShape3D" id="Shape_Divider"]
+size = Vector3(6, 3, 0.3)
+
+[sub_resource type="BoxMesh" id="Mesh_Divider"]
+size = Vector3(6, 3, 0.3)
+
+[sub_resource type="BoxShape3D" id="Shape_Stair"]
+size = Vector3(2.6, 0.3, 5.408)
+
+[sub_resource type="ShaderMaterial" id="Mat_Stair"]
+shader = ExtResource("2")
+shader_parameter/albedo = Color(0.45, 0.32, 0.2, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_Stair"]
+size = Vector3(2.6, 0.3, 5.408)
+
+[sub_resource type="BoxShape3D" id="Shape_SlabA"]
+size = Vector3(6.5, 0.3, 10)
+
+[sub_resource type="ShaderMaterial" id="Mat_Slab"]
+shader = ExtResource("2")
+shader_parameter/albedo = Color(0.42, 0.4, 0.38, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_SlabA"]
+size = Vector3(6.492676, 0.3, 9.900024)
+
+[sub_resource type="BoxShape3D" id="Shape_SlabC"]
+size = Vector3(3.5, 0.3, 5)
+
+[sub_resource type="BoxMesh" id="Mesh_SlabC"]
+size = Vector3(3.416504, 0.3, 4.9140625)
+
+[sub_resource type="BoxShape3D" id="Shape_SlabD"]
+size = Vector3(3.5, 0.3, 0.5)
+
+[sub_resource type="BoxMesh" id="Mesh_SlabD"]
+size = Vector3(3.4520264, 0.3, 0.44421387)
+
+[sub_resource type="BoxShape3D" id="Shape_Roof"]
+size = Vector3(10, 0.3, 10)
+
+[sub_resource type="BoxMesh" id="Mesh_Roof"]
+size = Vector3(9.754456, 0.3210205, 9.868683)
+
+[sub_resource type="BoxShape3D" id="Shape_DoorSide"]
+size = Vector3(4, 3, 0.3)
+
+[sub_resource type="BoxMesh" id="Mesh_DoorSide"]
+size = Vector3(4, 3, 0.3)
+
+; Il muro +X del piano terra e' spezzato in quattro per lasciare una FINESTRA: due fianchi a tutta
+; altezza, un parapetto e un architrave. Il varco e' largo 2 m e va da y=1 a y=2, cioe' a cavallo
+; dell'altezza dell'occhio (VisionSource.EyeHeight = 1.1 m sopra i piedi): sotto o sopra quella quota
+; i raggi del ventaglio non ci passerebbero e la finestra sarebbe solo un disegno.
+[sub_resource type="BoxShape3D" id="Shape_WindowSide"]
+size = Vector3(0.3, 3, 4)
+
+[sub_resource type="BoxMesh" id="Mesh_WindowSide"]
+size = Vector3(0.3, 3, 4)
+
+[sub_resource type="BoxShape3D" id="Shape_WindowBand"]
+size = Vector3(0.3, 1, 2)
+
+[sub_resource type="BoxMesh" id="Mesh_WindowBand"]
+size = Vector3(0.3, 1, 2)
+
+[node name="TestBuilding" type="Node3D" unique_id=244435068]
+script = ExtResource("1")
+FloorHeights = PackedFloat32Array(0, 3)
+TopHeight = 5.9
+
+[node name="Floor0" type="Node3D" parent="." unique_id=2016824395]
+
+[node name="WallXNeg" type="StaticBody3D" parent="Floor0" unique_id=1619736512]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.85, 1.5, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor0/WallXNeg" unique_id=297385734]
+shape = SubResource("Shape_WallX")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor0/WallXNeg" unique_id=811549488]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0021486282, 0, 0)
+layers = 2
+material_override = SubResource("Mat_Wall")
+mesh = SubResource("Mesh_WallX")
+
+[node name="WallZNeg" type="StaticBody3D" parent="Floor0" unique_id=1655152801]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, -4.85)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor0/WallZNeg" unique_id=473827261]
+shape = SubResource("Shape_WallZ")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor0/WallZNeg" unique_id=1368870641]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.04232788, 0)
+layers = 2
+material_override = SubResource("Mat_Wall")
+mesh = SubResource("Mesh_WallZ")
+
+[node name="Divider" type="StaticBody3D" parent="Floor0" unique_id=1799699638]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 1.5, -1)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor0/Divider" unique_id=68868534]
+shape = SubResource("Shape_Divider")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor0/Divider" unique_id=1401025889]
+layers = 2
+material_override = SubResource("Mat_Wall")
+mesh = SubResource("Mesh_Divider")
+
+[node name="Stair" type="StaticBody3D" parent="Floor0" unique_id=1369104412]
+transform = Transform3D(1, 0, 0, 0, 0.83205, 0.5547, 0, -0.5547, 0.83205, 3.25, 1.32, 2.35)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor0/Stair" unique_id=1874084622]
+shape = SubResource("Shape_Stair")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor0/Stair" unique_id=645120008]
+layers = 2
+material_override = SubResource("Mat_Stair")
+mesh = SubResource("Mesh_Stair")
+
+[node name="Floor1" type="Node3D" parent="." unique_id=276879487]
+
+[node name="SlabA" type="StaticBody3D" parent="Floor1" unique_id=2042532303]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.75, 2.85, 0)
+collision_layer = 64
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor1/SlabA" unique_id=1148870464]
+shape = SubResource("Shape_SlabA")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor1/SlabA" unique_id=549399275]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0036621094, 0, 0.016052246)
+layers = 4
+material_override = SubResource("Mat_Slab")
+mesh = SubResource("Mesh_SlabA")
+
+[node name="SlabC" type="StaticBody3D" parent="Floor1" unique_id=1470783637]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.25, 2.85, -2.5)
+collision_layer = 64
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor1/SlabC" unique_id=1124844177]
+shape = SubResource("Shape_SlabC")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor1/SlabC" unique_id=1936954257]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.041748047, 0, 0.04296875)
+layers = 4
+material_override = SubResource("Mat_Slab")
+mesh = SubResource("Mesh_SlabC")
+
+[node name="SlabD" type="StaticBody3D" parent="Floor1" unique_id=285842571]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.25, 2.85, 4.75)
+collision_layer = 64
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor1/SlabD" unique_id=356829876]
+shape = SubResource("Shape_SlabD")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor1/SlabD" unique_id=2017744645]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.023986816, 0, -0.027893066)
+layers = 4
+material_override = SubResource("Mat_Slab")
+mesh = SubResource("Mesh_SlabD")
+
+[node name="WallXNeg" type="StaticBody3D" parent="Floor1" unique_id=259712534]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.85, 4.5, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor1/WallXNeg" unique_id=1209841304]
+shape = SubResource("Shape_WallX")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor1/WallXNeg" unique_id=517846983]
+layers = 4
+material_override = SubResource("Mat_Wall")
+mesh = SubResource("Mesh_WallX")
+
+[node name="WallZNeg" type="StaticBody3D" parent="Floor1" unique_id=801264451]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.5, -4.85)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor1/WallZNeg" unique_id=1892204505]
+shape = SubResource("Shape_WallZ")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor1/WallZNeg" unique_id=1844408473]
+layers = 4
+material_override = SubResource("Mat_Wall")
+mesh = SubResource("Mesh_WallZ")
+
+[node name="Divider" type="StaticBody3D" parent="Floor1" unique_id=2053940583]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 4.5, -1)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor1/Divider" unique_id=1388657475]
+shape = SubResource("Shape_Divider")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor1/Divider" unique_id=1028222913]
+layers = 4
+material_override = SubResource("Mat_Wall")
+mesh = SubResource("Mesh_Divider")
+
+[node name="Floor2" type="Node3D" parent="." unique_id=316066890]
+
+[node name="RoofSlab" type="StaticBody3D" parent="Floor2" unique_id=1198995778]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.85, 0)
+collision_layer = 64
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor2/RoofSlab" unique_id=1428471301]
+shape = SubResource("Shape_Roof")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor2/RoofSlab" unique_id=943316639]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.07052612, 0.010510445, 0.042800903)
+layers = 8
+material_override = SubResource("Mat_Slab")
+mesh = SubResource("Mesh_Roof")
+
+[node name="Shell" type="Node3D" parent="." unique_id=1699533418]
+
+[node name="WallXPos0A" type="StaticBody3D" parent="Shell" unique_id=1761349902]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.85, 1.5, -3)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Shell/WallXPos0A" unique_id=390818513]
+shape = SubResource("Shape_WindowSide")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Shell/WallXPos0A" unique_id=636592500]
+layers = 2
+material_override = SubResource("Mat_Wall")
+mesh = SubResource("Mesh_WindowSide")
+
+[node name="WallXPos0B" type="StaticBody3D" parent="Shell" unique_id=1761349903]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.85, 1.5, 3)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Shell/WallXPos0B" unique_id=390818514]
+shape = SubResource("Shape_WindowSide")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Shell/WallXPos0B" unique_id=636592501]
+layers = 2
+material_override = SubResource("Mat_Wall")
+mesh = SubResource("Mesh_WindowSide")
+
+[node name="WallXPos0Sill" type="StaticBody3D" parent="Shell" unique_id=1761349904]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.85, 0.5, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Shell/WallXPos0Sill" unique_id=390818515]
+shape = SubResource("Shape_WindowBand")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Shell/WallXPos0Sill" unique_id=636592502]
+layers = 2
+material_override = SubResource("Mat_Wall")
+mesh = SubResource("Mesh_WindowBand")
+
+[node name="WallXPos0Head" type="StaticBody3D" parent="Shell" unique_id=1761349905]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.85, 2.5, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Shell/WallXPos0Head" unique_id=390818516]
+shape = SubResource("Shape_WindowBand")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Shell/WallXPos0Head" unique_id=636592503]
+layers = 2
+material_override = SubResource("Mat_Wall")
+mesh = SubResource("Mesh_WindowBand")
+
+[node name="WallZPos0A" type="StaticBody3D" parent="Shell" unique_id=1317797547]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 1.5, 4.85)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Shell/WallZPos0A" unique_id=1843752587]
+shape = SubResource("Shape_DoorSide")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Shell/WallZPos0A" unique_id=1993764234]
+layers = 2
+material_override = SubResource("Mat_Wall")
+mesh = SubResource("Mesh_DoorSide")
+
+[node name="WallZPos0B" type="StaticBody3D" parent="Shell" unique_id=926818143]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 1.5, 4.85)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Shell/WallZPos0B" unique_id=415955103]
+shape = SubResource("Shape_DoorSide")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Shell/WallZPos0B" unique_id=513819797]
+layers = 2
+material_override = SubResource("Mat_Wall")
+mesh = SubResource("Mesh_DoorSide")
+
+[node name="WallXPos1" type="StaticBody3D" parent="Shell" unique_id=904947495]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.85, 4.5, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Shell/WallXPos1" unique_id=1893044963]
+shape = SubResource("Shape_WallX")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Shell/WallXPos1" unique_id=682515511]
+layers = 4
+material_override = SubResource("Mat_Wall")
+mesh = SubResource("Mesh_WallX")
+
+[node name="WallZPos1" type="StaticBody3D" parent="Shell" unique_id=1627294099]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.5, 4.85)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Shell/WallZPos1" unique_id=1701828983]
+shape = SubResource("Shape_WallZ")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Shell/WallZPos1" unique_id=657046842]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.046142578, -0.011584282)
+layers = 4
+material_override = SubResource("Mat_Wall")
+mesh = SubResource("Mesh_WallZ")

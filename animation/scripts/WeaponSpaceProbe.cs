@@ -49,7 +49,8 @@ public sealed class WeaponSpaceProbe
             var query = PhysicsRayQueryParameters3D.Create(
                 origin,
                 origin + grip.GlobalBasis.Z.Normalized() * reach,
-                CollisionLayers.World | CollisionLayers.Vehicles | CollisionLayers.VehicleDeck);
+                CollisionLayers.World | CollisionLayers.Vehicles | CollisionLayers.VehicleDeck
+                    | CollisionLayers.BuildingCover);
 
             Godot.Collections.Dictionary hit = _owner.GetWorld3D().DirectSpaceState.IntersectRay(query);
             if (hit.Count > 0)

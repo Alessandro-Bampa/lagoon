@@ -25,17 +25,38 @@ public static class AimResolver
     public const float ChestHeight = 1.1f;
 
     /// <summary>
-    /// Punto del mondo sotto al cursore. Prova prima un raycast fisico contro mondo e hitbox
-    /// (escludendo <paramref name="exclude"/>, tipicamente la propria hitbox); se non colpisce nulla
-    /// ripiega sull'intersezione col piano orizzontale a <see cref="ChestHeight"/>.
+    /// Punto del mondo sotto al cursore. Prova prima un raycast fisico contro
+    /// <see cref="CollisionLayers.CursorMask"/> (escludendo <paramref name="exclude"/>, tipicamente
+    /// la propria hitbox); se non colpisce nulla ripiega sull'intersezione col piano orizzontale a
+    /// <see cref="ChestHeight"/> sopra <paramref name="groundHeight"/>.
+    ///
+    /// <paramref name="groundHeight"/> e' la quota del suolo su cui si trova chi mira, non zero:
+    /// il piano di ripiego deve stare al PROPRIO livello. Con un piano assoluto a 1.1 m, chi sta al
+    /// primo piano di un edificio (o sul ponte di una barca) vedrebbe la mira sprofondare a terra
+    /// ogni volta che il cursore non trova geometria.
+    ///
+    /// <paramref name="ceilingHeight"/> e' la quota del soffitto della stanza in cui si sta, o
+    /// <see cref="float.PositiveInfinity"/> all'aperto. Il raggio non parte dalla camera ma da dove
+    /// attraversa quel piano, cosi' <b>non puo' agganciare nulla che stia sopra la propria testa</b>.
+    /// Serve perche' il cutaway nasconde i piani superiori senza toccarne la fisica: i loro muri
+    /// restano su <c>World</c> e, senza questo taglio, il cursore si posa su un muro invisibile del
+    /// piano di sopra — il sintomo e' "al piano terra si mira il soffitto". Tagliare il raggio invece
+    /// di catalogare i layer fa si' che la regola valga anche per la geometria che verra'.
     /// </summary>
-    public static Vector3 ResolveAimPoint(Camera3D camera, Vector2 screenPosition, Rid exclude)
+    public static Vector3 ResolveAimPoint(
+        Camera3D camera, Vector2 screenPosition, Rid exclude,
+        float groundHeight = 0f, float ceilingHeight = float.PositiveInfinity)
     {
         Vector3 from = camera.ProjectRayOrigin(screenPosition);
         Vector3 dir = camera.ProjectRayNormal(screenPosition);
 
+        // La camera guarda sempre verso il basso (pitch 40°), quindi dir.Y e' negativa: il raggio
+        // attraversa il piano del soffitto una volta sola e da li' in poi resta nella stanza.
+        if (!float.IsInfinity(ceilingHeight) && from.Y > ceilingHeight && dir.Y < -0.001f)
+            from += dir * ((from.Y - ceilingHeight) / -dir.Y);
+
         var query = PhysicsRayQueryParameters3D.Create(from, from + dir * ProbeLength);
-        query.CollisionMask = CollisionLayers.AimMask;
+        query.CollisionMask = CollisionLayers.CursorMask;
         query.CollideWithAreas = true;
         query.CollideWithBodies = true;
         if (exclude.IsValid)
@@ -45,7 +66,7 @@ public static class AimResolver
         if (hit.Count > 0)
             return (Vector3)hit["position"];
 
-        var plane = new Plane(Vector3.Up, ChestHeight);
+        var plane = new Plane(Vector3.Up, groundHeight + ChestHeight);
         Vector3? onPlane = plane.IntersectsRay(from, dir);
         return onPlane ?? from + dir * 50f;
     }
@@ -54,6 +75,10 @@ public static class AimResolver
     /// Traccia il colpo vero e proprio (host-side). Ritorna la <see cref="HitboxComponent"/>
     /// colpita, o null se il raggio ha incontrato solo geometria o il vuoto; <paramref name="end"/>
     /// riceve sempre il punto finale, cosi' il tracciante puo' essere disegnato in ogni caso.
+    ///
+    /// Usa <see cref="CollisionLayers.ShotMask"/> e non la maschera del cursore: un solaio e' fisico
+    /// e ferma il proiettile, anche quando la camera di qualcuno non lo sta disegnando. E' il lato
+    /// "cosa esiste" della separazione documentata su quelle due costanti.
     /// </summary>
     public static HitboxComponent? TraceShot(
         World3D world, Vector3 origin, Vector3 direction, float maxRange, Rid exclude, out Vector3 end)
@@ -61,7 +86,7 @@ public static class AimResolver
         Vector3 target = origin + direction * maxRange;
 
         var query = PhysicsRayQueryParameters3D.Create(origin, target);
-        query.CollisionMask = CollisionLayers.AimMask;
+        query.CollisionMask = CollisionLayers.ShotMask;
         query.CollideWithAreas = true;
         query.CollideWithBodies = true;
         if (exclude.IsValid)

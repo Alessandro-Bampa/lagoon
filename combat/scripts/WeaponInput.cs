@@ -19,6 +19,7 @@ public partial class WeaponInput : Node
     private PlayerController _player = null!;
     private PlayerHud _hud = null!;
     private IsometricCamera _camera = null!;
+    private BuildingCullController? _buildingCull;
     private HitboxComponent? _ownHitbox;
     private GameManager _game = null!;
 
@@ -45,6 +46,7 @@ public partial class WeaponInput : Node
         _player = GetParent<PlayerController>();
         _hud = GetNode<PlayerHud>("../Hud");
         _camera = GetNode<IsometricCamera>("../PlayerCamera");
+        _buildingCull = GetNodeOrNull<BuildingCullController>("../BuildingCull");
         _ownHitbox = GetParent().GetNodeOrNull<HitboxComponent>("Hitbox");
         _game = GetNode<GameManager>("/root/GameManager");
     }
@@ -54,8 +56,17 @@ public partial class WeaponInput : Node
         // Il punto di mira si aggiorna SEMPRE, anche a inventario aperto: e' resa locale, non
         // un'azione. Congelarlo lasciava PlayerController.UpdateAiming puntato su un punto
         // stantio, e alla chiusura della UI il corpo scattava verso dove il mouse ERA.
+        //
+        // Due quote, entrambe dal contesto di chi mira e non costanti globali: il pavimento su cui
+        // si sta (piano di ripiego quando il cursore non trova geometria) e il soffitto della stanza
+        // (oltre il quale il raggio non deve nemmeno partire, o si aggancia ai muri invisibili del
+        // piano di sopra — skill building-cutaway).
         AimPoint = AimResolver.ResolveAimPoint(
-            _camera, GetViewport().GetMousePosition(), _ownHitbox?.GetRid() ?? default);
+            _camera,
+            GetViewport().GetMousePosition(),
+            _ownHitbox?.GetRid() ?? default,
+            _player.ResolvedFeetY,
+            _buildingCull?.AimCeilingHeight ?? float.PositiveInfinity);
 
         Vector3 muzzle = GetParent<Node3D>().GlobalPosition + Vector3.Up * WeaponController.MuzzleHeight;
         AimDistance = muzzle.DistanceTo(AimPoint);

@@ -173,6 +173,16 @@ crouch={
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194326,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
 ]
 }
+camera_rotate_left={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":81,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+camera_rotate_right={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":69,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
 
 [internationalization]
 
@@ -180,12 +190,20 @@ locale/translations=PackedStringArray("res://locales/ui.en.translation", "res://
 
 [layer_names]
 
+3d_render/layer_1="always"
+3d_render/layer_2="building_floor_0"
+3d_render/layer_3="building_floor_1"
+3d_render/layer_4="building_floor_2"
+3d_render/layer_5="building_floor_3"
+3d_render/layer_6="building_floor_4"
+3d_render/layer_7="building_floor_5"
 3d_physics/layer_1="world"
 3d_physics/layer_2="players"
 3d_physics/layer_3="enemies"
 3d_physics/layer_4="hitbox"
 3d_physics/layer_5="vehicles"
 3d_physics/layer_6="vehicle_deck"
+3d_physics/layer_7="building_cover"
 
 [physics]
 
@@ -194,3 +212,22 @@ locale/translations=PackedStringArray("res://locales/ui.en.translation", "res://
 [rendering]
 
 rendering_device/driver.windows="d3d12"
+
+[shader_globals]
+
+vision_mask={
+"type": "sampler2D",
+"value": ""
+}
+vision_origin={
+"type": "vec2",
+"value": Vector2(0, 0)
+}
+vision_range={
+"type": "float",
+"value": 30.0
+}
+vision_ground={
+"type": "float",
+"value": 0.0
+}

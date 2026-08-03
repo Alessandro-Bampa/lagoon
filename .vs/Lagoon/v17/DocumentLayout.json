@@ -3,6 +3,14 @@
   "WorkspaceRootPath": "C:\\repositories\\lagoon\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{1E74CEB8-7BFB-4712-966E-BF9B794966B7}|Lagoon.csproj|c:\\repositories\\lagoon\\world\\scripts\\gameworld.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{1E74CEB8-7BFB-4712-966E-BF9B794966B7}|Lagoon.csproj|solutionrelative:world\\scripts\\gameworld.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{1E74CEB8-7BFB-4712-966E-BF9B794966B7}|Lagoon.csproj|c:\\repositories\\lagoon\\vision\\scripts\\shroudrenderer.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{1E74CEB8-7BFB-4712-966E-BF9B794966B7}|Lagoon.csproj|solutionrelative:vision\\scripts\\shroudrenderer.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{1E74CEB8-7BFB-4712-966E-BF9B794966B7}|Lagoon.csproj|c:\\repositories\\lagoon\\inventory\\scripts\\inventorygrid.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{1E74CEB8-7BFB-4712-966E-BF9B794966B7}|Lagoon.csproj|solutionrelative:inventory\\scripts\\inventorygrid.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
@@ -22,7 +30,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 3,
+          "SelectedChildIndex": 1,
           "Children": [
             {
               "$type": "Bookmark",
@@ -30,7 +38,33 @@
             },
             {
               "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "GameWorld.cs",
+              "DocumentMoniker": "C:\\repositories\\lagoon\\world\\scripts\\GameWorld.cs",
+              "RelativeDocumentMoniker": "world\\scripts\\GameWorld.cs",
+              "ToolTip": "C:\\repositories\\lagoon\\world\\scripts\\GameWorld.cs",
+              "RelativeToolTip": "world\\scripts\\GameWorld.cs",
+              "ViewState": "AgIAADwAAAAAAAAAAAAowAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-08-01T18:36:01.931Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
               "DocumentIndex": 1,
+              "Title": "ShroudRenderer.cs",
+              "DocumentMoniker": "C:\\repositories\\lagoon\\vision\\scripts\\ShroudRenderer.cs",
+              "RelativeDocumentMoniker": "vision\\scripts\\ShroudRenderer.cs",
+              "ToolTip": "C:\\repositories\\lagoon\\vision\\scripts\\ShroudRenderer.cs",
+              "RelativeToolTip": "vision\\scripts\\ShroudRenderer.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-08-01T18:31:49.524Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
               "Title": "PlayerInput.cs",
               "DocumentMoniker": "C:\\repositories\\lagoon\\player\\scripts\\PlayerInput.cs",
               "RelativeDocumentMoniker": "player\\scripts\\PlayerInput.cs",
@@ -38,12 +72,11 @@
               "RelativeToolTip": "player\\scripts\\PlayerInput.cs",
               "ViewState": "AgIAAAAAAAAAAAAAAAAxwAAAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-07-27T13:11:13.895Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-07-27T13:11:13.895Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 4,
               "Title": "HotbarSlotView.cs",
               "DocumentMoniker": "C:\\repositories\\lagoon\\inventory\\scripts\\HotbarSlotView.cs",
               "RelativeDocumentMoniker": "inventory\\scripts\\HotbarSlotView.cs",
@@ -55,7 +88,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 2,
               "Title": "InventoryGrid.cs",
               "DocumentMoniker": "C:\\repositories\\lagoon\\inventory\\scripts\\InventoryGrid.cs",
               "RelativeDocumentMoniker": "inventory\\scripts\\InventoryGrid.cs",
@@ -63,8 +96,7 @@
               "RelativeToolTip": "inventory\\scripts\\InventoryGrid.cs",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-07-24T14:40:28.291Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-07-24T14:40:28.291Z"
             }
           ]
         }

@@ -60,9 +60,11 @@ public partial class VehicleInput : Node
 
         Vector2 motion = _input.ReadRawMovement();
 
-        // Comandi RELATIVI AL VEICOLO, non allo schermo: volutamente NON si ruota di
-        // CameraYawDegrees come si fa per il camminare. E' la convenzione standard per un veicolo e
-        // rende la barca guidabile allo stesso modo qualunque direzione stia tenendo.
+        // Comandi RELATIVI AL VEICOLO, non allo schermo: volutamente NON si ruota dello yaw della
+        // camera come si fa per il camminare. E' la convenzione standard per un veicolo, rende la
+        // barca guidabile allo stesso modo qualunque direzione stia tenendo, e da quando la camera
+        // ruota (Q/E) e' anche l'unica scelta sensata — altrimenti il timone cambierebbe significato
+        // a ogni scatto di visuale.
         _player.DrivingBoat?.SubmitControls(-motion.Y, motion.X);
     }
 

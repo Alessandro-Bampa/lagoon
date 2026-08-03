@@ -101,7 +101,7 @@ I nomi delle cartelle in `scenes/` e `scripts/` sono **per sistema di gameplay**
 ├── core/            # Codice condiviso, non specifico di un sistema
 │   ├── Authority/   # Helper per pattern server-authoritative
 │   ├── Motion/      # CharacterMotor: movimento a piedi condiviso player/NPC
-│   └── Utils/       # NetworkConstants, CollisionLayers
+│   └── Utils/       # NetworkConstants, CollisionLayers, RenderLayers
 ├── animation/       # Rig, AnimationTree, IK e procedurale       -> skill `character-animation`
 ├── player/          # Input locale, camera isometrica, veicoli
 ├── combat/          # Armi, tiro, salute, hitbox        -> skill `combat-shooting`
@@ -121,7 +121,8 @@ I nomi delle cartelle in `scenes/` e `scripts/` sono **per sistema di gameplay**
 - **Un sistema, una cartella.** `inventory/`, `combat/`, `ai/` sono verticali: scena + script + risorse specifiche restano insieme. Non creare una cartella globale `scripts/` separata dalle scene.
 - **`autoload/` contiene solo singleton veri.** Se un manager non deve essere unico e globale, non è un autoload.
 - **`resources/` contiene solo dati (`Resource`/`.tres`), mai logica con side-effect.** Un `ItemDefinition` descrive un oggetto, non lo istanzia da solo.
-- **`quests/` e `building/` restano vuote (con un `.gitkeep`) fino a quando i tre prototipi non sono conclusi.** Non generare codice speculativo per sistemi non ancora prototipati: porta a rework inutile.
+- **`quests/` e `building/` restano vuote (con un `.gitkeep`) fino a quando i tre prototipi non sono conclusi.** Non generare codice speculativo per sistemi non ancora prototipati: porta a rework inutile. Attenzione: `building/` è riservata alla **costruzione della base** da parte del giocatore; gli edifici del mondo stanno in `world/scenes/Buildings/`.
+- **Due schemi di layer, entrambi con fonte di verità in `core/Utils/`.** `CollisionLayers` per la fisica, `RenderLayers` per ciò che una camera disegna (`VisualInstance3D.Layers`, `Camera3D.CullMask`). Si somigliano ma non sono la stessa cosa: cambiare un render layer non ha alcun effetto sulla simulazione, ed è proprio questo che permette al cutaway degli edifici di essere una decisione locale del singolo peer senza violare §3. Ogni numero nuovo va aggiunto a queste classi **e** alla sezione `[layer_names]` di `project.godot`; le scene scrivono i letterali, quindi vanno aggiornate a mano.
 
 ---
 
@@ -174,6 +175,7 @@ La documentazione d'ambito vive in `.claude/skills/<nome>/SKILL.md`. **Carica la
 | `blender-pipeline` | `assets/models/`, `tools/blender/` — pipeline Blender→`.glb`→Godot, `Body_Base`, `Armature_Character`, rig e animazioni Mixamo, scala/unità di un modello importato, dialogo con Blender via MCP |
 | `character-animation` | `animation/` — AnimationTree e BlendSpace, stance armata, layer e filtri, clip e loop, aggancio dell'arma alla mano, IK e modificatori di scheletro, mira e piedi procedurali, T-pose o animazioni ferme |
 | `ai-npc` | `ai/` — NPC umani, navigazione, waypoint, autorita' host sui personaggi non giocanti |
-| `vision-fog` | `vision/` — campo visivo, cono di mira, linea di vista e occlusione, nebbia dinamica (shroud), occultamento dei nemici, shader di post-process |
+| `vision-fog` | `vision/` — campo visivo, cono di mira, linea di vista e occlusione, nebbia dinamica (shroud), occultamento dei nemici, la maschera polare che alimenta gli shader, shader di post-process |
+| `building-cutaway` | **la camera isometrica e il materiale di qualunque mesh del mondo** — rotazione della visuale (Q/E), `WorldSurface.gdshader`, edifici e piani che spariscono entrando, muri che sfumano, porte e finestre, `CullMask` di una camera, render layer, `CursorMask`/`ShotMask`, layer fisico `building_cover` |
 
 Ambiti ancora senza skill perché non implementati: quest, base building. Quando uno di questi viene prototipato, la sua documentazione va in una skill nuova, non qui.

@@ -35,10 +35,6 @@ public partial class PlayerController : CharacterMotor
     /// Fattore di interpolazione per gli avatar remoti (piu' alto = piu' reattivo, meno morbido).
     [Export] public float InterpolationSpeed { get; set; } = 14.0f;
 
-    /// Yaw della camera isometrica. L'input viene ruotato di questo angolo cosi' che
-    /// "avanti" sullo schermo corrisponda alla direzione attesa. Deve combaciare con PlayerCamera.
-    [Export] public float CameraYawDegrees { get; set; } = 45.0f;
-
     /// Quanto sotto la superficie dell'acqua si viene riportati al molo (nessun nuoto in questa fase).
     [Export] public float WaterFallbackDepth { get; set; } = 2.0f;
 
@@ -56,6 +52,18 @@ public partial class PlayerController : CharacterMotor
     [Export] public int SyncAnchorId { get; set; }
 
     private PlayerInput _input = null!;
+
+    /// <summary>
+    /// La camera locale, letta per il suo <see cref="IsometricCamera.CurrentYawDegrees"/>: l'input
+    /// WASD si ruota di quell'angolo, cosi' "avanti" sullo schermo resta avanti anche dopo che il
+    /// giocatore ha ruotato la visuale con Q/E.
+    ///
+    /// Prima era una costante esportata (<c>CameraYawDegrees</c>) da tenere in sincrono a mano con
+    /// la camera: corretta solo finche' la camera non ruotava. La fonte di verita' e' una sola, ed e'
+    /// la camera stessa.
+    /// </summary>
+    private IsometricCamera _camera = null!;
+
     private WeaponController? _weapon;
     private WeaponInput? _weaponInput;
     private RayCast3D _groundProbe = null!;
@@ -123,6 +131,7 @@ public partial class PlayerController : CharacterMotor
 
         _input = GetNode<PlayerInput>("Input");
         _groundProbe = GetNode<RayCast3D>("GroundProbe");
+        _camera = GetNode<IsometricCamera>("PlayerCamera");
         _water = WaterVolume.Find(this);
 
         // Opzionali: un avatar puo' esistere senza armi, il movimento non deve dipenderne.
@@ -184,7 +193,7 @@ public partial class PlayerController : CharacterMotor
 
         Vector2 motion = _input.ReadMovement();
         Vector3 worldDir = new Vector3(motion.X, 0f, motion.Y)
-            .Rotated(Vector3.Up, Mathf.DegToRad(CameraYawDegrees));
+            .Rotated(Vector3.Up, Mathf.DegToRad(_camera.CurrentYawDegrees));
         if (worldDir.LengthSquared() > 1f)
             worldDir = worldDir.Normalized();
 

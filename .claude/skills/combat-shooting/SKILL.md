@@ -104,8 +104,11 @@ Prima della Fase 3 tutto stava sul layer 1, quindi un raycast di mira avrebbe co
 | 4 | `hitbox` | `HitboxComponent` (`Area3D`) | **0** — non interroga mai, viene solo interrogata |
 | 5 | `vehicles` | scafo delle imbarcazioni (`RigidBody3D`) | 1 — **mai** nella maschera dei player |
 | 6 | `vehicle_deck` | ponte e parapetti (`AnimatableBody3D`) | **0** — è il ponte che i player calpestano |
+| 7 | `building_cover` | solai, soffitti e tetti degli edifici | **0** — si calpesta e ferma i colpi, ma il cursore non ci si posa |
 
-Ogni query di tiro usa `AimMask = world | hitbox | vehicles | vehicle_deck`, `CollideWithAreas = true`, ed esclude il RID della *propria* hitbox. **La barca ferma i proiettili** come la geometria statica: chi sta dietro la murata è al coperto. Scafo e ponte sono separati perché la collisione in Godot è simmetrica e un giocatore che toccasse lo scafo lo spingerebbe via (vedi skill `vehicles-boats` §2). Conseguenze: un raggio **non colpisce mai il corpo fisico** di un giocatore (solo la sua hitbox), quindi il fuoco amico e l'immunità a sé stessi diventano esatti anziché approssimati per distanza.
+**Due maschere, non una.** `CursorMask = world | hitbox | vehicles | vehicle_deck` è dove si posa il cursore; `ShotMask = CursorMask | building_cover` è cosa ferma un colpo. Sono due domande diverse — *cosa sto guardando* (dipende dal cutaway, quindi dal peer) e *cosa esiste* (identico su tutti) — e riunirle riporta i due bug che le hanno separate: si mira al soffitto sopra la propria testa, oppure i proiettili attraversano i solai. Vedi skill `building-cutaway` §7.
+
+Entrambe usano `CollideWithAreas = true` ed escludono il RID della *propria* hitbox. **La barca ferma i proiettili** come la geometria statica: chi sta dietro la murata è al coperto. Scafo e ponte sono separati perché la collisione in Godot è simmetrica e un giocatore che toccasse lo scafo lo spingerebbe via (vedi skill `vehicles-boats` §2). Conseguenze: un raggio **non colpisce mai il corpo fisico** di un giocatore (solo la sua hitbox), quindi il fuoco amico e l'immunità a sé stessi diventano esatti anziché approssimati per distanza.
 
 Un nuovo tipo di entità danneggiabile va montato con la stessa coppia: corpo sul proprio layer + `HitboxComponent` (`Area3D`) su layer 4 con `HealthPath` verso il suo `HealthComponent`.
 
@@ -117,7 +120,9 @@ Un nuovo tipo di entità danneggiabile va montato con la stessa coppia: corpo su
 
 **Il dado si tira solo sull'host.** Nessuno scambio di seed. Ne discende la regola: **il client non disegna mai un tracciante predittivo**, perché non sa dove è andato il proprio colpo — il tracciante arriva con `BroadcastShot`, cioè ~1 RTT dopo. La vampa alla bocca è invece immediata e locale, e basta a rendere reattivo il feedback. L'alternativa (seed condiviso) richiederebbe che host e client concordino *anche* sull'origine, cosa che non fanno (vedi §7).
 
-Il rinculo, senza camera in prima persona da far rinculare, si manifesta come: dispersione accumulata e replicata (l'anello del reticolo "fiorisce" e si richiude), scossa locale della camera (`IsometricCamera.AddKick`, sola traslazione — **la camera non ruota mai**, la matematica di `AimResolver` assume un orientamento fisso), e arretramento della mesh dell'arma su tutti i peer.
+Il rinculo, senza camera in prima persona da far rinculare, si manifesta come: dispersione accumulata e replicata (l'anello del reticolo "fiorisce" e si richiude), scossa locale della camera (`IsometricCamera.AddKick`, **sola traslazione sul piano immagine**: una scossa che ruotasse sposterebbe anche il punto mirato, e il colpo partirebbe dove non si stava puntando), e arretramento della mesh dell'arma su tutti i peer.
+
+Nota: la camera **ruota su comando del giocatore** (Q/E, skill `building-cutaway` §1), e questo non riguarda la mira. `AimResolver` non ha mai assunto un orientamento fisso: lavora su `camera.ProjectRayOrigin` / `ProjectRayNormal`, che seguono la camera qualunque sia il suo yaw. Ciò che resta vietato è che la camera ruoti **da sola**, per un effetto.
 
 **Cosa si replica**: `RecoilSpread` (il solo contributo di rinculo), non la dispersione totale. Il termine di distanza dipende da dove punta il cursore del singolo giocatore, quindi il reticolo lo aggiunge in locale passando `RecoilSpread` alla stessa formula dell'host.
 
@@ -125,7 +130,13 @@ Il rinculo, senza camera in prima persona da far rinculare, si manifesta come: d
 
 ## 6. Mira con camera ortogonale
 
-`AimResolver.ResolveAimPoint(camera, mousePos, exclude)`: raycast dal cursore contro `AimMask`, con fallback sull'intersezione col piano orizzontale a `ChestHeight = 1.1f`.
+`AimResolver.ResolveAimPoint(camera, mousePos, exclude, groundHeight, ceilingHeight)`: raycast dal cursore contro `CursorMask`, con fallback sull'intersezione col piano orizzontale a `groundHeight + ChestHeight`.
+
+Le due quote vengono dal **contesto di chi mira**, non sono costanti globali; le passa `WeaponInput`.
+
+`groundHeight` = quota dei propri piedi (`CharacterMotor.ResolvedFeetY`). Il piano di ripiego deve stare al proprio livello: con un piano assoluto a 1.1 m, chi sta sul ponte di una barca o al primo piano di un edificio vedeva la mira sprofondare a terra ogni volta che il cursore non trovava geometria.
+
+`ceilingHeight` = soffitto della stanza in cui si sta (`BuildingCullController.AimCeilingHeight`, infinito all'aperto). Il raggio **non parte dalla camera** ma da dove attraversa quel piano, così non può agganciare nulla sopra la propria testa. Serve perché il cutaway nasconde i piani superiori senza toccarne la fisica: i loro muri restano su `world` e senza questo taglio il cursore si posa su un muro invisibile del piano di sopra. Tagliare il raggio invece di catalogare i layer fa sì che la regola valga anche per la geometria che verrà.
 
 Con la proiezione **ortogonale** `ProjectRayNormal` restituisce la stessa direzione per ogni pixel dello schermo; varia solo l'origine. Conseguenza accettata: il raggio può agganciare un bersaglio che in coordinate mondo sta "dietro" al giocatore, ma che sullo schermo è sotto al cursore. È il comportamento intuitivo — si mira a quel che si vede — e l'host valida comunque la distanza massima.
 

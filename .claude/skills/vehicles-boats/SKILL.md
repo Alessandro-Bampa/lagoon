@@ -184,10 +184,14 @@ Sanificazione obbligatoria in `RequestControls`: rifiuto se `!float.IsFinite(...
 
 ### Comandi relativi al veicolo
 
-`VehicleInput` mappa `throttle = -motion.Y`, `steer = motion.X` **senza ruotare di
-`CameraYawDegrees`**, a differenza del camminare che è screen-relative. Asimmetria voluta: è la
-convenzione standard per un veicolo e rende la barca guidabile allo stesso modo qualunque direzione
-stia tenendo, con la camera fissa.
+`VehicleInput` mappa `throttle = -motion.Y`, `steer = motion.X` **senza ruotare dello yaw della
+camera**, a differenza del camminare che è screen-relative. Asimmetria voluta: è la convenzione
+standard per un veicolo e rende la barca guidabile allo stesso modo qualunque direzione stia tenendo.
+
+Da quando la camera **ruota** (Q/E, skill `building-cutaway` §1) non è più solo una convenzione ma
+l'unica scelta possibile: uno sterzo relativo allo schermo cambierebbe significato a ogni scatto di
+visuale, e si girerebbe il timone premendo E. Chi cammina invece si allinea a
+`IsometricCamera.CurrentYawDegrees`, non a una costante — quella costante non esiste più.
 
 ---
 
