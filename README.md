@@ -1,6 +1,6 @@
 # Lagoon
 
-RPG open world cooperativo, visuale isometrica, ambientazione survival/action stile S.T.A.L.K.E.R.
+RPG open world cooperativo, visuale in prima persona, ambientazione survival/action stile S.T.A.L.K.E.R.
 con inventario a griglia stile Escape from Tarkov. Multiplayer cooperativo (fino a 4) con architettura
 **Listen Server / Host-Player** su GodotSteam. Vedi [CLAUDE.md](CLAUDE.md) per l'architettura completa.
 
@@ -54,7 +54,7 @@ equipaggiati e 60 munizioni di riserva.
 
 **Criteri di completamento verificati:**
 - *Fase 1* — entrambe le istanze si vedono muovere reciprocamente senza scatti evidenti; la camera
-  isometrica segue solo il player locale.
+  in prima persona è attiva solo sul player locale.
 - *Fase 3* — un client **non-host** spara a un manichino del `TestLevel` e l'HP mostrato sopra il
   bersaglio cala **in modo identico su tutte le finestre**; a zero il manichino diventa rosso e
   respawna dopo 6 secondi, di nuovo in sincrono.

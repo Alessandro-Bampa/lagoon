@@ -3,18 +3,12 @@ using Godot;
 namespace Lagoon;
 
 /// <summary>
-/// Reticolo: sostituisce visivamente il cursore quando il giocatore ha un'arma in mano.
-///
-/// Il cursore del sistema resta VISIBILE e non viene catturato: tutto l'inventario e' drag &amp; drop
-/// e dipende dal cursore reale (<see cref="InventoryDrag"/>, <see cref="GridPanelView"/>). Il
-/// reticolo si disegna quindi attorno alla posizione del mouse invece di sostituirla, e sparisce
-/// appena l'inventario o una modale prendono il controllo.
+/// Reticolo al centro dello schermo. Da disarmati e' un solo punto (serve a puntare gli oggetti da
+/// raccogliere); con un'arma in mano si aggiunge l'anello della dispersione.
 ///
 /// L'anello rappresenta il cono di tiro reale: il raggio in pixel deriva dalla stessa formula usata
-/// dall'host (<see cref="WeaponDefinition.SpreadDegrees"/>) applicata alla distanza di mira
-/// corrente. Con camera ortogonale la conversione mondo-&gt;pixel e' esatta e costante
-/// (<c>altezzaViewport / Camera3D.Size</c>), quindi quello che si vede e' davvero l'area in cui il
-/// colpo puo' cadere.
+/// dall'host (<see cref="WeaponDefinition.SpreadDegrees"/>), convertita da angolo a pixel col campo
+/// visivo corrente della camera. Sparisce quando l'inventario o una modale prendono il cursore.
 /// </summary>
 public partial class CrosshairOverlay : Control
 {
@@ -28,14 +22,14 @@ public partial class CrosshairOverlay : Control
 
     private readonly WeaponController _weapon;
     private readonly WeaponInput _input;
-    private readonly IsometricCamera _camera;
+    private readonly FirstPersonCamera _camera;
     private readonly GameManager _game;
     private readonly PlayerHud _hud;
 
     private float _hitMarker;
 
     public CrosshairOverlay(
-        WeaponController weapon, WeaponInput input, IsometricCamera camera,
+        WeaponController weapon, WeaponInput input, FirstPersonCamera camera,
         GameManager game, PlayerHud hud)
     {
         _weapon = weapon;
@@ -69,30 +63,34 @@ public partial class CrosshairOverlay : Control
 
     public override void _Draw()
     {
-        WeaponDefinition? weapon = _weapon.HeldWeapon;
-        if (weapon == null || _game.UiModalOpen || _hud.InventoryOpen)
+        if (_game.UiModalOpen || _hud.InventoryOpen)
             return;
 
-        Vector2 center = GetViewport().GetMousePosition() - GlobalPosition;
-
+        Vector2 center = Size * 0.5f;
         DrawCircle(center, 2f, DotColor);
+
+        WeaponDefinition? weapon = _weapon.HeldWeapon;
+        if (weapon == null)
+            return;
+
         DrawArc(center, RingRadius(weapon), 0f, Mathf.Tau, 48, RingColor, 1.5f, antialiased: true);
 
         if (_hitMarker > 0f)
             DrawHitMarker(center);
     }
 
-    /// Raggio dell'anello in pixel: dispersione angolare -> raggio nel mondo alla distanza di mira
-    /// -> pixel, sfruttando la scala costante della proiezione ortogonale.
+    /// <summary>
+    /// Raggio dell'anello in pixel. In prospettiva un angolo dal centro copre
+    /// <c>tan(angolo) / tan(fov/2)</c> della mezza altezza dello schermo, a qualunque distanza: la
+    /// distanza di mira entra solo nella formula della dispersione.
+    /// </summary>
     private float RingRadius(WeaponDefinition weapon)
     {
         float spread = weapon.SpreadDegrees(_input.AimDistance, _weapon.RecoilSpread);
-        float worldRadius = _input.AimDistance * Mathf.Tan(Mathf.DegToRad(spread));
+        float halfFov = Mathf.DegToRad(_camera.Fov * 0.5f);
+        float radius = Mathf.Tan(Mathf.DegToRad(spread)) / Mathf.Tan(halfFov) * Size.Y * 0.5f;
 
-        float viewportHeight = GetViewport().GetVisibleRect().Size.Y;
-        float pixelsPerMeter = _camera.Size <= 0f ? 0f : viewportHeight / _camera.Size;
-
-        return Mathf.Clamp(worldRadius * pixelsPerMeter, MinRadius, MaxRadius);
+        return Mathf.Clamp(radius, MinRadius, MaxRadius);
     }
 
     /// Quattro tacche diagonali: conferma che il colpo ha trovato un bersaglio.

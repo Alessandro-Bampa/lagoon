@@ -20,10 +20,8 @@ namespace Lagoon;
 /// </summary>
 public static class ObstacleProbe
 {
-    /// Maschera degli strati misurati: il mondo statico, il ponte dei veicoli e i solai degli
-    /// edifici (ci si scavalca sopra a tutti e tre).
-    private const uint ProbeMask =
-        CollisionLayers.World | CollisionLayers.VehicleDeck | CollisionLayers.BuildingCover;
+    /// Maschera degli strati misurati: il mondo statico e il ponte dei veicoli.
+    private const uint ProbeMask = CollisionLayers.World | CollisionLayers.VehicleDeck;
 
     /// Componente verticale della normale oltre la quale non e' un muro ma una rampa o un pavimento.
     private const float MaxWallNormalY = 0.4f;

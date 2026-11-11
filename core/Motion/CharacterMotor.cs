@@ -28,11 +28,20 @@ public partial class CharacterMotor : CharacterBody3D
     [Export] public float JumpVelocity { get; set; } = 6.0f;
 
     /// <summary>
-    /// Velocita' con cui l'avatar ruota verso la direzione voluta. Serve perche' da armato
-    /// l'orientamento insegue il cursore, che puo' saltare da una parte all'altra dello schermo in un
-    /// frame: senza smorzamento l'avatar scatterebbe.
+    /// Velocita' con cui il corpo ruota verso la direzione voluta. Per il giocatore la direzione e'
+    /// lo sguardo: lo smorzamento assorbe gli scatti del mouse, e in mira lo scarto residuo lo
+    /// chiude il busto (SpineAimModifier).
     /// </summary>
     [Export] public float TurnSpeed { get; set; } = 14.0f;
+
+    /// <summary>
+    /// Quota degli occhi sopra i piedi, in piedi e accovacciati. E' il punto di vista NOMINALE:
+    /// la camera del giocatore segue la testa animata e gli sta a pochi centimetri, ma l'host ha
+    /// bisogno di un punto ricostruibile dal solo stato replicato (<see cref="ResolvedEyePosition"/>).
+    /// </summary>
+    [Export] public float EyeHeight { get; set; } = 1.62f;
+
+    [Export] public float CrouchEyeHeight { get; set; } = 1.04f;
 
     /// <summary>
     /// Velocita' d'impatto oltre la quale l'atterraggio e' "duro". Non ha alcun effetto sul
@@ -53,18 +62,8 @@ public partial class CharacterMotor : CharacterBody3D
     [Export] public float HardLandingLockSeconds { get; set; } = 2.03f;
 
     /// <summary>
-    /// Scarto di imbardata fra mira e corpo oltre il quale, DA FERMI in mira, il corpo comincia a
-    /// ruotare (turn-in-place). Sotto questa soglia ci pensa il busto (SpineAimModifier), che
-    /// corregge fino a 70 gradi: 55 lascia margine perche' parte della correzione serve al pitch.
-    /// </summary>
-    [Export] public float TurnStartDegrees { get; set; } = 55.0f;
-
-    /// Isteresi del turn-in-place: una volta partito, il corpo recupera fin sotto questa soglia.
-    [Export] public float TurnStopDegrees { get; set; } = 8.0f;
-
-    /// <summary>
-    /// Durata della stance di mira "agganciata" dopo un colpo sparato senza mirare (hip-fire):
-    /// l'arma resta alzata quel tanto che serve a far leggere il colpo, senza vietare nulla.
+    /// Per quanto l'arma resta alzata dopo un colpo sparato con l'arma abbassata (in corsa): quel
+    /// tanto che serve a far leggere il colpo, senza vietare nulla.
     /// </summary>
     [Export] public float HipFireAimSeconds { get; set; } = 0.6f;
 
@@ -160,8 +159,8 @@ public partial class CharacterMotor : CharacterBody3D
 
     /// <summary>
     /// Velocita' orizzontale minima per agganciare una manovra, in m/s. A zero si scavalca anche
-    /// da fermi: e' il default perche' con la camera isometrica avvicinarsi a un muretto e premere
-    /// salto e' il gesto naturale, e pretendere la rincorsa si legge come un mancato input.
+    /// da fermi: e' il default perche' avvicinarsi a un muretto e premere salto e' il gesto
+    /// naturale, e pretendere la rincorsa si legge come un mancato input.
     /// </summary>
     [Export] public float MinParkourSpeed { get; set; }
 
@@ -180,8 +179,6 @@ public partial class CharacterMotor : CharacterBody3D
     /// Qui la ridefinizione e' l'identita': un NPC non sale in barca, quindi la sua SyncPosition e'
     /// gia' in coordinate mondo. La sovrascrive <c>PlayerController</c>.
     ///
-    /// Serve al sistema di visione, che lavora sia su giocatori sia su NPC e non deve conoscerne
-    /// il tipo concreto.
     /// </summary>
     public virtual Vector3 ResolvedSyncPosition => SyncPosition;
 
@@ -190,11 +187,23 @@ public partial class CharacterMotor : CharacterBody3D
     ///
     /// L'origine del <c>CharacterBody3D</c> sta a meta' capsula, non a terra, e accovacciandosi non
     /// si sposta (e' la forma che si accorcia verso l'alto, vedi <c>ApplyCrouchShape</c>): sottrarre
-    /// meta' <see cref="StandHeight"/> da' sempre il suolo su cui si poggia. Serve a chi ragiona per
-    /// quote — il piano di ripiego della mira, le bande di piano del cutaway degli edifici — dove
-    /// usare il centro del corpo sbaglierebbe di un metro buono.
+    /// meta' <see cref="StandHeight"/> da' sempre il suolo su cui si poggia.
     /// </summary>
     public float ResolvedFeetY => ResolvedSyncPosition.Y - StandHeight * 0.5f;
+
+    /// <summary>
+    /// Punto di vista secondo lo stato REPLICATO, in coordinate mondo. E' l'origine dei colpi lato
+    /// host: mai un dato del client, mai <c>GlobalPosition</c> (interpolata sugli avatar remoti).
+    /// </summary>
+    public Vector3 ResolvedEyePosition
+    {
+        get
+        {
+            Vector3 position = ResolvedSyncPosition;
+            position.Y = ResolvedFeetY + (SyncCrouching ? CrouchEyeHeight : EyeHeight);
+            return position;
+        }
+    }
 
     /// Altezza della capsula in piedi, letta una volta dalla scena. Zero prima di <c>_Ready</c>.
     public float StandHeight => _standHeight;
@@ -231,29 +240,25 @@ public partial class CharacterMotor : CharacterBody3D
     [Export] public bool SyncVaulting { get; set; }
 
     /// <summary>
-    /// Inclinazione della mira, in radianti: positiva verso l'alto, zero all'orizzonte.
+    /// Inclinazione dello SGUARDO, in radianti: positiva verso l'alto, zero all'orizzonte.
     ///
-    /// E' l'UNICO dato replicato aggiunto per l'animazione, e c'e' perche' non e' derivabile da
-    /// nient'altro: il punto di mira lo calcola solo il peer proprietario, quindi senza questo gli
-    /// avatar remoti punterebbero l'arma sempre all'orizzonte. Lo consuma il rig di mira
-    /// procedurale, e in prospettiva anche il combattimento.
+    /// Con <see cref="SyncAimYaw"/> e <see cref="SyncAiming"/> e' l'eccezione dichiarata alla
+    /// regola "niente dati replicati per l'animazione": dove guarda un giocatore lo sa solo il
+    /// suo peer, quindi senza questi gli avatar remoti punterebbero l'arma sempre all'orizzonte.
+    /// I bridge ricostruiscono la direzione da (SyncAimYaw, SyncAimPitch).
     /// </summary>
     [Export] public float SyncAimPitch { get; set; }
 
     /// <summary>
-    /// Imbardata della MIRA in coordinate mondo, in radianti. Seconda eccezione dichiarata alla
-    /// regola "niente dati replicati per l'animazione", per lo stesso motivo di
-    /// <see cref="SyncAimPitch"/>: il punto di mira lo conosce solo il peer proprietario, e da
-    /// quando il corpo puo' guardare altrove (mira col busto, turn-in-place) non e' piu'
-    /// derivabile da <see cref="SyncFacing"/>. I bridge ricostruiscono la direzione di mira da
-    /// (SyncAimYaw, SyncAimPitch); fuori mira i derivati la tengono uguale a SyncFacing.
+    /// Imbardata dello SGUARDO in coordinate mondo, in radianti. Distinta da
+    /// <see cref="SyncFacing"/>, che la insegue smorzata: lo scarto lo chiude il busto. Chi non ha
+    /// uno sguardo proprio (NPC disarmato) la tiene uguale a SyncFacing.
     /// </summary>
     [Export] public float SyncAimYaw { get; set; }
 
     /// <summary>
-    /// Stance di mira attiva (RMB tenuto, o latch dopo un hip-fire). Terza eccezione dichiarata:
-    /// decide la posa (arma alzata contro porto rilassato) sugli avatar remoti, e non e'
-    /// derivabile da nient'altro perche' l'input di mira esiste solo sul peer proprietario.
+    /// Arma alzata e puntata sullo sguardo (contro porto rilassato). Per il giocatore: armato e
+    /// non in corsa. Decide la posa sugli avatar remoti.
     /// </summary>
     [Export] public bool SyncAiming { get; set; }
 
@@ -296,9 +301,6 @@ public partial class CharacterMotor : CharacterBody3D
 
     /// Tempo trascorso dall'ultimo contatto reale col pavimento (vedi GroundedGraceSeconds).
     private float _airTime;
-
-    /// Stato dell'isteresi del turn-in-place (vedi <see cref="PlanAimFacing"/>).
-    private bool _turningInPlace;
 
     /// Tempo residuo del blocco d'atterraggio duro (vedi <see cref="HardLandingLockSeconds"/>).
     private float _landLock;
@@ -747,42 +749,6 @@ public partial class CharacterMotor : CharacterBody3D
     {
         SyncFacing = Mathf.LerpAngle(SyncFacing, targetYaw, Mathf.Clamp((float)delta * TurnSpeed, 0f, 1f));
         Visual.Rotation = new Vector3(0f, SyncFacing, 0f);
-    }
-
-    /// <summary>
-    /// Decide l'imbardata bersaglio del CORPO mentre si sta mirando: la mira la insegue il busto
-    /// (SpineAimModifier), il corpo solo quando serve.
-    ///
-    /// In movimento il corpo insegue sempre la mira (e' cio' che attiva lo strafe armato). Da fermi
-    /// c'e' una zona morta con isteresi: il corpo non ruota finche' lo scarto resta sotto
-    /// <see cref="TurnStartDegrees"/>, poi recupera (turn-in-place) fin sotto
-    /// <see cref="TurnStopDegrees"/>. Le due soglie sono distinte apposta: con una sola, ai bordi
-    /// della zona morta il corpo partirebbe e si fermerebbe a ogni oscillazione del mouse.
-    ///
-    /// Pubblico e senza stato nascosto oltre a <c>_turningInPlace</c>: cosi' e' testabile dalla
-    /// suite runtime e riusabile pari pari da un futuro NPC armato.
-    /// </summary>
-    public float PlanAimFacing(float currentYaw, float aimYaw, bool moving)
-    {
-        if (moving)
-        {
-            _turningInPlace = false;
-            return aimYaw;
-        }
-
-        float delta = Mathf.Abs(Mathf.AngleDifference(currentYaw, aimYaw));
-
-        if (_turningInPlace)
-        {
-            if (delta < Mathf.DegToRad(TurnStopDegrees))
-                _turningInPlace = false;
-        }
-        else if (delta > Mathf.DegToRad(TurnStartDegrees))
-        {
-            _turningInPlace = true;
-        }
-
-        return _turningInPlace ? aimYaw : currentYaw;
     }
 
     /// <summary>

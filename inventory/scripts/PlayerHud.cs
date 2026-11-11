@@ -7,8 +7,12 @@ namespace Lagoon;
 /// <see cref="PlayerNetworkSync"/>). Crea il proprio <c>CanvasLayer</c> con la schermata inventario
 /// e la hotbar, e traduce l'input in richieste. Nessuna logica di inventario qui.
 ///
+/// E' anche il PROPRIETARIO DEL CURSORE: in gioco il mouse e' catturato dallo sguardo, e solo qui
+/// si decide quando restituirlo alla UI (inventario aperto, modale aperta). Chi apre una UI non
+/// tocca mai <c>Input.MouseMode</c>: alza il proprio stato e basta.
+///
 /// Interazione col mondo in stile Tarkov:
-///  - avvicinandosi a un oggetto compare il prompt "Nome [F]" (bianco semitrasparente);
+///  - GUARDANDO un oggetto a portata compare il prompt "Nome [F]" (bianco semitrasparente);
 ///  - <b>F</b> breve raccoglie l'oggetto, oppure APRE il contenitore se e' una cassa;
 ///  - <b>F</b> tenuto premuto apre il menu contestuale a terra (Raccogli / Esamina).
 /// </summary>
@@ -17,7 +21,14 @@ public partial class PlayerHud : Node
     /// Quanto va tenuto premuto F per ottenere il menu contestuale invece della raccolta diretta.
     private const float HoldSeconds = 0.35f;
 
+    /// Coseno dell'angolo massimo fra lo sguardo e un oggetto perche' lo si stia "guardando" (20°).
+    private const float LookAtCosine = 0.94f;
+
+    /// Altezza del centro di un oggetto a terra: si punta al cubo, non alla sua base.
+    private const float PickupCenterHeight = 0.25f;
+
     private PlayerInventory _inventory = null!;
+    private Camera3D? _camera;
     private GameManager _game = null!;
     private SettingsService? _settings;
     private InventoryScreen? _screen;
@@ -63,6 +74,8 @@ public partial class PlayerHud : Node
             return;
         }
 
+        _camera = GetParent().GetNodeOrNull<Camera3D>("PlayerCamera");
+
         var layer = new CanvasLayer { Layer = 10 };
         AddChild(layer);
 
@@ -101,6 +114,20 @@ public partial class PlayerHud : Node
         GetTree().Root.SizeChanged -= SyncHudRect;
         if (_settings != null)
             _settings.UiScaleChanged -= OnUiScaleChanged;
+
+        // Senza avatar locale non c'e' piu' nessuno sguardo da pilotare: il cursore torna alla UI.
+        Input.MouseMode = Input.MouseModeEnum.Visible;
+    }
+
+    /// In gioco il mouse e' dello sguardo; inventario e modali lo restituiscono al cursore.
+    private void UpdateMouseCapture()
+    {
+        Input.MouseModeEnum wanted = _game.UiModalOpen || InventoryOpen
+            ? Input.MouseModeEnum.Visible
+            : Input.MouseModeEnum.Captured;
+
+        if (Input.MouseMode != wanted)
+            Input.MouseMode = wanted;
     }
 
     /// <summary>
@@ -113,7 +140,7 @@ public partial class PlayerHud : Node
         Node parent = GetParent();
         var weapon = parent.GetNodeOrNull<WeaponController>("Weapon");
         var weaponInput = parent.GetNodeOrNull<WeaponInput>("WeaponInput");
-        var camera = parent.GetNodeOrNull<IsometricCamera>("PlayerCamera");
+        var camera = parent.GetNodeOrNull<FirstPersonCamera>("PlayerCamera");
         var health = parent.GetNodeOrNull<HealthComponent>("Health");
 
         if (weapon == null || health == null || _hudRoot == null)
@@ -148,6 +175,7 @@ public partial class PlayerHud : Node
 
     public override void _Process(double delta)
     {
+        UpdateMouseCapture();
         UpdateWorldPrompt();
 
         // Se il menu di pausa si apre mentre F e' premuto, annulla la pressione in corso.
@@ -172,10 +200,10 @@ public partial class PlayerHud : Node
             ShowGroundMenu(_heldTarget);
     }
 
-    /// Mostra il prompt solo sull'oggetto piu' vicino entro il raggio, e solo a chi gioca qui.
+    /// Mostra il prompt solo sull'oggetto che si sta guardando, e solo a chi gioca qui.
     private void UpdateWorldPrompt()
     {
-        ItemPickup? nearest = FindNearestPickup();
+        ItemPickup? nearest = FindTargetPickup();
         if (ReferenceEquals(nearest, _prompted))
             return;
 
@@ -211,7 +239,8 @@ public partial class PlayerHud : Node
             menu.QueueFree();
         };
 
-        menu.Position = (Vector2I)GetViewport().GetMousePosition();
+        // Il mouse era catturato dallo sguardo: il menu si apre al centro, dove c'e' il reticolo.
+        menu.Position = (Vector2I)(GetViewport().GetVisibleRect().Size * 0.5f);
         menu.Popup();
 
         // Il menu e' un'azione da inventario: assicura che la schermata sia visibile per usarlo.
@@ -282,7 +311,7 @@ public partial class PlayerHud : Node
         // Effetto collaterale desiderabile: F a vuoto non viene piu' ingoiato.
         if (@event.IsActionPressed("interact"))
         {
-            ItemPickup? target = FindNearestPickup(out float pickupDistance);
+            ItemPickup? target = FindTargetPickup(out float pickupDistance);
             _interactClaimed = target != null
                 && !VehicleInteraction.VehicleWins(GetParent<PlayerController>(), pickupDistance);
             if (!_interactClaimed)
@@ -322,32 +351,48 @@ public partial class PlayerHud : Node
         }
     }
 
-    /// Pickup piu' vicino entro il raggio di interazione (o null).
-    private ItemPickup? FindNearestPickup() => FindNearestPickup(out _);
+    /// Pickup che si sta guardando, entro il raggio di interazione (o null).
+    private ItemPickup? FindTargetPickup() => FindTargetPickup(out _);
 
     /// <summary>
-    /// Come sopra, ma restituisce anche la distanza dal candidato (<see cref="float.MaxValue"/> se non
-    /// ce n'e' nessuno): serve all'arbitraggio di F fra oggetto a terra e timone.
+    /// Fra i pickup a portata sceglie quello piu' vicino all'asse dello sguardo, entro
+    /// <see cref="LookAtCosine"/>. La PORTATA resta la distanza dal corpo, la stessa che l'host
+    /// rivalida (<see cref="PlayerInventory.PickupRange"/>): lo sguardo sceglie solo QUALE oggetto,
+    /// ed e' una decisione locale. Restituisce anche la distanza del candidato
+    /// (<see cref="float.MaxValue"/> se non ce n'e'), per l'arbitraggio di F col timone.
     /// </summary>
-    private ItemPickup? FindNearestPickup(out float distance)
+    private ItemPickup? FindTargetPickup(out float distance)
     {
+        distance = float.MaxValue;
+        if (_camera == null)
+            return null;
+
         Vector3 playerPos = GetParent<Node3D>().GlobalPosition;
-        ItemPickup? nearest = null;
-        float best = PlayerInventory.PickupRange;
+        Vector3 eye = _camera.GlobalPosition;
+        Vector3 look = -_camera.GlobalBasis.Z;
+
+        ItemPickup? target = null;
+        float bestAlignment = LookAtCosine;
 
         foreach (Node node in GetTree().GetNodesInGroup(ItemPickup.GroupName))
         {
             if (node is not ItemPickup pickup || pickup.IsQueuedForDeletion())
                 continue;
+
             float d = pickup.GlobalPosition.DistanceTo(playerPos);
-            if (d <= best)
+            if (d > PlayerInventory.PickupRange)
+                continue;
+
+            Vector3 toPickup = pickup.GlobalPosition + Vector3.Up * PickupCenterHeight - eye;
+            float alignment = toPickup.Normalized().Dot(look);
+            if (alignment > bestAlignment)
             {
-                best = d;
-                nearest = pickup;
+                bestAlignment = alignment;
+                target = pickup;
+                distance = d;
             }
         }
 
-        distance = nearest != null ? best : float.MaxValue;
-        return nearest;
+        return target;
     }
 }

@@ -5,8 +5,9 @@ namespace Lagoon;
 /// <summary>
 /// Misura quanto spazio ha la canna davanti a se'.
 ///
-/// Serve a non far attraversare i muri all'arma. Con la camera isometrica ci si accosta di
-/// continuo agli spigoli, e un'arma lunga rigidamente attaccata alla mano entra nella geometria:
+/// Serve a non far attraversare i muri all'arma. Ci si accosta di continuo a muri e spigoli, e
+/// un'arma lunga rigidamente attaccata alla mano entra nella geometria — in prima persona proprio
+/// davanti agli occhi:
 /// e' il difetto piu' visibile che resta quando presa e mira funzionano gia'. La reazione — alzare
 /// la canna e ritrarre l'arma, cioe' il "port arms" — e' procedurale apposta: dipende dalla
 /// distanza dall'ostacolo, che nessuna clip puo' conoscere.
@@ -49,8 +50,7 @@ public sealed class WeaponSpaceProbe
             var query = PhysicsRayQueryParameters3D.Create(
                 origin,
                 origin + grip.GlobalBasis.Z.Normalized() * reach,
-                CollisionLayers.World | CollisionLayers.Vehicles | CollisionLayers.VehicleDeck
-                    | CollisionLayers.BuildingCover);
+                CollisionLayers.World | CollisionLayers.Vehicles | CollisionLayers.VehicleDeck);
 
             Godot.Collections.Dictionary hit = _owner.GetWorld3D().DirectSpaceState.IntersectRay(query);
             if (hit.Count > 0)

@@ -109,7 +109,7 @@ public partial class SpineAimModifier : SkeletonModifier3D
         _forwardInTip = _skeleton.GetBoneGlobalRest(_bones[^1]).Basis.Inverse() * SkeletonForward;
     }
 
-    public override void _ProcessModification()
+    public override void _ProcessModificationWithDelta(double delta)
     {
         if (_skeleton == null || _bones.Length == 0 || Weights.Length < _bones.Length)
             return;

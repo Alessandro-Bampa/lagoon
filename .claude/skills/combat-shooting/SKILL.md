@@ -1,170 +1,102 @@
 ---
 name: combat-shooting
-description: Sistema di tiro e danno del gioco (Fase 3 del prototipo). Carica questa skill quando tocchi la cartella combat/, oppure quando si parla di armi, sparare, danno, salute/HP, morte, hitbox, mira, reticolo, munizioni, ricarica, rinculo, dispersione/precisione, traccianti, collision layer 3D, o i file WeaponController, WeaponDefinition, WeaponInput, WeaponVisual, HealthComponent, HitboxComponent, AimResolver, ShotEffects, CrosshairOverlay, WeaponHudPanel, TargetDummy, CollisionLayers.
+description: Tiro e danno. Carica quando tocchi combat/ o CollisionLayers, oppure si parla di armi, sparare, danno, salute/HP, hitbox, mira, reticolo, munizioni, ricarica, rinculo, dispersione, traccianti, collision layer 3D (WeaponController, WeaponInput, WeaponDefinition, WeaponVisual, HealthComponent, HitboxComponent, AimResolver, ShotEffects, CrosshairOverlay, WeaponHudPanel, TargetDummy).
 ---
 
-# Sistema di tiro (Fase 3)
+# Tiro e danno
 
-Arma **hitscan** (nessun proiettile simulato: `WeaponDefinition.ProjectileSpeed` è dichiarato ma inutilizzato), mira col cursore, munizioni e ricarica reali, danno interamente host-authoritative.
+Armi **hitscan**, mira al centro dello schermo (prima persona), danno host-authoritative.
+`combat/scripts/` + `core/Utils/CollisionLayers.cs`.
 
-Vive in `combat/scripts/` (11 script) + `combat/scenes/TargetDummy.tscn` + `core/Utils/CollisionLayers.cs`.
+## 1. Un colpo: intento dal client, tutto il resto dall'host
 
----
-
-## 1. Come il pattern `RequestHit` di CLAUDE.md §3 è realizzato davvero
-
-Lo snippet in CLAUDE.md §3 è **didattico**: mostra la forma del pattern, non la firma da usare. Una `RequestHit(int damage)` chiamabile dal client è **esplicitamente rifiutata** in questo progetto, perché lascia al client decidere *chi* ha colpito e *quanto* danno ha fatto — cioè esattamente ciò che il §3.2 vieta. Falsificarla sarebbe banale.
-
-La realizzazione reale separa i ruoli:
-
-| Ruolo | Chi | Come |
+| Passo | Chi | Come |
 |---|---|---|
-| Intento | client | `WeaponController.RequestFire(Vector3 aimPoint)` — RPC `AnyPeer`. Il client invia **solo il punto verso cui sta mirando**. Mai un bersaglio, mai un'origine, mai un ammontare di danno. |
-| Calcolo | host | Ricava l'origine da `PlayerController.ResolvedSyncPosition` (lo stato *replicato* del tiratore, non `GlobalPosition`), tira il dado della dispersione, ri-traccia il raggio, applica il falloff. Dalla Fase 4 **non** si usa `SyncPosition` grezza: può essere in coordinate locali a un'imbarcazione (skill `vehicles-boats` §1). |
-| Applicazione | host | `HealthComponent.ApplyDamage(amount, attacker, hitDirection)` — metodo **normale, non RPC**. Non è raggiungibile dalla rete per costruzione. |
-| Propagazione | rete | La salute è una proprietà replicata da un `MultiplayerSynchronizer` a **tutti** i peer. |
-| Estetica | host → tutti | `WeaponController.BroadcastShot(...)` e `HealthComponent.BroadcastHitReaction(...)` — RPC `Authority`, `Unreliable`. Traccianti, vampe e flinch: nessun effetto sullo stato. |
+| Intento | client | `WeaponInput` → `AimResolver.ResolveAimPoint(camera, propriaHitbox)` → `WeaponController.SubmitFire(aimPoint)`. Solo il punto mirato: mai bersaglio, origine o danno. |
+| Calcolo | host | `RequestFire`: origine = `CharacterMotor.ResolvedEyePosition`, dispersione con RNG host, `AimResolver.TraceShot`, falloff. |
+| Danno | host | `HealthComponent.ApplyDamage(amount, attacker, hitDirection)`: metodo normale, **non RPC**. |
+| Stato | replica | `CurrentHealth`, `MagazineAmmo`, `ReserveAmmo`, `RecoilSpread`, `Reloading`, `HeldItemId` → **tutti** i peer. |
+| Estetica | host → tutti | `BroadcastShot`, `BroadcastHitReaction`: RPC `Authority`, `Unreliable`. |
 
-**La direzione del colpo viaggia, l'ammontare del danno no.** `ApplyDamage` prende un terzo
-parametro `hitDirection` — la direzione di *volo* del proiettile in coordinate mondo, calcolata
-host-side in `RequestFire` (è `shotDir`, quindi **dopo** la dispersione) — e da lì parte
-`BroadcastHitReaction`, che alimenta la reazione animata su ogni peer. È una grandezza **geometrica**,
-non un esito di gioco: decide solo da che lato il busto incassa il colpo, esattamente come la
-velocità d'impatto di `Landed` decide solo quanto flette il bacino (CLAUDE.md §3).
+Validazioni di `RequestFire`, in ordine: mittente = proprietario · arma ancora nel suo slot
+(`HoldStillValid`, altrimenti rinfodera) · non in ricarica · caricatore > 0 · mani libere · cadenza
+(10% di tolleranza) · `aimPoint` finito · oltre `MaxRange` si **clampa**, non si rifiuta.
 
-La RPC parte **dopo** che il danno è stato applicato, dentro `ApplyDamage`, e dopo i guard di
-autorità: un colpo rifiutato dalla validazione non produce mai una reazione. È `Unreliable` di
-proposito — un flinch perso non desincronizza nulla, lo stato vero è la salute replicata. Il consumo
-è nei bridge di animazione (skill `character-animation` §5).
+- **L'origine viene sempre dallo stato replicato**: mai `GlobalPosition` (interpolata sui remoti), mai
+  `SyncPosition` grezza (su una barca è locale allo scafo → `ResolvedSyncPosition`).
+- `HandsFree` legge `SyncVaulting` **replicato**, non `Vaulting`: il movimento è client-authoritative,
+  l'host non esegue il parkour di un tiratore remoto.
+- `RequestHold` **non** consulta `HandsFree`: rifiutare un cambio d'arma lascerebbe host e client in
+  disaccordo su cosa si impugna.
+- `WeaponInput.Suppressed` (modale, inventario, parkour) è il lato locale delle stesse regole: la vampa
+  è immediata, e senza si vedrebbe partire un colpo che l'host non conta.
+- `hitDirection` è la direzione di volo **dopo** la dispersione e alimenta il flinch. Viaggia la
+  direzione, mai l'ammontare del danno. La RPC parte dopo `ApplyDamage`: un colpo rifiutato non reagisce.
+- Triade delle RPC: `SubmitX` (host locale / client `RpcId(host)`) → `RequestX` (`AnyPeer` +
+  `ValidateSender`) → proprietà replicate.
 
----
+## 2. Prima persona
 
-## 2. Mappa delle autorità
+- **Mira = asse della camera.** `ResolveAimPoint` traccia dal centro dello schermo; nel vuoto ritorna
+  un punto lontano sullo stesso asse. Mira e colpo usano la **stessa** maschera (`ShotMask`).
+- **Il colpo parte dagli occhi**, non dalla canna: ciò che sta sotto al reticolo è ciò che viene
+  colpito. L'host usa il punto nominale (`EyeHeight` 1.62 / `CrouchEyeHeight` 1.04 sopra i piedi); la
+  camera del client segue la testa animata e gli sta a pochi cm. Se cambi rig o clip di crouch,
+  **rimisura** quelle due quote.
+- **Tracciante e vampa partono dalla bocca dell'arma** (`ShotEffects.MuzzleOffset` nel frame della
+  presa): è solo estetica. Dall'origine vera sarebbe un segmento visto di punta.
+- **Rinculo**: `RecoilSpread` (host, replicato) allarga il cono; `WeaponDefinition.CameraKick` (gradi)
+  ruota la visuale in locale e rientra (`FirstPersonCamera.AddKick`). Il calcio sposta davvero il punto
+  mirato finché non rientra: è voluto.
+- **Tasto `aim`**: stringe solo il FOV, è locale. `SyncAiming` (arma alzata) vale "armato e non in
+  corsa" e lo decide `PlayerController`.
 
-| Nodo | Autorità | Perché |
-|---|---|---|
-| `Player` (root) + `Synchronizer` | peer proprietario | Movimento client-authoritative (Fase 1) |
-| `Player/Inventory` | **host** | Nessun client crea oggetti |
-| `Player/Health` + `Health/Sync` | **host** | Nessun client decide di essere vivo |
-| `Player/Weapon` + `Weapon/Sync` | **host** | Nessun client decide di aver colpito |
-| `Player/WeaponInput`, `Player/Hud` | — | Solo locali; leggono `GetParent().IsMultiplayerAuthority()` |
-| `TargetDummy/Health` + `Sync` | **host** | |
+## 3. Autorità sotto `Player`
 
-**Ordine di `_EnterTree` — attenzione a non romperlo.** `PlayerController._EnterTree` marchia *ricorsivamente* l'intero sottoalbero col peer proprietario. `HealthComponent` e `WeaponController` fanno poi `SetMultiplayerAuthority(HostPeerId)` nel proprio `_EnterTree`, anch'esso ricorsivo: è per questo che **i loro `MultiplayerSynchronizer` devono essere nodi *figli*, non fratelli sotto la root del Player** — altrimenti resterebbero sull'autorità del peer e la replica partirebbe dal lato sbagliato. Vale per qualunque nodo host-autoritativo aggiunto in futuro sotto `Player`.
+| Nodo | Autorità |
+|---|---|
+| `Player` root + `Synchronizer` | peer proprietario (movimento e sguardo) |
+| `Inventory`, `Health` + `Sync`, `Weapon` + `Sync` | **host** |
+| `WeaponInput`, `Hud`, `PlayerCamera` | solo locali |
 
-**Visibilità della replica.** L'inventario fa push del proprio stato al *solo* proprietario (il contenuto delle tasche altrui non riguarda nessuno). Salute e stato dell'arma invece si replicano a **tutti** i peer: servono per le barre HP, per vedere chi impugna cosa, e sono il criterio di completamento della fase.
-
----
-
-## 3. Flusso di un colpo
-
-```
-client            WeaponInput: cursore -> AimResolver.ResolveAimPoint (raycast)
-  │                                       ↓ Vector3 aimPoint (INTENTO)
-  ├── RpcId(host, RequestFire, aimPoint)
-  │
-host              validazioni in ordine: mittente == proprietario · arma è un WeaponDefinition ·
-  │               l'istanza è ANCORA nel suo slot equip · non in ricarica · caricatore > 0 ·
-  │               mani libere (non si scavalca: SyncVaulting replicato) ·
-  │               cadenza (RPM, tolleranza 10% per il jitter) · aimPoint finito ·
-  │               distanza > MaxRange -> CLAMP, non rifiuto (mirare al cielo è legittimo)
-  │               origine = PlayerController.SyncPosition + 1.1 m   ← stato REPLICATO, mai
-  │                                                                   GlobalPosition né dati client
-  │               dispersione (RNG host) -> IntersectRay -> HitboxComponent.ApplyDamage
-  │
-  ├── proprietà replicate (MagazineAmmo, RecoilSpread, CurrentHealth del bersaglio) -> tutti
-  └── Rpc(BroadcastShot, origin, end, hit)  -> tutti, Unreliable, solo estetica
-```
-
-Le RPC di `WeaponController` seguono la stessa triade di `PlayerInventory`: `SubmitX()` (host = locale, client = `RpcId(host)`) → `RequestX` (`AnyPeer`, `ValidateSender()`) → proprietà replicate.
-
-`HandsFree()` è il guard che rifiuta fuoco e ricarica mentre è in corso uno scavalcamento o
-un'arrampicata: durante la manovra le mani reggono l'ostacolo (`VaultIkRig` ce le porta davvero) e
-l'arma è nascosta. Legge `CharacterMotor.SyncVaulting`, cioè lo **stato replicato**, e non
-`Vaulting`: il movimento è client-authoritative, quindi per un tiratore remoto l'host non esegue la
-manovra e lo stato locale sarebbe sempre falso — è la stessa ragione per cui l'origine del colpo
-viene da `ResolvedSyncPosition`. `WeaponInput.Suppressed` fa da lato locale della stessa regola,
-perché la vampa alla bocca è immediata (§5) e senza si vedrebbe sparare un colpo che l'host non
-conta. **`RequestHold` NON lo consulta**: cambiare slot non produce un colpo, e rifiutarlo lascerebbe
-host e client in disaccordo su cosa si ha in mano.
-
-`HoldStillValid()` è il guard che decade l'impugnatura se l'arma esce dal suo slot equip (spostata, lasciata cadere, messa nello zaino). È chiamato prima di sparare e di ricaricare, e su ogni `PlayerInventory.HostStateChanged`.
-
----
+`PlayerController._EnterTree` marchia tutto il sottoalbero col peer proprietario; i nodi host-autoritativi
+si riprendono l'autorità nel **proprio** `_EnterTree`. Per questo i loro `MultiplayerSynchronizer` devono
+essere nodi **figli**, non fratelli.
 
 ## 4. Collision layer
 
-Prima della Fase 3 tutto stava sul layer 1, quindi un raycast di mira avrebbe colpito la capsula di chi spara. Lo schema (`[layer_names]` in `project.godot`, rispecchiato da `core/Utils/CollisionLayers.cs`):
+`[layer_names]` in `project.godot`, specchiati da `CollisionLayers.cs`. Le scene scrivono i letterali.
 
 | # | Nome | Chi | Mask |
 |---|---|---|---|
-| 1 | `world` | `TestLevel/Floor` e geometria statica | 1 |
-| 2 | `players` | `Player` (`CharacterBody3D`) | 1\|2\|3 |
-| 3 | `enemies` | `TargetDummy`, futuri nemici | 1 |
-| 4 | `hitbox` | `HitboxComponent` (`Area3D`) | **0** — non interroga mai, viene solo interrogata |
-| 5 | `vehicles` | scafo delle imbarcazioni (`RigidBody3D`) | 1 — **mai** nella maschera dei player |
-| 6 | `vehicle_deck` | ponte e parapetti (`AnimatableBody3D`) | **0** — è il ponte che i player calpestano |
-| 7 | `building_cover` | solai, soffitti e tetti degli edifici | **0** — si calpesta e ferma i colpi, ma il cursore non ci si posa |
+| 1 | `world` | geometria statica, solai compresi | — |
+| 2 | `players` | `Player` (`CharacterBody3D`) | 39 = 1+2+4+32 |
+| 3 | `enemies` | `TargetDummy`, NPC | 1 |
+| 4 | `hitbox` | `HitboxComponent` (`Area3D`) | 0: viene solo interrogata |
+| 5 | `vehicles` | scafo (`RigidBody3D`) | 1 — **mai** nella maschera dei player |
+| 6 | `vehicle_deck` | ponte e parapetti | 0 |
 
-**Due maschere, non una.** `CursorMask = world | hitbox | vehicles | vehicle_deck` è dove si posa il cursore; `ShotMask = CursorMask | building_cover` è cosa ferma un colpo. Sono due domande diverse — *cosa sto guardando* (dipende dal cutaway, quindi dal peer) e *cosa esiste* (identico su tutti) — e riunirle riporta i due bug che le hanno separate: si mira al soffitto sopra la propria testa, oppure i proiettili attraversano i solai. Vedi skill `building-cutaway` §7.
+`ShotMask = world | hitbox | vehicles | vehicle_deck`, con `CollideWithAreas = true` ed esclusione del RID
+della propria hitbox. Un raggio non colpisce mai il **corpo** di un personaggio, solo la hitbox: fuoco
+amico e immunità a sé stessi sono esatti. Nuova entità danneggiabile = corpo sul proprio layer +
+`HitboxComponent` su layer 4 con `HealthPath`.
 
-Entrambe usano `CollideWithAreas = true` ed escludono il RID della *propria* hitbox. **La barca ferma i proiettili** come la geometria statica: chi sta dietro la murata è al coperto. Scafo e ponte sono separati perché la collisione in Godot è simmetrica e un giocatore che toccasse lo scafo lo spingerebbe via (vedi skill `vehicles-boats` §2). Conseguenze: un raggio **non colpisce mai il corpo fisico** di un giocatore (solo la sua hitbox), quindi il fuoco amico e l'immunità a sé stessi diventano esatti anziché approssimati per distanza.
+## 5. Dispersione
 
-Un nuovo tipo di entità danneggiabile va montato con la stessa coppia: corpo sul proprio layer + `HitboxComponent` (`Area3D`) su layer 4 con `HealthPath` verso il suo `HealthComponent`.
+`WeaponDefinition.SpreadDegrees(aimDistance, recoil)` è l'**unica** formula: la usano l'host per il dado
+e `CrosshairOverlay` per l'anello (angolo → pixel col FOV corrente). Si replica solo `RecoilSpread`; il
+termine di distanza lo aggiunge ogni client dalla propria mira. **Il dado si tira solo sull'host**:
+nessun tracciante predittivo, arriva con `BroadcastShot`.
 
----
+## 6. Limiti accettati
 
-## 5. Dispersione e rinculo
+- **Nessuna lag compensation**: l'host ri-traccia da uno stato vecchio fino a ~1 RTT. Va fatta insieme
+  alla validazione anti-cheat del movimento.
+- Nessuna conseguenza della morte (`IsDead` e basta). Fuoco amico attivo, voluto.
+- Il caricatore è stato host-side (`_magazines` per `InstanceId`), non un item di griglia.
+- `ProjectileSpeed`, `Penetration`, `Caliber` sono dichiarati e non usati.
 
-`WeaponDefinition.SpreadDegrees(aimDistance, recoil)` è l'**unica** implementazione della formula: `BaseSpread + SpreadPerRange · clamp(distanza/EffectiveRange) + rinculo`, con tetto `MaxSpread`. La usano sia l'host per tirare il dado sia `CrosshairOverlay` per disegnare l'anello, quindi l'area mostrata è davvero quella in cui il colpo può cadere. Mirare più lontano allarga l'anello: è il requisito "più miri distante, più l'arma è imprecisa".
+## 7. Verifica
 
-**Il dado si tira solo sull'host.** Nessuno scambio di seed. Ne discende la regola: **il client non disegna mai un tracciante predittivo**, perché non sa dove è andato il proprio colpo — il tracciante arriva con `BroadcastShot`, cioè ~1 RTT dopo. La vampa alla bocca è invece immediata e locale, e basta a rendere reattivo il feedback. L'alternativa (seed condiviso) richiederebbe che host e client concordino *anche* sull'origine, cosa che non fanno (vedi §7).
-
-Il rinculo, senza camera in prima persona da far rinculare, si manifesta come: dispersione accumulata e replicata (l'anello del reticolo "fiorisce" e si richiude), scossa locale della camera (`IsometricCamera.AddKick`, **sola traslazione sul piano immagine**: una scossa che ruotasse sposterebbe anche il punto mirato, e il colpo partirebbe dove non si stava puntando), e arretramento della mesh dell'arma su tutti i peer.
-
-Nota: la camera **ruota su comando del giocatore** (Q/E, skill `building-cutaway` §1), e questo non riguarda la mira. `AimResolver` non ha mai assunto un orientamento fisso: lavora su `camera.ProjectRayOrigin` / `ProjectRayNormal`, che seguono la camera qualunque sia il suo yaw. Ciò che resta vietato è che la camera ruoti **da sola**, per un effetto.
-
-**Cosa si replica**: `RecoilSpread` (il solo contributo di rinculo), non la dispersione totale. Il termine di distanza dipende da dove punta il cursore del singolo giocatore, quindi il reticolo lo aggiunge in locale passando `RecoilSpread` alla stessa formula dell'host.
-
----
-
-## 6. Mira con camera ortogonale
-
-`AimResolver.ResolveAimPoint(camera, mousePos, exclude, groundHeight, ceilingHeight)`: raycast dal cursore contro `CursorMask`, con fallback sull'intersezione col piano orizzontale a `groundHeight + ChestHeight`.
-
-Le due quote vengono dal **contesto di chi mira**, non sono costanti globali; le passa `WeaponInput`.
-
-`groundHeight` = quota dei propri piedi (`CharacterMotor.ResolvedFeetY`). Il piano di ripiego deve stare al proprio livello: con un piano assoluto a 1.1 m, chi sta sul ponte di una barca o al primo piano di un edificio vedeva la mira sprofondare a terra ogni volta che il cursore non trovava geometria.
-
-`ceilingHeight` = soffitto della stanza in cui si sta (`BuildingCullController.AimCeilingHeight`, infinito all'aperto). Il raggio **non parte dalla camera** ma da dove attraversa quel piano, così non può agganciare nulla sopra la propria testa. Serve perché il cutaway nasconde i piani superiori senza toccarne la fisica: i loro muri restano su `world` e senza questo taglio il cursore si posa su un muro invisibile del piano di sopra. Tagliare il raggio invece di catalogare i layer fa sì che la regola valga anche per la geometria che verrà.
-
-Con la proiezione **ortogonale** `ProjectRayNormal` restituisce la stessa direzione per ogni pixel dello schermo; varia solo l'origine. Conseguenza accettata: il raggio può agganciare un bersaglio che in coordinate mondo sta "dietro" al giocatore, ma che sullo schermo è sotto al cursore. È il comportamento intuitivo — si mira a quel che si vede — e l'host valida comunque la distanza massima.
-
-La posizione del mouse va sempre letta con `GetViewport().GetMousePosition()`: è in coordinate logiche, quindi resta corretta sotto `ContentScaleFactor` (vedi skill `ui-hud`).
-
----
-
-## 7. Limite noto accettato: nessuna lag compensation
-
-L'host ri-traccia da `SyncPosition`, che per un tiratore remoto è vecchio fino a ~1 RTT. Chi si muove veloce può vedere il tracciante partire leggermente dietro al proprio avatar, e un bersaglio spostatosi durante l'RTT può essere mancato pur sembrando colpito sul client.
-
-Il rimedio (buffer storico delle posizioni per peer + rewind lato host) va implementato **insieme** alla validazione anti-cheat del movimento, già rimandata in Fase 1: sono lo stesso lavoro.
-
----
-
-## 8. Altre lacune volute
-
-- **Nessuna conseguenza della morte**: a 0 HP `IsDead` diventa vero ma un giocatore resta in piedi e continua a giocare. Morte, rianimazione e loot del cadavere sono post-prototipo. I cadaveri riuseranno il meccanismo `Anchored` dei contenitori nel mondo (vedi skill `inventory-tarkov`).
-- **Fuoco amico attivo**: voluto, serve a validare il danno fra peer.
-- **Il caricatore non è un item di griglia**: vive come stato host-side in `WeaponController._magazines` (per `InstanceId`, così sopravvive al cambio d'arma). È il motivo per cui le voci "Scarica caricatore"/"Svuota munizioni" del menu contestuale dell'inventario restano disabilitate.
-- **Attributi dichiarati e non usati** in `WeaponDefinition`: `ProjectileSpeed`, `Penetration`, `Caliber`. Servono a fissare la superficie ora, così i `.tres` non vanno rifatti quando arriveranno proiettili fisici e armature.
-
----
-
-## 9. Verifica manuale
-
-Multi-istanza locale (CLAUDE.md §6), trasporto `LocalEnet`, finestra A host e finestra B client.
-
-**Criterio di completamento della fase**: B (non-host) spara a un manichino del `TestLevel` e la `Label3D` sopra il bersaglio cala **della stessa quantità su tutte le finestre**; a zero il manichino diventa rosso su entrambe e respawna dopo 6 s, di nuovo in sincrono.
-
-Altri controlli utili: arma replicata (B preme 1, A vede il box in mano), niente autocolpo (mirare ai propri piedi non toglie HP), l'anello cresce mirando lontano e fiorisce col fuoco automatico, R ricarica solo a inventario chiuso.
+Multi-istanza ENet: il client spara a un manichino e gli HP calano uguali su tutte le finestre. Niente
+autocolpo guardandosi i piedi; l'anello si allarga col fuoco automatico; R ricarica solo a inventario chiuso.

@@ -36,7 +36,7 @@ public partial class PlayerInput : Node
     /// </summary>
     public bool MovementSuppressed { get; set; }
 
-    /// Vettore di movimento su piano XZ: X = destra/sinistra, Y = giu'/su (schermo).
+    /// Vettore di movimento: X = destra/sinistra, Y = indietro/avanti (negativo = avanti).
     /// Ritorna zero se questo non e' il peer proprietario (input solo sul proprio peer, §3),
     /// se una UI modale (menu di pausa) sta assorbendo l'input locale, o se si sta guidando.
     public Vector2 ReadMovement()
@@ -61,8 +61,8 @@ public partial class PlayerInput : Node
     public bool ReadSprint() => ReadHeld("sprint");
 
     /// <summary>
-    /// Mira (tasto destro del mouse). A pressione mantenuta, oppure a interruttore se
-    /// <see cref="SettingsService.AimToggle"/> e' attivo.
+    /// Mira (tasto destro del mouse): stringe il campo visivo. A pressione mantenuta, oppure a
+    /// interruttore se <see cref="SettingsService.AimToggle"/> e' attivo.
     /// </summary>
     public bool ReadAim()
     {

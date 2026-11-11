@@ -79,7 +79,7 @@ public partial class ShoulderLiftModifier : SkeletonModifier3D
         _bones = [.. resolved];
     }
 
-    public override void _ProcessModification()
+    public override void _ProcessModificationWithDelta(double delta)
     {
         if (_skeleton == null || _bones.Length == 0)
             return;

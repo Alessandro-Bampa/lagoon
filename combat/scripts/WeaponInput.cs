@@ -12,22 +12,23 @@ namespace Lagoon;
 /// SOLO quando la schermata inventario e' aperta; a inventario chiuso l'evento resta unhandled e
 /// arriva qui come <c>reload</c>. Anche i click del mouse sull'inventario non arrivano mai qui,
 /// perche' i Control della UI li fermano prima.
+///
+/// La mira e' il CENTRO dello schermo: il punto si ricava dall'asse della camera, non dal cursore.
 /// </summary>
 public partial class WeaponInput : Node
 {
     private WeaponController _weapon = null!;
     private PlayerController _player = null!;
     private PlayerHud _hud = null!;
-    private IsometricCamera _camera = null!;
-    private BuildingCullController? _buildingCull;
+    private FirstPersonCamera _camera = null!;
     private HitboxComponent? _ownHitbox;
     private GameManager _game = null!;
 
-    /// Punto di mira corrente, ricalcolato ogni frame. Letto anche dal reticolo per sapere a che
-    /// distanza sta puntando il giocatore (la dispersione dipende da quella).
+    /// Punto del mondo al centro dello schermo, ricalcolato ogni frame: e' l'intento di tiro.
     public Vector3 AimPoint { get; private set; }
 
-    /// Distanza dal tiratore al punto di mira, in metri.
+    /// Distanza dagli occhi al punto di mira, in metri. La legge il reticolo: la dispersione
+    /// dipende da quanto lontano si sta puntando.
     public float AimDistance { get; private set; }
 
     private ulong _lastFireMsec;
@@ -45,33 +46,18 @@ public partial class WeaponInput : Node
         _weapon = GetNode<WeaponController>("../Weapon");
         _player = GetParent<PlayerController>();
         _hud = GetNode<PlayerHud>("../Hud");
-        _camera = GetNode<IsometricCamera>("../PlayerCamera");
-        _buildingCull = GetNodeOrNull<BuildingCullController>("../BuildingCull");
+        _camera = GetNode<FirstPersonCamera>("../PlayerCamera");
         _ownHitbox = GetParent().GetNodeOrNull<HitboxComponent>("Hitbox");
         _game = GetNode<GameManager>("/root/GameManager");
     }
 
     public override void _Process(double delta)
     {
-        // Il punto di mira si aggiorna SEMPRE, anche a inventario aperto: e' resa locale, non
-        // un'azione. Congelarlo lasciava PlayerController.UpdateAiming puntato su un punto
-        // stantio, e alla chiusura della UI il corpo scattava verso dove il mouse ERA.
-        //
-        // Due quote, entrambe dal contesto di chi mira e non costanti globali: il pavimento su cui
-        // si sta (piano di ripiego quando il cursore non trova geometria) e il soffitto della stanza
-        // (oltre il quale il raggio non deve nemmeno partire, o si aggancia ai muri invisibili del
-        // piano di sopra — skill building-cutaway).
-        AimPoint = AimResolver.ResolveAimPoint(
-            _camera,
-            GetViewport().GetMousePosition(),
-            _ownHitbox?.GetRid() ?? default,
-            _player.ResolvedFeetY,
-            _buildingCull?.AimCeilingHeight ?? float.PositiveInfinity);
+        // Si mira al centro dello schermo: cio' che sta sotto al reticolo.
+        AimPoint = AimResolver.ResolveAimPoint(_camera, _ownHitbox?.GetRid() ?? default);
+        AimDistance = _camera.GlobalPosition.DistanceTo(AimPoint);
 
-        Vector3 muzzle = GetParent<Node3D>().GlobalPosition + Vector3.Up * WeaponController.MuzzleHeight;
-        AimDistance = muzzle.DistanceTo(AimPoint);
-
-        // Le AZIONI invece restano soppresse: sparare attraverso l'inventario no.
+        // Il punto di mira e' resa locale e si aggiorna sempre; le AZIONI invece si sopprimono.
         if (Suppressed)
             return;
 

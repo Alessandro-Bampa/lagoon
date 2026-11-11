@@ -1,0 +1,17 @@
+# Configurazione MCP di progetto. Codex la carica solo quando il repository è trusted.
+
+[mcp_servers.blender]
+command = "uv"
+args = ["run", "--with", "mcp<2", "python", "tools/blender/mcp_bridge.py"]
+cwd = "."
+enabled = true
+required = false
+startup_timeout_sec = 30
+tool_timeout_sec = 180
+
+[mcp_servers."lagoon-godot-ai"]
+url = "http://127.0.0.1:8000/mcp"
+enabled = true
+required = false
+startup_timeout_sec = 60
+tool_timeout_sec = 360

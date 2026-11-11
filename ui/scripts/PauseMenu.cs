@@ -56,6 +56,8 @@ public partial class PauseMenu : Control
     private CheckButton _vsyncToggle = null!;
     private CheckButton _aimToggle = null!;
     private CheckButton _crouchToggle = null!;
+    private HSlider _mouseSensitivitySlider = null!;
+    private Label _mouseSensitivityValue = null!;
     private HSlider _masterSlider = null!;
     private Label _masterValue = null!;
     private HSlider _musicSlider = null!;
@@ -86,6 +88,8 @@ public partial class PauseMenu : Control
         _vsyncToggle = GetNode<CheckButton>("%VSyncToggle");
         _aimToggle = GetNode<CheckButton>("%AimToggle");
         _crouchToggle = GetNode<CheckButton>("%CrouchToggle");
+        _mouseSensitivitySlider = GetNode<HSlider>("%MouseSensitivitySlider");
+        _mouseSensitivityValue = GetNode<Label>("%MouseSensitivityValue");
         _masterSlider = GetNode<HSlider>("%MasterSlider");
         _masterValue = GetNode<Label>("%MasterValue");
         _musicSlider = GetNode<HSlider>("%MusicSlider");
@@ -95,6 +99,8 @@ public partial class PauseMenu : Control
 
         _uiScaleSlider.MinValue = SettingsService.MinUiScale;
         _uiScaleSlider.MaxValue = SettingsService.MaxUiScale;
+        _mouseSensitivitySlider.MinValue = SettingsService.MinMouseSensitivity;
+        _mouseSensitivitySlider.MaxValue = SettingsService.MaxMouseSensitivity;
         BuildLanguageOptions();
         BuildBindingRows();
 
@@ -110,6 +116,7 @@ public partial class PauseMenu : Control
         // Applicazione live: il giocatore vede l'effetto mentre trascina.
         _languageOption.ItemSelected += _ => ApplyFromControls();
         _uiScaleSlider.ValueChanged += _ => ApplyFromControls();
+        _mouseSensitivitySlider.ValueChanged += _ => ApplyFromControls();
         _masterSlider.ValueChanged += _ => ApplyFromControls();
         _musicSlider.ValueChanged += _ => ApplyFromControls();
         _sfxSlider.ValueChanged += _ => ApplyFromControls();
@@ -368,6 +375,7 @@ public partial class PauseMenu : Control
         _vsyncToggle.ButtonPressed = _settings.VSyncEnabled;
         _aimToggle.ButtonPressed = _settings.AimToggle;
         _crouchToggle.ButtonPressed = _settings.CrouchToggle;
+        _mouseSensitivitySlider.Value = _settings.MouseSensitivity;
         _masterSlider.Value = _settings.MasterVolume;
         _musicSlider.Value = _settings.MusicVolume;
         _sfxSlider.Value = _settings.SfxVolume;
@@ -387,6 +395,7 @@ public partial class PauseMenu : Control
         _settings.VSyncEnabled = _vsyncToggle.ButtonPressed;
         _settings.AimToggle = _aimToggle.ButtonPressed;
         _settings.CrouchToggle = _crouchToggle.ButtonPressed;
+        _settings.MouseSensitivity = (float)_mouseSensitivitySlider.Value;
         _settings.MasterVolume = (float)_masterSlider.Value;
         _settings.MusicVolume = (float)_musicSlider.Value;
         _settings.SfxVolume = (float)_sfxSlider.Value;
@@ -398,6 +407,7 @@ public partial class PauseMenu : Control
     private void UpdateValueLabels()
     {
         _uiScaleValue.Text = Percent(_uiScaleSlider.Value);
+        _mouseSensitivityValue.Text = Percent(_mouseSensitivitySlider.Value);
         _masterValue.Text = Percent(_masterSlider.Value);
         _musicValue.Text = Percent(_musicSlider.Value);
         _sfxValue.Text = Percent(_sfxSlider.Value);

@@ -5,19 +5,13 @@
 [ext_resource type="PackedScene" path="res://vehicles/scenes/Boat.tscn" id="3"]
 [ext_resource type="PackedScene" path="res://ai/scenes/NpcCharacter.tscn" id="4"]
 [ext_resource type="PackedScene" uid="uid://b1lqcut4wybdg" path="res://world/scenes/Buildings/TestBuilding.tscn" id="5"]
-[ext_resource type="Shader" uid="uid://dxdi6ct6cealg" path="res://world/shaders/WorldSurface.gdshader" id="6"]
 
 [sub_resource type="BoxShape3D" id="Shape_1"]
 size = Vector3(140.229, 1, 70.75745)
 
-[sub_resource type="ShaderMaterial" id="Mat_1"]
-render_priority = 0
-shader = ExtResource("6")
-shader_parameter/albedo = Color(0.32, 0.34, 0.36, 1)
-shader_parameter/roughness = 0.9
-shader_parameter/metallic = 0.0
-shader_parameter/max_discard = 0.72
-shader_parameter/cell_pixels = 3.0
+[sub_resource type="StandardMaterial3D" id="Mat_1"]
+albedo_color = Color(0.32, 0.34, 0.36, 1)
+roughness = 0.9
 
 [sub_resource type="BoxMesh" id="Mesh_1"]
 size = Vector3(140.87476, 1, 70.739685)
@@ -36,14 +30,9 @@ tonemap_mode = 2
 [sub_resource type="BoxShape3D" id="Shape_Seabed"]
 size = Vector3(60, 1, 60)
 
-[sub_resource type="ShaderMaterial" id="Mat_Sand"]
-render_priority = 0
-shader = ExtResource("6")
-shader_parameter/albedo = Color(0.76, 0.7, 0.5, 1)
-shader_parameter/roughness = 0.9
-shader_parameter/metallic = 0.0
-shader_parameter/max_discard = 0.72
-shader_parameter/cell_pixels = 3.0
+[sub_resource type="StandardMaterial3D" id="Mat_Sand"]
+albedo_color = Color(0.76, 0.7, 0.5, 1)
+roughness = 0.9
 
 [sub_resource type="BoxMesh" id="Mesh_Seabed"]
 size = Vector3(60, 1, 60)
@@ -51,14 +40,9 @@ size = Vector3(60, 1, 60)
 [sub_resource type="BoxShape3D" id="Shape_Dock"]
 size = Vector3(9, 3, 6)
 
-[sub_resource type="ShaderMaterial" id="Mat_Wood"]
-render_priority = 0
-shader = ExtResource("6")
-shader_parameter/albedo = Color(0.45, 0.32, 0.2, 1)
-shader_parameter/roughness = 0.9
-shader_parameter/metallic = 0.0
-shader_parameter/max_discard = 0.72
-shader_parameter/cell_pixels = 3.0
+[sub_resource type="StandardMaterial3D" id="Mat_Wood"]
+albedo_color = Color(0.45, 0.32, 0.2, 1)
+roughness = 0.9
 
 [sub_resource type="BoxMesh" id="Mesh_Dock"]
 size = Vector3(9, 3, 6)

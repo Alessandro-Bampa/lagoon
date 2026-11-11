@@ -4,89 +4,49 @@ using RidArray = Godot.Collections.Array<Godot.Rid>;
 namespace Lagoon;
 
 /// <summary>
-/// Traduce la posizione del cursore in un punto di mira nel mondo. Nessuno stato: utility pura,
-/// usata dal client per costruire l'intento da inviare all'host e dal reticolo per sapere a che
-/// distanza sta mirando.
+/// Geometria della mira e del colpo. Nessuno stato: utility pura, usata dal client per costruire
+/// l'intento da inviare all'host (<see cref="ResolveAimPoint"/>) e dall'host per tracciare il
+/// colpo vero (<see cref="TraceShot"/>, <see cref="ApplySpread"/>).
 ///
-/// NOTA sulla camera ORTOGONALE (vedi IsometricCamera): con una proiezione ortogonale
-/// <c>ProjectRayNormal</c> restituisce la STESSA direzione per ogni pixel dello schermo (l'asse -Z
-/// della camera); varia solo l'origine. Conseguenza accettata in fase di prototipo: il raggio puo'
-/// legittimamente agganciare un bersaglio che, in coordinate mondo, sta "dietro" al giocatore, ma
-/// che sullo schermo e' esattamente sotto al cursore. E' il comportamento intuitivo per chi gioca —
-/// si mira a quel che si vede — e l'host valida comunque la distanza massima.
+/// Le due query usano la STESSA maschera (<see cref="CollisionLayers.ShotMask"/>): in prima
+/// persona cio' che si guarda e cio' che ferma un colpo coincidono.
 /// </summary>
 public static class AimResolver
 {
     /// Lunghezza del raggio di sonda: abbondante rispetto a qualunque MaxRangeMeters d'arma.
     private const float ProbeLength = 200f;
 
-    /// Altezza del piano di ripiego: la mira "vola" all'altezza del petto di un bersaglio in piedi,
-    /// non a terra, cosi' puntare il vuoto non fa sparare nel pavimento.
-    public const float ChestHeight = 1.1f;
-
     /// <summary>
-    /// Punto del mondo sotto al cursore. Prova prima un raycast fisico contro
-    /// <see cref="CollisionLayers.CursorMask"/> (escludendo <paramref name="exclude"/>, tipicamente
-    /// la propria hitbox); se non colpisce nulla ripiega sull'intersezione col piano orizzontale a
-    /// <see cref="ChestHeight"/> sopra <paramref name="groundHeight"/>.
-    ///
-    /// <paramref name="groundHeight"/> e' la quota del suolo su cui si trova chi mira, non zero:
-    /// il piano di ripiego deve stare al PROPRIO livello. Con un piano assoluto a 1.1 m, chi sta al
-    /// primo piano di un edificio (o sul ponte di una barca) vedrebbe la mira sprofondare a terra
-    /// ogni volta che il cursore non trova geometria.
-    ///
-    /// <paramref name="ceilingHeight"/> e' la quota del soffitto della stanza in cui si sta, o
-    /// <see cref="float.PositiveInfinity"/> all'aperto. Il raggio non parte dalla camera ma da dove
-    /// attraversa quel piano, cosi' <b>non puo' agganciare nulla che stia sopra la propria testa</b>.
-    /// Serve perche' il cutaway nasconde i piani superiori senza toccarne la fisica: i loro muri
-    /// restano su <c>World</c> e, senza questo taglio, il cursore si posa su un muro invisibile del
-    /// piano di sopra — il sintomo e' "al piano terra si mira il soffitto". Tagliare il raggio invece
-    /// di catalogare i layer fa si' che la regola valga anche per la geometria che verra'.
+    /// Punto del mondo al CENTRO dello schermo: il primo ostacolo o hitbox lungo l'asse della
+    /// camera, escludendo <paramref name="exclude"/> (la propria hitbox). Nel vuoto ritorna un
+    /// punto lontano lungo lo stesso asse, cosi' mirare al cielo resta una direzione valida.
     /// </summary>
-    public static Vector3 ResolveAimPoint(
-        Camera3D camera, Vector2 screenPosition, Rid exclude,
-        float groundHeight = 0f, float ceilingHeight = float.PositiveInfinity)
+    public static Vector3 ResolveAimPoint(Camera3D camera, Rid exclude)
     {
-        Vector3 from = camera.ProjectRayOrigin(screenPosition);
-        Vector3 dir = camera.ProjectRayNormal(screenPosition);
+        Vector3 from = camera.GlobalPosition;
+        Vector3 far = from - camera.GlobalBasis.Z * ProbeLength;
 
-        // La camera guarda sempre verso il basso (pitch 40°), quindi dir.Y e' negativa: il raggio
-        // attraversa il piano del soffitto una volta sola e da li' in poi resta nella stanza.
-        if (!float.IsInfinity(ceilingHeight) && from.Y > ceilingHeight && dir.Y < -0.001f)
-            from += dir * ((from.Y - ceilingHeight) / -dir.Y);
-
-        var query = PhysicsRayQueryParameters3D.Create(from, from + dir * ProbeLength);
-        query.CollisionMask = CollisionLayers.CursorMask;
+        var query = PhysicsRayQueryParameters3D.Create(from, far, CollisionLayers.ShotMask);
         query.CollideWithAreas = true;
         query.CollideWithBodies = true;
         if (exclude.IsValid)
             query.Exclude = new RidArray { exclude };
 
         var hit = camera.GetWorld3D().DirectSpaceState.IntersectRay(query);
-        if (hit.Count > 0)
-            return (Vector3)hit["position"];
-
-        var plane = new Plane(Vector3.Up, groundHeight + ChestHeight);
-        Vector3? onPlane = plane.IntersectsRay(from, dir);
-        return onPlane ?? from + dir * 50f;
+        return hit.Count > 0 ? (Vector3)hit["position"] : far;
     }
 
     /// <summary>
     /// Traccia il colpo vero e proprio (host-side). Ritorna la <see cref="HitboxComponent"/>
     /// colpita, o null se il raggio ha incontrato solo geometria o il vuoto; <paramref name="end"/>
     /// riceve sempre il punto finale, cosi' il tracciante puo' essere disegnato in ogni caso.
-    ///
-    /// Usa <see cref="CollisionLayers.ShotMask"/> e non la maschera del cursore: un solaio e' fisico
-    /// e ferma il proiettile, anche quando la camera di qualcuno non lo sta disegnando. E' il lato
-    /// "cosa esiste" della separazione documentata su quelle due costanti.
     /// </summary>
     public static HitboxComponent? TraceShot(
         World3D world, Vector3 origin, Vector3 direction, float maxRange, Rid exclude, out Vector3 end)
     {
         Vector3 target = origin + direction * maxRange;
 
-        var query = PhysicsRayQueryParameters3D.Create(origin, target);
-        query.CollisionMask = CollisionLayers.ShotMask;
+        var query = PhysicsRayQueryParameters3D.Create(origin, target, CollisionLayers.ShotMask);
         query.CollideWithAreas = true;
         query.CollideWithBodies = true;
         if (exclude.IsValid)

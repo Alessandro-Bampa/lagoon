@@ -3,11 +3,10 @@ using Godot;
 namespace Lagoon;
 
 /// <summary>
-/// Configura la "presentazione locale" dell'avatar in base all'autorita' di rete:
-///  - attiva la camera isometrica SOLO per il player locale;
-///  - tinge il personaggio (verde = tu, rosso = altri) per distinguere gli avatar a colpo d'occhio
-///    durante il test multi-istanza (CLAUDE.md §6).
-/// Non tocca la logica di movimento: quella vive in <see cref="PlayerController"/>.
+/// Tinge il personaggio (verde = tu, rosso = altri) per distinguere gli avatar a colpo d'occhio
+/// durante il test multi-istanza (CLAUDE.md §6). In prima persona il verde lo si vede sulle
+/// proprie braccia. Non tocca la logica di movimento ne' la camera: quella si attiva da sola
+/// (<see cref="FirstPersonCamera"/>).
 /// </summary>
 public partial class PlayerNetworkSync : Node
 {
@@ -19,16 +18,8 @@ public partial class PlayerNetworkSync : Node
         Node parent = GetParent();
         bool isLocal = parent.IsMultiplayerAuthority();
 
-        // Camera attiva solo sull'avatar locale.
-        var camera = parent.GetNode<Camera3D>("PlayerCamera");
-        camera.Current = isLocal;
-
-        // Tinta di riconoscimento.
-        //
-        // Cercava "Visual/MeshInstance3D", il cubo placeholder che non esiste piu' da quando sotto
-        // Visual c'e' il CharacterRig: GetNode falliva a ogni spawn. Ora si tinge la mesh del
-        // personaggio, ovunque sia nel sottoalbero del rig — che arriva da un .glb rigenerabile,
-        // quindi il percorso esatto non e' un appiglio stabile.
+        // Si tinge la mesh del personaggio ovunque sia nel sottoalbero del rig: arriva da un .glb
+        // rigenerabile, quindi il percorso esatto non e' un appiglio stabile.
         var material = new StandardMaterial3D { AlbedoColor = isLocal ? LocalColor : RemoteColor };
         foreach (MeshInstance3D mesh in FindMeshes(parent.GetNode<Node3D>("Visual")))
             mesh.MaterialOverride = material;

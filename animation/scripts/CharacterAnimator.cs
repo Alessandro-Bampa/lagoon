@@ -371,10 +371,11 @@ public partial class CharacterAnimator : Node3D
         // non ripartire da un tempo vecchio quando torna in scena.
         Vector2 blendVelocity = _smoothedVelocity;
 
-        // Passo sintetico del turn-in-place: da fermi in mira, mentre il corpo ruota, le gambe
-        // riproducono lo strafe proporzionale alla rotazione. TurnRate positivo = il corpo gira a
-        // SINISTRA, quindi i piedi fanno passetti a sinistra: X di blend negativa (X = destra).
-        if (Aiming && Grounded && blendVelocity.Length() < 0.5f
+        // Passo sintetico del turn-in-place: da fermi, mentre il corpo ruota (in prima persona
+        // segue lo sguardo, armati o no), le gambe riproducono lo strafe proporzionale alla
+        // rotazione. TurnRate positivo = il corpo gira a SINISTRA, quindi i piedi fanno passetti
+        // a sinistra: X di blend negativa (X = destra).
+        if (Grounded && blendVelocity.Length() < 0.5f
             && Mathf.Abs(TurnRate) > TurnStepThreshold)
         {
             float maxStep = WalkSpeed * 0.6f;

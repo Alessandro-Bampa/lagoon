@@ -1,0 +1,2119 @@
+# Specifica Tecnica — Sistema di Inventario "Tarkov-like" per Godot 4.7
+
+| Campo | Valore |
+|---|---|
+| Versione documento | 1.0 |
+| Data | 12 ottobre 2026 |
+| Riferimento funzionale | Escape from Tarkov, release 1.x (stagioni 1.1 / 1.2) |
+| Motore target | Godot 4.7 stable (GDScript con tipizzazione statica) |
+| Ambito | Inventario personaggio, stash, contenitori, loot in raid, armi modulari, caricatori, peso, UI completa |
+
+---
+
+## 0. Come leggere questo documento
+
+**Parole chiave.** DEVE / NON DEVE indicano requisiti obbligatori; DOVREBBE indica una raccomandazione forte; PUÒ indica un comportamento opzionale.
+
+**Marcatori.**
+
+- **[CONFIG]**: il valore va esposto nella risorsa `InventoryConfig` e non deve mai essere scritto nel codice.
+- **[VERIFICA]**: il comportamento del gioco originale è cambiato tra patch o non è documentato in modo univoco; va confrontato con la build corrente prima del lock di design.
+- **[HOOK]**: punto di aggancio verso un sistema esterno all'inventario (trader, flea market, assicurazione, abilità), qui solo interfacciato.
+
+**Nota sulla proprietà intellettuale.** Il documento replica meccaniche, regole e struttura del layout, che non sono tutelabili. Icone, modelli 3D, nomi di oggetti, font, suoni, colori esatti e asset grafici del gioco originale NON DEVONO essere copiati: tutti gli esempi di dati usano nomi fittizi.
+
+---
+
+## 1. Obiettivi e non-obiettivi
+
+### 1.1 Obiettivi
+
+1. Riprodurre 1:1 le meccaniche dell'inventario a griglia di Escape from Tarkov: oggetti multi-cella ruotabili, slot di equipaggiamento con regole di compatibilità e blocco, contenitori con sotto-griglie a layout personalizzato, annidamento, stack, caricatori, armi modulari con dimensione dinamica, perquisizione, esame, Found in Raid, peso.
+2. Riprodurre il layout a tre colonne della schermata "Equipaggiamento" (gear, contenitori indossati, stash/loot) con le stesse scorciatoie di input.
+3. Architettura data-driven: ogni oggetto, contenitore e regola è definito da risorse modificabili da un game designer senza toccare codice.
+4. Architettura pronta per il multiplayer autoritativo: ogni modifica passa da un'operazione validata, serializzabile e riproducibile.
+
+### 1.2 Non-obiettivi (gestiti tramite [HOOK])
+
+Trader, flea market, assicurazione, hideout/crafting, abilità del personaggio, sistema di salute, quest. L'inventario espone interfacce per questi sistemi ma non li implementa.
+
+---
+
+## 2. Glossario
+
+| Termine | Definizione |
+|---|---|
+| Cella | Unità minima di spazio (1×1). |
+| Footprint | Rettangolo W×H di celle occupato da un'istanza, già comprensivo di rotazione, attacchi e piegatura. |
+| Griglia | Matrice rettangolare di celle appartenente a un oggetto contenitore (o alla stash). |
+| Sotto-griglia | Una delle N griglie di un contenitore multi-tasca (es. un tactical rig con 8 tasche). |
+| Slot | Posizione tipizzata che accetta un solo oggetto (slot di equipaggiamento, slot mod di un'arma, slot piastra di un'armatura). |
+| Template | Definizione statica di un tipo di oggetto (`ItemTemplate`, risorsa `.tres`). |
+| Istanza | Oggetto concreto con stato (`ItemInstance`). |
+| Root | Istanza radice di un albero di inventario (Equipment del giocatore, Stash, contenitore di loot, cadavere). |
+| Owner | Entità proprietaria di un albero (giocatore, stash, contenitore nel mondo, cadavere, trader). |
+| Lato (side) | Nella UI, "lato A" è il giocatore, "lato B" è ciò che è aperto a destra (stash, loot, cadavere). |
+| FIR | "Found in Raid": flag di un'istanza trovata in raid ed estratta con successo. |
+| Esaminato | Il template è noto al profilo; altrimenti l'oggetto appare come sconosciuto. |
+| Perquisito | Una griglia/contenitore il cui contenuto è stato rivelato al giocatore che lo sta saccheggiando. |
+| Pouch | Contenitore sicuro: il contenuto non si perde alla morte. |
+| Special slot | Slot dedicati a strumenti speciali (bussola, marker, ecc.), non saccheggiabili. |
+| Quick slot | Scorciatoia numerica (tasti 4–9) collegata a un oggetto. |
+| Tag | Etichetta testuale e colore assegnati a un contenitore. |
+| Pin / Lock | Blocco della posizione in stash durante l'ordinamento (pin) o blocco totale dell'oggetto (lock). |
+
+---
+
+## 3. Catalogo funzionale
+
+Elenco completo delle feature del gioco originale che il sistema DEVE coprire. La priorità indica l'ordine di implementazione (P0 = fondamentale).
+
+| ID | Feature | Sezione | Priorità |
+|---|---|---|---|
+| F01 | Griglie a celle con oggetti W×H multi-cella | §6 | P0 |
+| F02 | Rotazione dell'oggetto con R durante il trascinamento | §6.2, §12 | P0 |
+| F03 | 15 slot di equipaggiamento tipizzati | §7 | P0 |
+| F04 | Regole di blocco tra slot (casco che blocca cuffie/occhiali/maschera, rig corazzato che blocca il giubbotto) | §7.3 | P0 |
+| F05 | Contenitori con più sotto-griglie e layout grafico personalizzato | §8.1 | P0 |
+| F06 | Spazio interno diverso da quello esterno (più grande o più piccolo) | §8.2 | P0 |
+| F07 | Filtri whitelist/blacklist su griglie e slot | §8.3 | P0 |
+| F08 | Annidamento dei contenitori con regole | §8.4 | P0 |
+| F09 | Finestre contenitore multiple, trascinabili; Esc chiude l'ultima aperta | §8.5 | P0 |
+| F10 | Stack: unione, divisione con Ctrl al rilascio, limiti per tipo | §10 | P0 |
+| F11 | Valute con totali visualizzati | §10.4 | P1 |
+| F12 | Caricatori: carica/scarica, ordine LIFO, tempi solo in raid, controllo, conteggio sconosciuto | §11 | P0 |
+| F13 | Armi modulari: slot mod, dimensione dinamica, calcio pieghevole | §9 | P0 |
+| F14 | Schermata di modding e preset/build | §9.5 | P1 |
+| F15 | Armature con piastre e inserti in slot | §9.6 | P1 |
+| F16 | Ctrl+Click: spostamento rapido | §12.5 | P0 |
+| F17 | Alt+Click: equipaggiamento rapido | §12.6 | P0 |
+| F18 | Canc: scarta oggetto | §12.3 | P0 |
+| F19 | Menu contestuale completo | §12.7 | P0 |
+| F20 | Finestra Ispeziona; esame a tempo degli oggetti sconosciuti | §14 | P1 |
+| F21 | Perquisizione di contenitori e cadaveri con rivelazione progressiva | §15.2 | P1 |
+| F22 | Stato Found in Raid | §15.4 | P1 |
+| F23 | Regole di perdita alla morte; oggetti non saccheggiabili | §15.5 | P1 |
+| F24 | Limiti in raid (massimo N per raid, divieto di inserimento nel pouch durante il raid) | §15.6 | P1 |
+| F25 | Peso totale, soglie di sovraccarico, penalità di movimento/ergonomia | §16 | P0 |
+| F26 | Stash a 10 colonne, righe variabili per livello ed espansioni | §17.1 | P0 |
+| F27 | Ordinamento automatico di stash e contenitori | §17.2 | P1 |
+| F28 | Pin e Lock con modalità dedicate (tasti P e L) | §17.3 | P2 |
+| F29 | Tag dei contenitori (nome e colore) | §8.6 | P2 |
+| F30 | Filtri stash per categoria, filtro FIR, ricerca testuale | §17.4 | P2 |
+| F31 | Valore totale della stash | §17.5 | P2 |
+| F32 | Tavolo di smistamento (griglia buffer) | §17.6 | P2 |
+| F33 | Quick slot 4–9 | §18 | P0 |
+| F34 | Tre special slot | §7.4 | P1 |
+| F35 | Tasche: 4 griglie 1×1 | §7.5 | P0 |
+| F36 | Pouch sicuro con regole proprie | §7.6 | P0 |
+| F37 | Icone generate dinamicamente in base agli attacchi | §13.6 | P1 |
+| F38 | Colore di sfondo per categoria / personalizzabile | §13.4 | P1 |
+| F39 | Tile informativa: nome breve, conteggi, risorse, stati | §13.4 | P0 |
+| F40 | Uso dei consumabili con doppio click (opzione) | §12.3 | P2 |
+| F41 | Lancio rapido dello zaino (doppio Z) | §15.7 | P1 |
+| F42 | Inventario oggetti missione separato | §7.7 | P2 |
+| F43 | Durabilità, risorse (HP medicinali, cibo), usi (chiavi) | §5.3 | P1 |
+| F44 | Flag di assicurazione e icona | §5.8 [HOOK] | P2 |
+| F45 | Persistenza e operazioni pronte per la rete | §19.9, §19.10 | P0 |
+
+---
+
+## 4. Architettura
+
+### 4.1 Livelli
+
+```
+┌───────────────────────────────────────────────────────────────────────┐
+│ VIEW (scene UI)         InventoryScreen, GearPanel, GridView, SlotView │
+│                         ItemTile, ContainerWindow, InspectWindow, ...  │
+├───────────────────────────────────────────────────────────────────────┤
+│ CONTROLLER              DragController, InputRouter, ContextMenuCtrl   │
+├───────────────────────────────────────────────────────────────────────┤
+│ SERVICE                 InventoryService (esegue Operation, emette     │
+│                         segnali, gestisce TimedActions)                 │
+├───────────────────────────────────────────────────────────────────────┤
+│ OPERATIONS              MoveOp, SplitOp, MergeOp, SwapOp, EquipOp,      │
+│                         FoldOp, LoadAmmoOp, UnloadAmmoOp, AttachModOp, │
+│                         DiscardOp, TagOp, PinOp, LockOp, SortOp, ...   │
+├───────────────────────────────────────────────────────────────────────┤
+│ RULES                   PlacementValidator, EquipRules, RaidRules,     │
+│                         FilterEvaluator, SizeCalculator, WeightCalc    │
+├───────────────────────────────────────────────────────────────────────┤
+│ MODEL                   InventoryModel (istanze + indici), GridIndex   │
+├───────────────────────────────────────────────────────────────────────┤
+│ DATA                    ItemTemplate, GridDef, SlotDef, ItemFilter,    │
+│                         ContainerLayout, ItemCategory, InventoryConfig │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.2 Principi vincolanti
+
+1. **Unica fonte di verità.** Lo stato vive solo in `InventoryModel`. La UI legge e riceve segnali, non muta mai lo stato direttamente.
+2. **Mutazioni solo tramite Operation.** Ogni azione dell'utente diventa un oggetto `InventoryOperation` con `validate()` e `apply()`. L'applicazione è atomica: o riesce tutta o non cambia nulla.
+3. **Determinismo.** A parità di stato e di operazione il risultato è identico (nessun `randf()` nelle regole; l'ordine di scansione delle celle è definito).
+4. **Data-driven.** Nessun ID di oggetto, dimensione o regola specifica di un oggetto nel codice: tutto in risorse.
+5. **Separazione tra template e istanza.** Il template è immutabile in runtime; l'istanza contiene solo lo stato variabile.
+6. **Pronto per la rete.** Le Operation sono serializzabili in un `Dictionary`; il server le valida con lo stesso codice del client.
+
+### 4.3 Flusso di una azione
+
+```
+Input utente → InputRouter / DragController
+   → costruisce InventoryOperation (es. MoveOp)
+   → InventoryService.execute(op)
+        → op.validate(model, context)  ── errore → segnale operation_failed(code) → feedback UI
+        → se richiede tempo (in raid) → TimedAction in coda con progress
+        → op.apply(model)  (atomico)
+        → model emette item_moved / item_changed / ...
+   → le View interessate si aggiornano (redraw mirato)
+```
+
+---
+
+## 5. Modello dati
+
+### 5.1 Gerarchia delle categorie (`ItemCategory`)
+
+Le categorie formano un albero; i filtri lavorano su nodi dell'albero, quindi un filtro su "Weapon" include tutte le sottocategorie. L'albero DEVE essere una risorsa modificabile. Struttura minima consigliata:
+
+```
+Item
+├── Weapon
+│   ├── AssaultRifle, AssaultCarbine, SMG, Shotgun, MarksmanRifle,
+│   │   SniperRifle, MachineGun, GrenadeLauncher, Pistol, Revolver
+│   ├── Melee
+│   └── ThrowableWeapon (granate)
+├── WeaponMod
+│   ├── FunctionalMod: Stock, Barrel, Muzzle (Suppressor, FlashHider, Compensator),
+│   │   Handguard, PistolGrip, Receiver, GasBlock, Bipod, Foregrip, Charge, Mount
+│   ├── GearMod: Magazine, Launcher, ...
+│   └── Sight / TacticalDevice (Flashlight, Laser, Combo)
+├── Ammo
+│   ├── Cartridge
+│   └── AmmoBox
+├── Equipment
+│   ├── Headwear, Earpiece, FaceCover, Eyewear, Armband
+│   ├── BodyArmor, ArmoredRig, ChestRig, Backpack
+│   ├── ArmorPlate, SoftArmorInsert, HelmetMod (Visor, NVG, Mount)
+│   └── SecureContainer, Pockets (template speciale)
+├── Container (custodie/casse portatili: ItemCase, AmmoCase, KeyCase, ...)
+├── Meds (Medkit, Bandage, Splint, Painkiller, Stimulant)
+├── Food & Drink
+├── Key (Mechanical, Keycard)
+├── Money (Currency)
+├── BarterItem (Electronics, Tools, Valuables, Building, Fuel, ...)
+├── Info (documenti, chiavette)
+├── SpecialItem (bussola, marker, telemetro, ...)
+└── QuestItem
+```
+
+```gdscript
+# res://inventory/data/item_category.gd
+class_name ItemCategory extends Resource
+
+@export var id: StringName
+@export var parent: ItemCategory
+@export var display_key: String          # chiave di localizzazione
+@export var sort_order: int = 0           # ordine nell'ordinamento automatico (§17.2)
+@export var default_background: StringName = &"default"  # §13.4
+
+func is_a(other: ItemCategory) -> bool:
+	var c: ItemCategory = self
+	while c != null:
+		if c == other:
+			return true
+		c = c.parent
+	return false
+```
+
+### 5.2 `ItemTemplate`: campi comuni
+
+| Campo | Tipo | Default | Descrizione |
+|---|---|---|---|
+| `id` | StringName | — | ID univoco e stabile (usato in salvataggi e rete). |
+| `name_key` / `short_name_key` / `description_key` | String | — | Chiavi di localizzazione. Il nome breve appare nella tile. |
+| `category` | ItemCategory | — | Nodo dell'albero categorie. |
+| `size` | Vector2i | (1,1) | Footprint base (larghezza, altezza) senza attacchi. |
+| `weight_kg` | float | 0.0 | Peso dell'oggetto vuoto e senza attacchi. |
+| `max_stack` | int | 1 | Dimensione massima dello stack (1 = non impilabile). |
+| `can_rotate` | bool | true | Se false, l'oggetto non può essere ruotato (raro). |
+| `background` | StringName | da categoria | Colore di sfondo della tile (§13.4). |
+| `icon` | Texture2D | — | Icona statica (se `icon_mode = STATIC`). |
+| `icon_mode` | enum | STATIC | STATIC, RENDERED (icona generata dal modello 3D con attacchi, §13.6). |
+| `world_scene` | PackedScene | — | Scena 3D dell'oggetto a terra / in mano. |
+| `inspect_scene` | PackedScene | — | Scena per la finestra Ispeziona (può coincidere con `world_scene`). |
+| `examined_by_default` | bool | false | Se true l'oggetto è sempre noto. |
+| `examine_time_s` | float | 1.0 | Tempo base di esame (§14.2). |
+| `examine_xp` / `loot_xp` | int | 0 | [HOOK] Esperienza a esame / raccolta. |
+| `grids` | Array[GridDef] | [] | Se non vuoto l'oggetto è un contenitore (§5.4). |
+| `layout` | ContainerLayout | null | Disposizione grafica delle sotto-griglie (§5.7). |
+| `slots` | Array[SlotDef] | [] | Slot mod/piastre/caricatore/camera di cartuccia (§5.5). |
+| `merges_with_children` | bool | false | Se true, peso, dimensione e icona includono gli attacchi (armi, caschi modulari). |
+| `extra_size_left/right/up/down` | int | 0 | Celle aggiunte al genitore quando questo oggetto è montato come mod (§6.5). |
+| `extra_size_force_add` | bool | false | Se true, l'extra si somma sempre invece di usare il massimo per lato. |
+| `foldable` | bool | false | Arma o calcio pieghevole. |
+| `folded_slot_id` | StringName | &"" | Slot del calcio che si piega (per armi con calcio pieghevole montato). |
+| `size_reduce_right` | int | 0 | Celle tolte in larghezza quando piegato. |
+| `blocks_folding` | bool | false | Se montato, impedisce la piegatura dell'arma. |
+| `equip_slots` | Array[StringName] | [] | Slot di equipaggiamento che accettano l'oggetto (§7.1). |
+| `blocks_earpiece/eyewear/face_cover/headwear/body_armor` | bool | false | Regole di blocco (§7.3). |
+| `conflicting_items` | Array[StringName] | [] | Template incompatibili sullo stesso genitore (§9.3). |
+| `raid_limit` | int | 0 | Numero massimo di istanze nell'inventario in raid (0 = illimitato). |
+| `can_put_into_secure_during_raid` | bool | true | Se false non può entrare nel pouch durante il raid. |
+| `cant_remove_from_slots_during_raid` | bool | false | Mod/piastre non rimovibili in raid. |
+| `unlootable` | bool | false | Non può essere preso da altri (special slot, armband, pouch). |
+| `discardable` / `sellable` / `insurable` | bool | true | Flag usati da Discard e dai [HOOK] economici. |
+| `quest_item` | bool | false | Va nell'inventario missione (§7.7). |
+| `special_slot_only` | bool | false | Entra solo negli special slot. |
+| `penalties` | GearPenalties | null | Velocità di movimento %, velocità di rotazione %, ergonomia %, riduzione udito (§16.4). |
+| `sound_profile` | StringName | &"generic" | Famiglia di suoni pickup/drop (§22). |
+| `components` | Array[ItemComponentDef] | [] | Componenti specializzati (§5.3). |
+
+```gdscript
+# res://inventory/data/item_template.gd
+class_name ItemTemplate extends Resource
+
+enum IconMode { STATIC, RENDERED }
+
+@export var id: StringName
+@export_group("Testi")
+@export var name_key: String
+@export var short_name_key: String
+@export_multiline var description_key: String
+@export_group("Base")
+@export var category: ItemCategory
+@export var size: Vector2i = Vector2i.ONE
+@export var weight_kg: float = 0.0
+@export var max_stack: int = 1
+@export var can_rotate: bool = true
+@export var background: StringName = &""
+@export_group("Grafica")
+@export var icon_mode: IconMode = IconMode.STATIC
+@export var icon: Texture2D
+@export var world_scene: PackedScene
+@export var inspect_scene: PackedScene
+@export_group("Esame")
+@export var examined_by_default: bool = false
+@export var examine_time_s: float = 1.0
+@export var examine_xp: int = 0
+@export var loot_xp: int = 0
+@export_group("Contenitore e slot")
+@export var grids: Array[GridDef] = []
+@export var layout: ContainerLayout
+@export var slots: Array[SlotDef] = []
+@export_group("Dimensione dinamica")
+@export var merges_with_children: bool = false
+@export var extra_size_left: int = 0
+@export var extra_size_right: int = 0
+@export var extra_size_up: int = 0
+@export var extra_size_down: int = 0
+@export var extra_size_force_add: bool = false
+@export var foldable: bool = false
+@export var folded_slot_id: StringName = &""
+@export var size_reduce_right: int = 0
+@export var blocks_folding: bool = false
+@export_group("Equipaggiamento")
+@export var equip_slots: Array[StringName] = []
+@export var blocks_earpiece: bool = false
+@export var blocks_eyewear: bool = false
+@export var blocks_face_cover: bool = false
+@export var blocks_headwear: bool = false
+@export var blocks_body_armor: bool = false
+@export var penalties: GearPenalties
+@export_group("Regole")
+@export var conflicting_items: Array[StringName] = []
+@export var raid_limit: int = 0
+@export var can_put_into_secure_during_raid: bool = true
+@export var cant_remove_from_slots_during_raid: bool = false
+@export var unlootable: bool = false
+@export var discardable: bool = true
+@export var sellable: bool = true
+@export var insurable: bool = true
+@export var quest_item: bool = false
+@export var special_slot_only: bool = false
+@export_group("Varie")
+@export var sound_profile: StringName = &"generic"
+@export var components: Array[ItemComponentDef] = []
+
+func is_container() -> bool:
+	return not grids.is_empty()
+
+func is_stackable() -> bool:
+	return max_stack > 1
+
+func get_component(script_type: Script) -> ItemComponentDef:
+	for c in components:
+		if c.get_script() == script_type:
+			return c
+	return null
+```
+
+### 5.3 Componenti specializzati (`ItemComponentDef`)
+
+Per non avere un template monolitico, i dati specifici stanno in componenti (sottorisorse). Un template può avere più componenti.
+
+| Componente | Campi principali | Stato runtime associato (in `ItemInstance`) |
+|---|---|---|
+| `AmmoComp` | `caliber: StringName`, `ammo_type_id`, `tracer: bool`, statistiche balistiche [HOOK] | quantità dello stack |
+| `AmmoBoxComp` | `content_template`, `count` | — (si apre in N stack) |
+| `MagazineComp` | `caliber`, `capacity: int`, `load_time_mod: float`, `unload_time_mod: float`, `check_time_mod: float`, `internal: bool` | cartucce (§11), `count_known` |
+| `WeaponComp` | `calibers`, `fire_modes`, `has_chamber: bool`, `internal_magazine: bool` | `fire_mode`, `chamber` (slot) |
+| `MedComp` | `max_hp_resource: float`, `use_time_s` | `resource` |
+| `FoodComp` | `max_resource`, `use_time_s` | `resource` |
+| `KeyComp` | `max_uses: int` (0 = infinito) | `uses_left` |
+| `DurabilityComp` | `max_durability: float`, `repairable: bool` | `durability`, `max_durability` (degrada con le riparazioni) |
+| `ArmorComp` | `armor_class`, `zones`, `material` [HOOK] | tramite `DurabilityComp` |
+| `CurrencyComp` | `currency_code: StringName` (es. RUB/USD/EUR) | quantità |
+| `SecureContainerComp` | `allow_in_raid_insert_filter` (aggiuntivo) | — |
+| `SpecialToolComp` | `action_id` (bussola, marker, ...) | — |
+| `ResourceComp` | `max_resource` generico (carburante, filtri) | `resource` |
+| `TogglableComp` | stati on/off (visori, NVG) | `toggled_on` |
+
+### 5.4 `GridDef`
+
+| Campo | Tipo | Descrizione |
+|---|---|---|
+| `id` | StringName | Univoco nel template (es. `&"main"`, `&"pouch_1"`). |
+| `size` | Vector2i | Colonne × righe. |
+| `filter` | ItemFilter | Whitelist/blacklist (§8.3). Null = accetta tutto. |
+| `max_count` | int | 0 = illimitato. Massimo numero di istanze dirette. |
+| `max_weight_kg` | float | 0 = illimitato. |
+| `is_sorting_table` | bool | Griglia buffer (§17.6). |
+| `pockets_like` | bool | Se true, ogni oggetto ruotato/no viene centrato come nelle tasche (solo resa grafica). |
+
+### 5.5 `SlotDef`
+
+| Campo | Tipo | Descrizione |
+|---|---|---|
+| `id` | StringName | Es. `&"mod_magazine"`, `&"mod_stock"`, `&"front_plate"`, `&"patron_in_weapon"`. |
+| `display_key` | String | Etichetta nella schermata modding / finestra oggetto. |
+| `filter` | ItemFilter | Template o categorie accettate. |
+| `required` | bool | Se true l'arma non è "funzionante" senza (influenza solo preset e uso). |
+| `merge_with_children` | bool | Se true l'oggetto montato è considerato parte del genitore nelle icone. |
+| `kind` | enum | MOD, MAGAZINE, CHAMBER, PLATE, INSERT, HELMET_MOD, CARTRIDGES. |
+
+### 5.6 `ItemFilter`
+
+```gdscript
+class_name ItemFilter extends Resource
+
+@export var include_categories: Array[ItemCategory] = []   # vuoto = tutte
+@export var include_templates: Array[StringName] = []
+@export var exclude_categories: Array[ItemCategory] = []
+@export var exclude_templates: Array[StringName] = []
+
+## Regola: un oggetto passa se (include vuoti OPPURE è incluso) E NON è escluso.
+## L'esclusione vince sempre sull'inclusione.
+func accepts(tpl: ItemTemplate) -> bool:
+	for c in exclude_categories:
+		if tpl.category.is_a(c):
+			return false
+	if tpl.id in exclude_templates:
+		return false
+	if include_categories.is_empty() and include_templates.is_empty():
+		return true
+	if tpl.id in include_templates:
+		return true
+	for c in include_categories:
+		if tpl.category.is_a(c):
+			return true
+	return false
+```
+
+### 5.7 `ContainerLayout`
+
+Descrive la disposizione grafica delle sotto-griglie di un rig o zaino, come nel gioco originale dove ogni rig ha un layout disegnato (tasche affiancate, sfalsate, di forme diverse).
+
+```gdscript
+class_name ContainerLayout extends Resource
+
+## Ogni voce posiziona una GridDef su una tela, in unità di cella (permette mezze celle).
+@export var placements: Array[GridPlacement] = []
+@export var canvas_size_cells: Vector2 = Vector2.ZERO   # dimensione totale del layout
+```
+
+```gdscript
+class_name GridPlacement extends Resource
+
+@export var grid_id: StringName
+@export var offset_cells: Vector2 = Vector2.ZERO   # posizione sulla tela del layout
+@export var group_frame: bool = false              # disegna una cornice attorno (tasca)
+```
+
+Se `layout` è null, le griglie vengono disposte automaticamente in fila (algoritmo "shelf packing" a sinistra-destra, a capo quando si supera la larghezza della colonna).
+
+### 5.8 `ItemInstance`
+
+```gdscript
+# res://inventory/model/item_instance.gd
+class_name ItemInstance extends RefCounted
+
+var uid: String                    # univoco globale (§19.9)
+var tpl: ItemTemplate
+var handle: int = -1               # indice runtime per le occupancy map (non serializzato)
+
+# Posizione nell'albero
+var parent_uid: String = ""        # "" per le root
+var container_id: StringName = &"" # id di GridDef o SlotDef del genitore
+var pos: Vector2i = Vector2i.ZERO  # solo se in griglia
+var rotated: bool = false          # solo se in griglia
+var cartridge_index: int = -1      # solo per le cartucce dentro un caricatore
+
+# Stato
+var stack: int = 1
+var fir: bool = false              # Found in Raid
+var durability: float = -1.0
+var max_durability: float = -1.0
+var resource: float = -1.0         # medicinali, cibo, carburante
+var uses_left: int = -1            # chiavi
+var folded: bool = false
+var fire_mode: StringName = &""
+var toggled_on: bool = false
+var count_known: bool = true       # caricatori: conteggio noto al proprietario
+var tag_name: String = ""
+var tag_color: int = 0             # indice palette tag (§8.6)
+var pinned: bool = false
+var locked: bool = false
+var insured: bool = false          # [HOOK]
+var spawned_in_session: bool = false  # trovato durante il raid corrente (diventa FIR all'estrazione)
+var custom: Dictionary = {}        # estensioni future
+```
+
+### 5.9 Owner e radici
+
+| Owner | Root template | Contenuto |
+|---|---|---|
+| Giocatore (PMC) | `equipment_root` (template invisibile con i 15 slot di §7.1) | Tutto l'equipaggiamento indossato |
+| Stash | `stash_root` con una `GridDef` 10×N | Deposito fuori raid |
+| Tavolo di smistamento | `sorting_table_root` | Buffer (§17.6) |
+| Inventario missione | `quest_root` | Oggetti missione (§7.7) |
+| Contenitore nel mondo | template del contenitore (cassa, borsone, cassaforte) | Loot generato |
+| Cadavere | `equipment_root` del personaggio morto | Equipaggiamento del morto |
+| Oggetto a terra | l'istanza stessa come root | Un oggetto (anche contenitore) |
+
+### 5.10 Dati di profilo legati all'inventario
+
+| Campo | Descrizione |
+|---|---|
+| `examined_templates: Dictionary[StringName, bool]` | Template esaminati (§14.2). |
+| `quick_slots: Array[String]` (6 elementi) | uid collegati ai tasti 4–9 (§18). |
+| `stash_rows: int` | Righe attuali della stash (livello + espansioni). |
+| `ui_state` | Posizioni delle finestre, filtri attivi, scroll della stash. |
+| `settings` | Opzioni: uso con doppio click, colori di sfondo personalizzati. |
+
+### 5.11 Formato di serializzazione (JSON)
+
+L'inventario è salvato come **lista piatta** di istanze collegate da `parent` e `container`: è il formato più robusto per salvataggi, diff di rete e migrazioni (ed è la stessa impostazione usata dal gioco originale, nota dalla community di modding).
+
+```json
+{
+  "schema_version": 3,
+  "roots": { "equipment": "eq_0001", "stash": "st_0001", "sorting": "so_0001", "quest": "qs_0001" },
+  "items": [
+    { "uid": "eq_0001", "tpl": "equipment_root" },
+    { "uid": "st_0001", "tpl": "stash_root" },
+    { "uid": "a91f", "tpl": "rifle_ak_style", "parent": "eq_0001", "container": "on_sling",
+      "upd": { "fire_mode": "single", "durability": 97.0, "max_durability": 100.0 } },
+    { "uid": "a920", "tpl": "stock_folding_x", "parent": "a91f", "container": "mod_stock" },
+    { "uid": "a921", "tpl": "mag_30_x", "parent": "a91f", "container": "mod_magazine" },
+    { "uid": "a922", "tpl": "ammo_545_ps", "parent": "a921", "container": "cartridges",
+      "index": 0, "upd": { "stack": 20 } },
+    { "uid": "a923", "tpl": "ammo_545_bt", "parent": "a921", "container": "cartridges",
+      "index": 1, "upd": { "stack": 10 } },
+    { "uid": "b100", "tpl": "backpack_raid_48", "parent": "eq_0001", "container": "backpack" },
+    { "uid": "b101", "tpl": "medkit_large", "parent": "b100", "container": "main",
+      "loc": { "x": 0, "y": 2, "r": true }, "upd": { "resource": 320, "fir": true } },
+    { "uid": "c200", "tpl": "case_items_x", "parent": "st_0001", "container": "main",
+      "loc": { "x": 4, "y": 10, "r": false },
+      "upd": { "tag": { "name": "MEDS", "color": 3 }, "pinned": true } }
+  ]
+}
+```
+
+Regole di serializzazione:
+
+1. I campi `upd` assenti assumono il default del template (salvataggi compatti).
+2. `schema_version` DEVE essere incrementato a ogni cambio di formato; il loader applica migrazioni in sequenza (`Migration_2_to_3.gd`, ...).
+3. Al caricamento si esegue una **validazione d'integrità**: genitori inesistenti, sovrapposizioni, oggetti fuori griglia o filtri violati spostano l'istanza nel tavolo di smistamento e generano un log, senza mai cancellarla.
+
+---
+
+## 6. Motore spaziale (griglie)
+
+### 6.1 Coordinate
+
+- Origine `(0,0)` in alto a sinistra; `x` cresce verso destra, `y` verso il basso.
+- `pos` è la cella in alto a sinistra del footprint.
+- Il footprint di un'istanza è `effective_size(item)` (§6.5), con larghezza e altezza scambiate se `rotated == true`.
+
+### 6.2 Rotazione
+
+- Un oggetto ruotato ha footprint `(h, w)` e l'icona disegnata ruotata di 90° [CONFIG: senso orario o antiorario, default orario].
+- La rotazione si alterna con **R** solo durante il trascinamento (non esiste un comando di rotazione fuori dal drag, coerentemente con l'originale).
+- Gli oggetti 1×1 e quelli quadrati possono comunque cambiare lo stato `rotated`, ma l'effetto è solo grafico: DOVREBBE essere ignorato per gli oggetti quadrati (si evita di salvare uno stato inutile).
+- Negli slot di equipaggiamento la rotazione non esiste: l'icona è scalata per stare nello slot.
+
+### 6.3 Indice di occupazione (`GridIndex`)
+
+Ogni griglia di ogni contenitore istanziato ha un `GridIndex`:
+
+```gdscript
+# res://inventory/model/grid_index.gd
+class_name GridIndex extends RefCounted
+
+var size: Vector2i
+var cells: PackedInt32Array   # -1 = libera, altrimenti handle dell'istanza
+
+func _init(p_size: Vector2i) -> void:
+	size = p_size
+	cells.resize(size.x * size.y)
+	cells.fill(-1)
+
+func is_area_free(rect: Rect2i, ignore_handle: int = -1) -> bool:
+	if rect.position.x < 0 or rect.position.y < 0:
+		return false
+	if rect.end.x > size.x or rect.end.y > size.y:
+		return false
+	for y in range(rect.position.y, rect.end.y):
+		var row := y * size.x
+		for x in range(rect.position.x, rect.end.x):
+			var h := cells[row + x]
+			if h != -1 and h != ignore_handle:
+				return false
+	return true
+
+func fill(rect: Rect2i, handle: int) -> void:
+	for y in range(rect.position.y, rect.end.y):
+		for x in range(rect.position.x, rect.end.x):
+			cells[y * size.x + x] = handle
+
+func clear_handle(rect: Rect2i) -> void:
+	fill(rect, -1)
+
+func handle_at(cell: Vector2i) -> int:
+	if cell.x < 0 or cell.y < 0 or cell.x >= size.x or cell.y >= size.y:
+		return -1
+	return cells[cell.y * size.x + cell.x]
+```
+
+L'indice è una cache derivata dal modello: DEVE essere ricostruibile da zero (`rebuild()`), e in build di debug una verifica periodica confronta indice e modello.
+
+### 6.4 Validazione del posizionamento (`PlacementValidator.can_place`)
+
+Un'istanza `item` può essere posta nella griglia `grid_id` del contenitore `target` alla posizione `pos` con rotazione `rot` se TUTTE le condizioni seguenti sono vere, valutate in questo ordine (il primo errore determina il codice restituito, §20.2):
+
+1. **Limiti:** il footprint ruotato è interamente dentro la griglia → `E_OUT_OF_BOUNDS`.
+2. **Sovrapposizione:** tutte le celle sono libere, ignorando l'istanza stessa se è già in quella griglia → `E_NO_SPACE`.
+3. **Auto-contenimento:** `target` non è `item` né un suo discendente → `E_SELF_CONTAINMENT`.
+4. **Filtro griglia:** `GridDef.filter.accepts(item.tpl)` → `E_FILTER`.
+5. **Filtri a cascata:** ogni oggetto *dentro* `item` (se è un contenitore) deve passare anche i filtri di tutti i contenitori antenati del nuovo percorso che dichiarano `filter_applies_to_descendants = true` [CONFIG] (serve per regole tipo "nel pouch nessun contenitore che contenga X") → `E_FILTER_NESTED`.
+6. **Regole di annidamento** (§8.4) → `E_NESTING`.
+7. **`max_count` / `max_weight_kg`** della griglia → `E_GRID_LIMIT`.
+8. **Regole raid** (§15.6), solo se il contesto è "in raid" → `E_RAID_RESTRICTED`.
+9. **Lock** (§17.3): un oggetto bloccato non può essere spostato → `E_LOCKED`.
+10. **Permessi owner:** il contesto corrente può scrivere su quell'owner (es. la stash non è accessibile in raid; un contenitore non perquisito non è accessibile, §15.2) → `E_NO_ACCESS`.
+
+### 6.5 Dimensione effettiva (oggetti modulari e piegati)
+
+Per gli oggetti con `merges_with_children = true` (armi, alcuni caschi) il footprint cresce con gli attacchi. Algoritmo:
+
+```gdscript
+# res://inventory/rules/size_calculator.gd
+class_name SizeCalculator
+
+static func effective_size(model: InventoryModel, item: ItemInstance) -> Vector2i:
+	var t := item.tpl
+	if not t.merges_with_children:
+		return t.size
+	var max_l := 0; var max_r := 0; var max_u := 0; var max_d := 0
+	var add_l := 0; var add_r := 0; var add_u := 0; var add_d := 0
+	for child in model.iter_mod_descendants(item):
+		# Se l'arma è piegata, l'intero sottoalbero del calcio non conta
+		if item.folded and model.is_in_subtree_of_slot(child, item, t.folded_slot_id):
+			continue
+		var ct := child.tpl
+		if ct.extra_size_force_add:
+			add_l += ct.extra_size_left; add_r += ct.extra_size_right
+			add_u += ct.extra_size_up;   add_d += ct.extra_size_down
+		else:
+			max_l = maxi(max_l, ct.extra_size_left);  max_r = maxi(max_r, ct.extra_size_right)
+			max_u = maxi(max_u, ct.extra_size_up);    max_d = maxi(max_d, ct.extra_size_down)
+	var w := t.size.x + max_l + max_r + add_l + add_r
+	var h := t.size.y + max_u + max_d + add_u + add_d
+	if item.folded:
+		w -= t.size_reduce_right
+	return Vector2i(maxi(w, 1), maxi(h, 1))
+```
+
+Note:
+
+- `iter_mod_descendants` visita solo gli slot di tipo MOD/MAGAZINE (non le cartucce).
+- La dimensione effettiva DEVE essere ricalcolata e messa in cache a ogni `AttachModOp`, `DetachModOp`, `FoldOp`.
+- **Crescita in griglia:** se si monta un attacco su un'arma che si trova in una griglia e la nuova dimensione non entra nella posizione attuale (celle occupate o fuori bordo), l'operazione DEVE fallire con `E_NO_SPACE_AFTER_RESIZE`. Non si sposta l'arma automaticamente.
+- **Spiegatura:** sbloccare il calcio richiede spazio a destra; se manca, `FoldOp(unfold)` fallisce con lo stesso codice.
+
+### 6.6 Ricerca di spazio libero (`find_free_spot`)
+
+Usata da Ctrl+Click, raccolta da terra, apertura scatole di munizioni, unload, acquisto [HOOK], ordinamento.
+
+```gdscript
+static func find_free_spot(index: GridIndex, item_size: Vector2i, can_rotate: bool,
+		prefer_rotated: bool = false) -> Dictionary:
+	var orientations: Array[bool] = [prefer_rotated]
+	if can_rotate and item_size.x != item_size.y:
+		orientations.append(not prefer_rotated)
+	for y in index.size.y:
+		for x in index.size.x:
+			for rot in orientations:
+				var s := Vector2i(item_size.y, item_size.x) if rot else item_size
+				if index.is_area_free(Rect2i(Vector2i(x, y), s)):
+					return { "ok": true, "pos": Vector2i(x, y), "rotated": rot }
+	return { "ok": false }
+```
+
+- Ordine di scansione: per righe, dall'alto in basso, da sinistra a destra [CONFIG: `scan_order = ROW_MAJOR | COLUMN_MAJOR`] [VERIFICA].
+- Per un contenitore multi-griglia, le sotto-griglie si provano nell'ordine della lista `grids` del template.
+- Prima di cercare spazio, se l'oggetto è impilabile si tenta l'**unione** con stack compatibili esistenti nello stesso contenitore (§10.2).
+
+---
+
+## 7. Slot di equipaggiamento
+
+### 7.1 Elenco degli slot
+
+Il template `equipment_root` DEVE dichiarare esattamente questi slot (ordine e nomi come nell'originale):
+
+| # | ID | Etichetta UI | Accetta (categoria) | Saccheggiabile da altri | Perso alla morte |
+|---|---|---|---|---|---|
+| 1 | `earpiece` | EARPIECE | Earpiece | sì | sì |
+| 2 | `headwear` | HEADWEAR | Headwear | sì | sì |
+| 3 | `face_cover` | FACE COVER | FaceCover | sì | sì |
+| 4 | `armband` | ARMBAND | Armband | **no** | **no** |
+| 5 | `body_armor` | BODY ARMOR | BodyArmor | sì | sì |
+| 6 | `eyewear` | EYEWEAR | Eyewear | sì | sì |
+| 7 | `on_sling` | ON SLING | Weapon (armi principali; [CONFIG] anche pistole) | sì | sì |
+| 8 | `holster` | HOLSTER | Pistol, Revolver | sì | sì |
+| 9 | `on_back` | ON BACK | come `on_sling` | sì | sì |
+| 10 | `scabbard` | SCABBARD | Melee | **no** | **no** |
+| 11 | `tactical_rig` | TACTICAL RIG | ChestRig, ArmoredRig | sì | sì |
+| 12 | `pockets` | POCKETS | template Pockets (fisso, non rimovibile) | contenuto sì | contenuto sì |
+| 13 | `special_1..3` | SPECIAL SLOTS | SpecialItem con `special_slot_only` o whitelist | **no** | **no** |
+| 14 | `backpack` | BACKPACK | Backpack | sì | sì |
+| 15 | `secure_container` | POUCH | SecureContainer (non rimovibile in raid) | **no** | **no** (né contenuto) |
+
+I flag "saccheggiabile" e "perso alla morte" DEVONO stare nella `SlotDef` dell'`equipment_root` (campi `lootable`, `lost_on_death`), non nel codice.
+
+### 7.2 Comportamento comune degli slot
+
+- Uno slot contiene al massimo un'istanza.
+- Trascinando un oggetto compatibile su uno slot occupato si esegue uno **scambio** (`SwapOp`) se il vecchio oggetto può andare nella posizione di provenienza del nuovo; altrimenti `E_SWAP_IMPOSSIBLE`.
+- Durante il trascinamento, gli slot che accetterebbero l'oggetto DEVONO evidenziarsi (§13.5).
+- L'oggetto nello slot è visualizzato scalato per entrare nel riquadro mantenendo le proporzioni; per le armi si mostrano anche il conteggio del caricatore (§11.5) e la durabilità [CONFIG].
+- Rig e zaino: lo slot mostra l'icona dell'oggetto indossato e, a destra, il layout delle sue griglie (§13.2).
+
+### 7.3 Regole di blocco
+
+| Se è equipaggiato... | ...con flag | Blocca lo slot |
+|---|---|---|
+| Headwear | `blocks_earpiece` | earpiece |
+| Headwear | `blocks_eyewear` | eyewear |
+| Headwear | `blocks_face_cover` | face_cover |
+| FaceCover | `blocks_headwear` / `blocks_eyewear` | headwear / eyewear |
+| Eyewear o Earpiece | flag simmetrici, se presenti nel template | slot corrispondente |
+| ArmoredRig (nello slot `tactical_rig`) | `blocks_body_armor` | body_armor |
+| BodyArmor | `blocks_tactical_rig_armored` [CONFIG] | impedisce un rig corazzato |
+
+Regole:
+
+1. Equipaggiare X è vietato (`E_SLOT_BLOCKED`) se uno slot che X bloccherebbe è già occupato, **oppure** se X va in uno slot bloccato da un oggetto già indossato.
+2. La UI DEVE mostrare lo slot bloccato con un overlay (tratteggio rosso o lucchetto) e un tooltip che indica l'oggetto responsabile.
+3. Le regole valgono in modo identico per il giocatore, i cadaveri e i preset.
+
+### 7.4 Special slot
+
+- Tre slot 1×1 posizionati accanto alle tasche.
+- Accettano solo oggetti `SpecialItem` presenti in una whitelist [CONFIG] (bussola, marker, telemetro, ...).
+- Gli oggetti negli special slot non si perdono alla morte e non sono saccheggiabili.
+- Gli strumenti si usano con il loro tasto dedicato anche se si trovano negli special slot.
+
+### 7.5 Tasche
+
+- Il template `pockets` è un contenitore con **4 griglie 1×1 separate** (non una griglia 4×1: un oggetto 1×2 non entra).
+- Il template DEVE essere sostituibile [CONFIG] per supportare varianti di tasche (es. edizioni di gioco con tasche più grandi) [VERIFICA].
+- Lo slot `pockets` non è vuotabile né rimovibile: il template è fisso.
+- In raid, il contenuto delle tasche di un cadavere richiede perquisizione (§15.2).
+
+### 7.6 Pouch (contenitore sicuro)
+
+- Lo slot accetta solo `SecureContainer`; non può essere svuotato dal pouch stesso né rimosso durante il raid.
+- Dimensioni di riferimento dei pouch nell'originale: 2×2, 3×2, 4×2, 3×3, 3×4, oltre a un 2×2 alternativo. Nel progetto sono semplici template [CONFIG].
+- Filtro tipico del pouch: **esclude** zaini, rig, armi lunghe, armature e la maggior parte dei contenitori grandi; ammette alcune custodie piccole (documenti, chiavi, denaro, siringhe) tramite whitelist [CONFIG].
+- In raid si applica anche `can_put_into_secure_during_raid` (§15.6).
+- Il contenuto del pouch non si perde mai alla morte.
+
+### 7.7 Inventario missione
+
+- Gli oggetti con `quest_item = true` raccolti in raid vanno in `quest_root`, una lista senza griglia che non occupa spazio [CONFIG: `quest_items_use_separate_inventory = true`].
+- Mostrato nella UI come pannello compatto con icone (solo lettura, Ispeziona permesso).
+- Perdita alla morte [CONFIG, default: perso].
+
+---
+
+## 8. Contenitori
+
+### 8.1 Contenitori multi-griglia
+
+- Un contenitore ha N `GridDef`; ognuna ha dimensioni, filtri e limiti propri.
+- Esempi tipici dell'originale: un rig con ingombro esterno 4×4 e 20 celle interne distribuite in più tasche; uno zaino con ingombro 5×7 composto da tre griglie interne di dimensioni diverse.
+- Il layout grafico (`ContainerLayout`) dispone le griglie come nel disegno del rig/zaino: tasche affiancate, tasche verticali 1×2, griglie principali grandi.
+- Un oggetto NON può occupare celle di due sotto-griglie diverse.
+
+### 8.2 Spazio interno ed esterno
+
+- L'ingombro esterno è `tpl.size`, la capacità è la somma delle griglie: possono essere diversi in entrambe le direzioni (uno zaino 6×7 con griglia 6×8; un telaio da trasporto 4×5 con griglia interna 2×7).
+- Questa asimmetria è voluta ed è una meccanica centrale della gestione della stash: NON va "corretta".
+
+### 8.3 Filtri
+
+- Ogni griglia e ogni slot ha un `ItemFilter`.
+- Esempi: custodia munizioni (solo Ammo e AmmoBox), custodia chiavi (solo Key), portafoglio (solo Money e Info piccoli), custodia armi (Weapon, WeaponMod, Magazine), custodia granate (solo ThrowableWeapon).
+- Durante il trascinamento, le griglie che rifiutano l'oggetto mostrano l'anteprima rossa; l'errore indica la regola violata (§20.2).
+
+### 8.4 Regole di annidamento
+
+Configurabili per categoria [CONFIG] tramite la tabella `NestingRules`:
+
+| Contenitore (genitore) | Contenuto | Regola di default | Note |
+|---|---|---|---|
+| Backpack | Backpack | consentito **solo se il figlio è vuoto** | [VERIFICA] sulla build corrente |
+| Backpack | ChestRig | consentito solo se vuoto | [VERIFICA] |
+| Qualsiasi | sé stesso o un proprio antenato | vietato | regola fissa |
+| Custodia X | custodia dello stesso template | vietato | evita annidamenti infiniti tra casse identiche |
+| SecureContainer | Container | solo whitelist | custodie piccole ammesse |
+| Container (custodie) | Container più piccolo | consentito | es. custodia documenti dentro custodia oggetti |
+
+Implementazione: `NestingRules.check(parent_tpl, child_instance, model) -> int (codice errore o OK)`.
+
+### 8.5 Finestre contenitore
+
+- **Apertura:** doppio click sul contenitore oppure "Apri" dal menu contestuale. Rig e zaino indossati sono già visibili nella colonna centrale e non aprono finestre.
+- **Più finestre:** possono essere aperte contemporaneamente più finestre, anche annidate (custodia dentro custodia).
+- **Comportamento della finestra:**
+  - barra del titolo con nome dell'oggetto, nome del tag (se presente) e pulsante di chiusura;
+  - trascinabile entro i limiti dello schermo; si porta in primo piano al click;
+  - per ogni template si ricorda l'ultima posizione [CONFIG];
+  - se il contenitore viene spostato in un'altra posizione, la finestra resta aperta;
+  - se viene scartato, venduto o finisce fuori dalla portata (es. si chiude il loot), la finestra si chiude;
+  - **Esc** chiude l'ultima finestra aperta (stack LIFO); quando non ci sono più finestre, Esc chiude l'inventario.
+- Non si può aprire due volte la stessa istanza: il secondo doppio click porta in primo piano la finestra esistente.
+- Gli oggetti con slot (arma, armatura, casco) aprono una finestra "dettaglio slot" (§9.4).
+
+### 8.6 Tag dei contenitori
+
+- Menu contestuale → "Tag": dialogo con campo nome (massimo 16 caratteri [CONFIG]) e palette di 8–10 colori [CONFIG].
+- Il nome del tag compare nella tile del contenitore (§13.4) e nel titolo della finestra.
+- "Rimuovi tag" lo cancella.
+- Il tag è persistente nell'istanza, sopravvive al raid e passa con l'oggetto se saccheggiato.
+
+---
+
+## 9. Armi modulari e oggetti con slot
+
+### 9.1 Albero degli attacchi
+
+- Un'arma è un'istanza con `slots` (mod_pistol_grip, mod_stock, mod_barrel, mod_handguard, mod_muzzle, mod_reciever, mod_sight_rear, mod_scope, mod_mount_*, mod_tactical_*, mod_magazine, mod_charge, patron_in_weapon, ...).
+- Ogni mod può a sua volta avere slot (un paramano con slitte, un supporto con slot ottica): l'albero ha profondità arbitraria.
+- Le mod sono istanze con `parent_uid` pari all'oggetto su cui sono montate e `container_id` pari allo slot.
+
+### 9.2 Peso e dimensione
+
+- Peso dell'arma = peso base + somma ricorsiva di mod, caricatore e cartucce.
+- Dimensione = `SizeCalculator.effective_size` (§6.5).
+- L'icona dell'arma DEVE riflettere gli attacchi (§13.6).
+
+### 9.3 Compatibilità
+
+Montare la mod M nello slot S dell'oggetto P è consentito se:
+
+1. `S.filter.accepts(M.tpl)` → altrimenti `E_INCOMPATIBLE`.
+2. Nessun template in `conflicting_items` di M è montato in qualunque punto dell'albero di P (e viceversa) → altrimenti `E_CONFLICT` (es. un paramano che impedisce un certo tipo di ottica).
+3. Se P si trova in una griglia, la nuova dimensione entra (§6.5) → altrimenti `E_NO_SPACE_AFTER_RESIZE`.
+4. Se P è piegata e M va nel ramo del calcio, si segue la regola [CONFIG] (default: consentito, la dimensione resta "piegata").
+5. In raid: rispettare `cant_remove_from_slots_during_raid` per rimozioni.
+
+### 9.4 Finestra di dettaglio slot (in inventario)
+
+- Doppio click su un'arma o un'armatura apre una finestra con la vista 3D (o l'icona) e l'elenco degli slot a griglia, ognuno con etichetta e contenuto.
+- Si possono trascinare mod dalla stash o dall'inventario negli slot e viceversa.
+- Gli slot vuoti compatibili con l'oggetto trascinato si evidenziano.
+
+### 9.5 Schermata di modding e preset [P1]
+
+Schermata dedicata (accessibile da "Modifica" nel menu contestuale), riproduce l'editor dell'originale:
+
+- **Area centrale:** modello 3D dell'arma, ruotabile con il mouse; per ogni slot c'è un'etichetta collegata da una linea al punto di montaggio.
+- **Click su uno slot:** elenco delle mod compatibili disponibili nell'inventario e nella stash; [HOOK] elenco delle mod acquistabili.
+- **Pannello statistiche:** ergonomia, rinculo verticale e orizzontale, velocità iniziale, distanza di azzeramento, peso, dimensione risultante. Le statistiche sono calcolate da [HOOK] `WeaponStatsProvider`; l'inventario fornisce solo l'albero.
+- **Validazione live:** conflitti, slot obbligatori mancanti ("arma non funzionante").
+- **Preset/Build:** salva l'albero (template + slot) con un nome. "Assembla" estrae le mod dalla stash in un'unica operazione atomica; quelle mancanti sono segnalate. Il preset è un dato di profilo, non un'istanza.
+
+### 9.6 Armature e caschi con slot
+
+- Le armature hanno slot `PLATE` (piastra frontale, posteriore, laterali) e `INSERT` (inserti morbidi per zona).
+- I caschi hanno slot `HELMET_MOD` (visiera, supporto NVG, protezioni auricolari).
+- Peso e penalità includono i componenti montati.
+- Durabilità per componente: la tile dell'armatura mostra quella aggregata [CONFIG: somma/media/minimo] [VERIFICA].
+- Le stesse regole di blocco (§7.3) possono derivare da un componente (es. una visiera montata che blocca gli occhiali): il calcolo dei blocchi DEVE considerare l'intero sottoalbero dell'oggetto equipaggiato.
+
+---
+
+## 10. Stack, divisione, unione, valute
+
+### 10.1 Regole di impilabilità
+
+- Due istanze sono impilabili tra loro se hanno lo stesso template, `max_stack > 1`, lo stesso stato FIR e nessuna delle due è bloccata [CONFIG: `fir_must_match_to_stack = true`] [VERIFICA].
+- Lo stack massimo dipende dal template (munizioni nell'ordine delle decine, valute in migliaia/centinaia di migliaia) [CONFIG].
+
+### 10.2 Unione (`MergeOp`)
+
+- Rilasciando uno stack su uno stack compatibile: `trasferito = min(sorgente, max - destinazione)`.
+- Se la sorgente si esaurisce viene rimossa; il resto rimane dove era.
+- Ctrl+Click e la raccolta da terra uniscono automaticamente agli stack esistenti nel contenitore di destinazione prima di occupare spazio nuovo.
+
+### 10.3 Divisione (`SplitOp`)
+
+- **Gesto:** trascinare uno stack e rilasciarlo su celle libere **tenendo premuto Ctrl** (come nell'originale).
+- Al rilascio si apre il dialogo di divisione:
+  - slider da 1 a `stack-1`, con valore iniziale pari a metà (arrotondata per difetto) [CONFIG];
+  - campo numerico sincronizzato con lo slider;
+  - Invio conferma, Esc annulla, la rotellina del mouse aggiusta il valore di ±1 (±10 con Shift) [CONFIG];
+- Il nuovo stack nasce alla posizione e con la rotazione dell'anteprima.
+- Il nuovo stack eredita FIR e stato dal padre ma con un nuovo `uid`.
+
+### 10.4 Valute
+
+- Le valute sono stack di template con `CurrencyComp`.
+- L'intestazione della stash mostra il totale per valuta, calcolato su tutta la stash in modo ricorsivo (anche dentro i contenitori), escludendo gli oggetti bloccati se [CONFIG] lo prevede [HOOK: pagamenti].
+- [HOOK] Pagamento: si prelevano prima gli stack più piccoli e mai quelli bloccati.
+
+### 10.5 Scatole di munizioni
+
+- Menu contestuale "Apri": la scatola si trasforma in stack di cartucce posizionati nello spazio libero (preferibilmente nella posizione della scatola), con unione agli stack esistenti; se lo spazio non basta l'operazione fallisce con `E_NO_SPACE` [CONFIG: fallback sul tavolo di smistamento fuori raid].
+
+---
+
+## 11. Caricatori e munizioni
+
+### 11.1 Modello
+
+- Un caricatore ha lo slot speciale `cartridges` di tipo `CARTRIDGES` che contiene una **sequenza ordinata** di stack di cartucce (`cartridge_index` 0..n).
+- L'ordine è LIFO: l'ultima cartuccia inserita è la prima sparata. Lo stack con indice più alto è in cima.
+- Sono ammessi tipi di munizione misti nello stesso caricatore; due inserimenti consecutivi dello stesso tipo si fondono nello stesso stack.
+- Capacità: la somma degli stack non può superare `MagazineComp.capacity`.
+- Il calibro deve corrispondere: `AmmoComp.caliber == MagazineComp.caliber` → altrimenti `E_CALIBER`.
+- I caricatori interni (fucili a pompa, revolver) sono uno slot `CARTRIDGES` dell'arma stessa.
+- La camera di cartuccia è uno slot `CHAMBER` (`patron_in_weapon`) di capacità 1.
+
+### 11.2 Caricamento
+
+- **Gesto principale:** trascinare uno stack di munizioni su un caricatore (in griglia, nello slot arma o dentro un'arma). Si caricano `min(stack, posti liberi)` cartucce.
+- **Menu contestuale "Carica munizioni":** sottomenu con i tipi compatibili presenti nell'inventario raggiungibile (e nella stash, fuori raid) e il totale di ciascuno; la scelta carica fino al riempimento attingendo da più stack.
+- **Menu contestuale di un'arma "Carica munizioni":** carica il caricatore montato.
+- **Tempi:** fuori raid il caricamento è istantaneo; in raid è progressivo, cartuccia per cartuccia:
+  - `t_round = base_load_time * MagazineComp.load_time_mod * (1 - bonus_abilità)` [CONFIG] [HOOK abilità];
+  - la tile del caricatore mostra una barra di avanzamento e il conteggio crescente;
+  - chiudere l'inventario o cambiare scheda interrompe l'operazione: le cartucce già caricate restano nel caricatore;
+  - si può caricare un solo caricatore alla volta [CONFIG].
+
+### 11.3 Scaricamento
+
+- Menu contestuale "Scarica munizioni" (anche su un'arma: scarica il caricatore montato e, se [CONFIG], la camera).
+- Le cartucce escono in ordine LIFO e si uniscono agli stack compatibili più vicini, poi allo spazio libero del contenitore che contiene il caricatore, poi agli altri contenitori dell'owner. Se lo spazio si esaurisce, lo scaricamento si ferma.
+- In raid ha tempi analoghi al caricamento (`unload_time_mod`), con la stessa regola di interruzione.
+
+### 11.4 Controllo del caricatore e conteggio sconosciuto
+
+- I caricatori raccolti in raid hanno `count_known = false`: la tile mostra `?/30`.
+- I caricatori portati nel raid sono considerati controllati all'ingresso.
+- "Controlla caricatore" (menu contestuale o tasto centrale del mouse sull'oggetto) richiede un tempo [CONFIG] e porta `count_known = true`.
+- Caricare o scaricare un caricatore controllato lo mantiene controllato; iniziare a caricarne uno vuoto o a scaricarne uno pieno rende il conteggio esatto.
+- Precisione del controllo [HOOK abilità]: a livelli bassi il risultato è un'indicazione vaga ("quasi pieno", "metà"), poi un valore approssimato, poi esatto [CONFIG: soglie].
+- In gioco (fuori inventario) Alt+T controlla il caricatore montato [HOOK HUD].
+
+### 11.5 Visualizzazione
+
+- Tile del caricatore: in basso a destra `n/capacità` oppure `?/capacità`.
+- Tile dell'arma in griglia o slot: conteggio del caricatore montato più `+1` se c'è una cartuccia in camera [CONFIG]; se il caricatore manca, nessun conteggio.
+- Il tooltip esteso di un caricatore elenca gli stack interni dall'alto (prossimo colpo) al basso.
+
+---
+
+## 12. Interazioni e input
+
+### 12.1 Mappa dei comandi (InputMap)
+
+Tutte le azioni DEVONO essere definite come azioni dell'InputMap (rimappabili). Default allineati all'originale:
+
+| Azione InputMap | Default | Contesto | Effetto |
+|---|---|---|---|
+| `inv_toggle` | Tab | gioco | Apre/chiude l'inventario. |
+| `inv_drag` | Tasto sinistro (tieni premuto) | tile | Inizia il trascinamento. |
+| `inv_rotate` | R | durante il drag | Ruota l'oggetto trascinato. |
+| `inv_split_modifier` | Ctrl sinistro, tenuto al rilascio | drop su celle libere | Apre il dialogo di divisione. |
+| `inv_quick_move` | Ctrl + click sinistro | tile | Spostamento rapido (§12.5). |
+| `inv_quick_equip` | Alt + click sinistro | tile | Equipaggiamento rapido (§12.6). |
+| `inv_discard` | Canc | cursore su tile | Scarta (§12.3). |
+| `inv_context` | Tasto destro | tile/slot | Menu contestuale (§12.7). |
+| `inv_open_use` | Doppio click sinistro | tile | Apri contenitore / finestra oggetto / usa consumabile (opzione). |
+| `inv_middle_action` | Tasto centrale | tile | Esamina (sconosciuto) / controlla caricatore / piega-spiega arma (§12.4). |
+| `inv_close_window` | Esc | inventario | Chiude l'ultima finestra aperta, poi l'inventario. |
+| `inv_bind_4..9` | 4–9 con cursore su tile | tile | Collega l'oggetto al quick slot. |
+| `inv_pin_mode` | P | stash | Modalità Pin (§17.3). |
+| `inv_lock_mode` | L | stash | Modalità Lock (§17.3). |
+| `game_drop_backpack` | Z due volte | gioco | Lascia cadere lo zaino (§15.7). |
+| `game_fold_stock` | Alt + L | gioco | Piega/spiega l'arma in mano. |
+| `game_check_mag` | Alt + T | gioco | Controlla il caricatore montato. |
+| `game_quick_slot_1..6` | 4–9 | gioco | Usa l'oggetto collegato (§18). |
+
+### 12.2 Macchina a stati del trascinamento
+
+```
+IDLE
+ ├─ mouse_down su tile (non bloccata, accessibile) ─► PRESSED (salva grab_offset)
+PRESSED
+ ├─ mouse_up prima della soglia ─► click (gestito da InputRouter) ─► IDLE
+ ├─ movimento > soglia di drag (6 px [CONFIG]) ─► DRAGGING
+DRAGGING
+ ├─ ogni movimento: risolve il bersaglio (§12.2.1), aggiorna anteprima e evidenziazioni
+ ├─ R: ruota (scambia footprint, ricalcola grab_offset)
+ ├─ mouse_up: costruisce l'operazione per il bersaglio corrente
+ │            → valida → esegue / mostra errore ─► IDLE
+ ├─ Esc o tasto destro: annulla ─► IDLE
+ └─ inventario chiuso / oggetto rimosso dal modello: annulla ─► IDLE
+```
+
+- La sorgente NON viene rimossa dal modello durante il drag: viene solo resa semitrasparente (alpha 0.35 [CONFIG]). Il rilascio produce un'unica operazione atomica.
+- **Calcolo della cella bersaglio:** `top_left = floor((cursore_locale - grab_offset_ruotato) / cell_px + 0.5)`, cioè arrotondamento alla cella più vicina dell'angolo superiore sinistro dell'anteprima.
+- **Rotazione durante il drag:** `grab_offset` viene trasformato (scambio x/y e riflessione secondo il senso di rotazione), poi limitato all'interno del nuovo footprint, così l'oggetto resta "sotto" il cursore.
+- **Anteprima:** l'icona segue il cursore con l'offset; sulla griglia sotto il cursore si disegna il rettangolo del footprint con colore di validità (§13.5).
+
+#### 12.2.1 Risoluzione del bersaglio al rilascio (priorità)
+
+| Priorità | Elemento sotto il cursore | Condizione | Operazione |
+|---|---|---|---|
+| 1 | Quick slot | oggetto collegabile (§18) | `BindQuickSlotOp` (l'oggetto non si sposta) |
+| 2 | Slot di equipaggiamento | compatibile e non bloccato | `EquipOp` o `SwapOp` |
+| 3 | Slot di un oggetto (mod/caricatore/piastra) in una finestra di dettaglio | compatibile | `AttachModOp` (con scambio se occupato) |
+| 4 | Tile di uno stack dello stesso tipo | impilabile e non pieno | `MergeOp` |
+| 5 | Tile di un caricatore o di un'arma con caricatore interno | sorgente = munizioni compatibili | `LoadAmmoOp` |
+| 6 | Tile di un'arma | sorgente = caricatore compatibile | `AttachModOp(mod_magazine)`; se c'è già un caricatore, scambio: il vecchio va al posto del nuovo |
+| 7 | Tile di un'arma o di un oggetto con slot | sorgente = mod compatibile con uno slot libero | `AttachModOp` sul primo slot libero compatibile |
+| 8 | Tile di un contenitore chiuso | ci sta dentro | `MoveOp` nella prima posizione libera (§6.6) |
+| 9 | Celle di una griglia | libere (ignorando la sorgente) | `MoveOp` (con Ctrl e stack > 1: `SplitOp`) |
+| 10 | Fuori da qualunque pannello | in raid e [CONFIG] `drop_outside_to_ground` | `DropToWorldOp` |
+| 11 | Pannello di vendita/scambio | [HOOK] | operazione del sistema esterno |
+| — | Altro | — | rilascio non valido: l'oggetto torna alla posizione originale |
+
+Se una regola con priorità alta si applica al bersaglio ma la validazione fallisce (es. stack pieno), si DEVE passare alla regola successiva compatibile con lo stesso bersaglio (es. dalla priorità 4 alla 9 se le celle sono libere). Altrimenti si mostra l'errore della regola più specifica.
+
+### 12.3 Click, doppio click e Canc
+
+- **Click singolo:** seleziona la tile (focus per Canc e per i tasti 4–9); non fa altro.
+- **Doppio click:**
+  - contenitore → apre la finestra (§8.5);
+  - arma/armatura/casco → finestra di dettaglio slot (§9.4);
+  - oggetto sconosciuto → avvia l'esame (§14.2);
+  - consumabile → usa, se l'opzione utente "Usa con doppio click" è attiva (introdotta come impostazione nell'originale); altrimenti apre Ispeziona.
+- **Canc:** scarta l'oggetto sotto il cursore.
+  - In raid: l'oggetto cade a terra davanti al personaggio (`DropToWorldOp`).
+  - Fuori raid: conferma ("Vuoi davvero eliminare X?") e poi distruzione; vietato se `discardable = false` o `locked`.
+  - Su un contenitore non vuoto, la conferma DEVE avvisare che il contenuto andrà perso.
+
+### 12.4 Tasto centrale del mouse (in interfaccia)
+
+In base all'oggetto sotto il cursore:
+
+1. oggetto sconosciuto → Esamina;
+2. caricatore o arma con caricatore → Controlla caricatore;
+3. arma pieghevole → Piega/Spiega;
+4. altrimenti → Ispeziona.
+
+### 12.5 Ctrl+Click: spostamento rapido (`QuickMoveOp`)
+
+**Caso A — esiste un lato B aperto (stash, loot, cadavere, trader):**
+
+- se l'oggetto sta nel lato A (giocatore) → lo sposta nella griglia principale del lato B (stash: griglia della stash; contenitore di loot: sua griglia; cadavere: [CONFIG] zaino poi rig poi tasche del cadavere);
+- se l'oggetto sta nel lato B → lo sposta nel lato A secondo la priorità per categoria (sotto).
+
+**Caso B — nessun lato B (es. in raid, inventario aperto senza loot):** lo sposta nel contenitore successivo della lista di priorità, saltando quello in cui si trova già.
+
+**Priorità per categoria nel lato A [CONFIG]:**
+
+| Categoria | Ordine di destinazione |
+|---|---|
+| Magazine, Ammo, ThrowableWeapon, Meds, Stimulant | Tactical rig → Tasche → Zaino |
+| Weapon | Zaino (gli slot arma sono di competenza di Alt+Click) |
+| Key, Info, Money | Tasche → Rig → Zaino |
+| Tutto il resto | Zaino → Rig → Tasche |
+
+Regole comuni: il pouch e gli special slot non sono mai destinazioni automatiche [CONFIG]; prima si unisce agli stack (§10.2), poi si usa `find_free_spot`; se nessuna destinazione è valida → `E_NO_SPACE` con il suono di errore.
+
+### 12.6 Alt+Click: equipaggiamento rapido (`QuickEquipOp`)
+
+1. Determina gli slot di equipaggiamento compatibili (`tpl.equip_slots`) nell'ordine dichiarato; per le armi principali `on_sling` poi `on_back`; per le pistole `holster` poi gli slot principali [CONFIG]; per le armi bianche `scabbard`.
+2. Se ne esiste uno libero e non bloccato → `EquipOp`.
+3. Altrimenti, se il primo slot compatibile è occupato e il suo oggetto può andare nella posizione di provenienza del nuovo → `SwapOp`.
+4. Se l'oggetto è un consumabile in raid → [CONFIG] usa (default: nessuna azione).
+5. Altrimenti → `E_CANNOT_EQUIP`.
+
+### 12.7 Menu contestuale
+
+Implementato con `PopupMenu` (con sottomenu). Le voci compaiono solo se applicabili; quelle applicabili ma momentaneamente impossibili sono grigie con tooltip che spiega il motivo.
+
+| Voce | Condizione | Operazione |
+|---|---|---|
+| Ispeziona | sempre (se esaminato) | apre Ispeziona (§14.1) |
+| Esamina | template sconosciuto | `ExamineOp` (§14.2) |
+| Apri | contenitore / scatola munizioni / oggetto con slot | finestra (§8.5/§9.4) oppure `UnpackOp` (§10.5) |
+| Usa | consumabile, in raid [HOOK salute] | `UseOp` |
+| Equipaggia | equipaggiabile, non indossato | `QuickEquipOp` |
+| Togli | indossato | `MoveOp` verso spazio libero (priorità: zaino → stash) |
+| Carica munizioni ► | caricatore o arma | sottomenu dei tipi disponibili con quantità |
+| Scarica munizioni | caricatore o arma non vuoti | `UnloadAmmoOp` |
+| Controlla caricatore | caricatore/arma con `count_known = false` | `CheckMagOp` |
+| Piega / Spiega | arma con `foldable` | `FoldOp` |
+| Modifica | arma / oggetto con slot | schermata modding (§9.5) |
+| Smonta tutto | oggetto con mod | sposta tutte le mod in spazio libero (atomico) |
+| Collega ► 4…9 | oggetto collegabile | `BindQuickSlotOp` |
+| Tag ► Imposta / Rimuovi | contenitore | `TagOp` |
+| Pin / Unpin | in stash, fuori raid | `PinOp` |
+| Blocca / Sblocca | in stash, fuori raid | `LockOp` |
+| Ripara | `DurabilityComp.repairable` [HOOK] | — |
+| Assicura | `insurable` [HOOK] | — |
+| Filtra per oggetto | [HOOK flea market] | — |
+| Scarta | `discardable` e non bloccato | `DiscardOp` / `DropToWorldOp` |
+
+Navigazione da tastiera: le frecce e la rotellina scorrono le voci, Invio conferma, Esc chiude. Il menu si apre sul punto del click e si riposiziona per restare dentro lo schermo.
+
+---
+
+## 13. Layout e specifiche visive
+
+> Le misure in pixel sono riferite a 1920×1080 con scala UI 100%. Tutte le dimensioni DEVONO derivare da `cell_px` [CONFIG] e scalare con l'opzione "Scala interfaccia". Prima del lock grafico, le posizioni esatte vanno ricalibrate su catture della build corrente dell'originale, perché il layout è stato ritoccato più volte tra le patch [VERIFICA].
+
+### 13.1 Schermata "Personaggio → Equipaggiamento" (fuori raid)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────────┐
+│ BARRA SUPERIORE: schede Personaggio [Panoramica | EQUIPAGGIAMENTO | Salute | Abilità | ...]   │
+├────────────────────────────┬──────────────────────────────────┬─────────────────────────────┤
+│ COLONNA 1 — GEAR           │ COLONNA 2 — CONTENITORI INDOSSATI│ COLONNA 3 — STASH           │
+│                            │                                  │ ┌─────────────────────────┐ │
+│ EARPIECE HEADWEAR FACE COV.│ TACTICAL RIG                     │ │filtri│cerca│FIR│⇅ ordina│ │
+│ ┌──────┐ ┌──────┐ ┌──────┐ │ ┌──────┐ ┌───────────────────┐   │ │valute: ₽ … $ … € …      │ │
+│ │      │ │      │ │      │ │ │ rig  │ │ layout tasche rig │   │ ├─────────────────────────┤ │
+│ └──────┘ └──────┘ └──────┘ │ └──────┘ └───────────────────┘   │ │                         │ │
+│ ARMBAND  BODY ARMOR EYEWEAR│ POCKETS            SPECIAL SLOTS │ │  griglia 10 × N         │ │
+│ ┌──────┐ ┌──────┐ ┌──────┐ │ [ ][ ][ ][ ]       [ ][ ][ ]     │ │  (scroll verticale)     │ │
+│ │      │ │      │ │      │ │                                  │ │                         │ │
+│ └──────┘ └──────┘ └──────┘ │ BACKPACK                         │ │                         │ │
+│ ON SLING                   │ ┌──────┐ ┌───────────────────┐   │ │                         │ │
+│ ┌────────────────────────┐ │ │ zaino│ │ griglie zaino     │   │ │                         │ │
+│ │ arma principale        │ │ └──────┘ │                   │   │ │                         │ │
+│ └────────────────────────┘ │          └───────────────────┘   │ │                         │ │
+│ ON BACK                    │ POUCH                            │ │                         │ │
+│ ┌────────────────────────┐ │ ┌──────┐ ┌─────────┐             │ │                         │ │
+│ │ arma principale 2      │ │ │pouch │ │ griglia │             │ │                         │ │
+│ └────────────────────────┘ │ └──────┘ └─────────┘             │ │                         │ │
+│ HOLSTER      SCABBARD      │                                  │ │                         │ │
+│ ┌──────────┐ ┌──────────┐  │                                  │ │                         │ │
+│ └──────────┘ └──────────┘  │                                  │ └─────────────────────────┘ │
+│ PESO: 23.4 kg              │                                  │ VALORE STASH: …             │
+├────────────────────────────┴──────────────────────────────────┴─────────────────────────────┤
+│ BARRA INFERIORE: menu principale (Personaggio, Trader, Mercato, Hideout, ...)                 │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Colonna 1 — Gear**
+
+- Due righe da tre slot quadrati: EARPIECE, HEADWEAR, FACE COVER; poi ARMBAND, BODY ARMOR, EYEWEAR.
+- Quattro slot arma: ON SLING (largo), ON BACK (largo), HOLSTER e SCABBARD affiancati.
+- Etichette in maiuscolo sopra ogni slot.
+- Indicatore di peso con colore di stato (§16.3).
+- Gli slot quadrati misurano circa 2×2 celle; gli slot arma larghi circa 5×2 celle [CONFIG].
+
+**Colonna 2 — Contenitori indossati**
+
+- Sezioni nell'ordine TACTICAL RIG, POCKETS + SPECIAL SLOTS, BACKPACK, POUCH.
+- Ogni sezione mostra a sinistra lo slot con l'icona dell'oggetto indossato e a destra il layout delle sue griglie.
+- Se lo slot è vuoto, la sezione mostra solo lo slot vuoto con etichetta.
+- La colonna scorre verticalmente se il contenuto supera l'altezza disponibile.
+
+**Colonna 3 — Stash / Loot**
+
+- Fuori raid mostra la stash con l'intestazione (filtri, ricerca, filtro FIR, pulsante di ordinamento, totali valute) e la griglia 10×N scorrevole.
+- In raid mostra il pannello di loot quando si apre un contenitore o un cadavere (§13.3); altrimenti è vuota [CONFIG: o mostra il riepilogo della salute].
+
+### 13.2 Dimensioni di riferimento
+
+| Elemento | Valore di riferimento [CONFIG] |
+|---|---|
+| `cell_px` | 64 px (63 px di area + 1 px di bordo) |
+| Bordo cella | 1 px, colore `#FFFFFF` con alpha 0.08 |
+| Sfondo cella vuota | `#000000` con alpha 0.35 |
+| Larghezza colonna 1 | ~6 celle |
+| Larghezza colonna 2 | ~9 celle |
+| Larghezza colonna 3 | 10 celle + scrollbar (scrollbar allargata, come richiesto dalla community dell'originale) |
+| Font etichette slot | sans condensed, 11–12 px, maiuscolo, colore grigio chiaro |
+| Font nome breve nella tile | 11 px, allineato a destra, una sola riga, troncato |
+| Font contatori | 12 px, monospaziato per le cifre |
+
+### 13.3 Schermata in raid
+
+- Si apre con Tab. Colonne 1 e 2 sono identiche alla schermata fuori raid.
+- La colonna 3 mostra il loot quando lo si apre:
+  - **contenitore del mondo:** nome del contenitore e sua griglia, con perquisizione (§15.2);
+  - **cadavere:** una copia del layout "Gear + Contenitori" del morto (colonne 1 e 2 compattate in una sola colonna scorrevole), con slot non saccheggiabili nascosti o disattivati;
+  - **oggetto a terra / contenitore a terra:** come contenitore.
+- Il caricamento e lo scaricamento a tempo, l'esame e la perquisizione mostrano barre di avanzamento sulle tile interessate.
+- Le schede che non hanno senso in raid (trader, mercato, hideout) sono disabilitate; la stash NON è accessibile.
+
+### 13.4 Anatomia della tile (`ItemTile`)
+
+```
+┌──────────────────────────────┐
+│ [🔒][📌]          NOME BREVE │  ← riga superiore: icone stato a sinistra, nome breve a destra
+│                    TAG       │  ← nome del tag (contenitori), colore del tag
+│                              │
+│          (icona)             │  ← icona centrata, scalata per riempire il footprint con margine 2 px
+│                              │
+│ [✓]                 30/30    │  ← basso: FIR a sinistra, contatore / risorsa / durabilità a destra
+└──────────────────────────────┘
+```
+
+- **Sfondo:** colore di categoria con alpha ~0.25 più un bordo di 1 px dello stesso colore con alpha ~0.6.
+  - Palette di riferimento [CONFIG]: default (grigio), blu, viola, giallo, verde, rosso, arancione, nero, tracciante.
+  - Mappatura categoria → colore nel template o nella categoria; l'utente PUÒ personalizzarla dalle impostazioni [CONFIG].
+- **Contatore in basso a destra**, con questa priorità:
+  1. stack (`x47`, solo se > 1);
+  2. caricatore (`27/30` o `?/30`);
+  3. risorsa (`320/400`);
+  4. usi della chiave (`12/40`);
+  5. durabilità (`45/50`, armature e armi [CONFIG]).
+- **Icone di stato:**
+  - FIR (spunta);
+  - bloccato (lucchetto);
+  - fissato (spillo);
+  - assicurato [HOOK];
+  - oggetto missione (bordo giallo);
+  - sconosciuto: l'icona è sostituita da una sagoma grigia con "?" e il nome breve è "???".
+- **Perquisizione:** le celle con oggetti non ancora rivelati non mostrano nulla; durante la ricerca compare un'icona animata (lente) sulla prossima cella da rivelare.
+- **Tooltip (hover):** dopo 0.35 s [CONFIG] mostra il nome completo; con Shift tenuto mostra il tooltip esteso (peso, dimensione, contenuto riassunto, contenuto del caricatore).
+
+### 13.5 Evidenziazioni e feedback durante il drag
+
+| Stato | Resa |
+|---|---|
+| Footprint valido su griglia | rettangolo verde `#3CB043` con alpha 0.35 |
+| Footprint non valido | rettangolo rosso `#C0392B` con alpha 0.35 |
+| Bersaglio "oggetto" valido (merge, load, mod, inserimento nel contenitore) | tile del bersaglio con bordo giallo/verde pulsante |
+| Slot di equipaggiamento compatibili (tutti, durante il drag) | bordo verde tenue |
+| Slot bloccati | overlay rosso tratteggiato |
+| Sorgente in trascinamento | alpha 0.35 nella posizione originale |
+| Rilascio non valido | l'anteprima torna alla sorgente con tween di 120 ms e suono di errore |
+
+### 13.6 Icone
+
+- **Statiche:** texture per template, dimensione `size × cell_px`, sfondo trasparente.
+- **Renderizzate (armi, caschi modulari):** generate da `IconRenderer` (§19.7) a partire dalla scena 3D con gli attacchi effettivi; cache per hash dell'albero (template + slot + figli + piegatura). L'icona DEVE aggiornarsi a ogni montaggio, smontaggio o piegatura.
+- Negli slot di equipaggiamento le icone sono scalate in modalità "contain" (proporzioni mantenute, centrate).
+
+### 13.7 Animazioni (Godot 4.7)
+
+- Usare le nuove proprietà di **trasformazione con offset dei Control** (`offset_transform_*`, introdotte in Godot 4.7) per:
+  - ruotare di 90° l'icona delle tile ruotate senza alterare il rettangolo logico;
+  - piccoli "pop" di scala al rilascio e allo scambio;
+  - lo scuotimento della tile in caso di errore.
+- La trasformazione con offset è puramente visiva per default e non altera l'input: le tile restano cliccabili nel loro rettangolo logico. Verificare i nomi esatti delle proprietà nella documentazione di `Control` 4.7.
+- Durate di riferimento: 80–150 ms, easing out-cubic. Nessuna animazione DEVE ritardare lo stato logico.
+
+---
+
+## 14. Ispeziona ed Esame
+
+### 14.1 Finestra Ispeziona
+
+- Finestra flottante (stesse regole delle finestre contenitore, §8.5) con:
+  - nome completo;
+  - vista 3D ruotabile (trascinando con il mouse) o icona grande;
+  - descrizione;
+  - tabella delle proprietà (peso, dimensione, calibro, capacità, durabilità, risorse, penalità, classe di protezione [HOOK]);
+  - per i contenitori: dimensioni interne e filtri leggibili ("Accetta: Munizioni");
+  - per le armi: statistiche [HOOK];
+  - indicatori "Necessario per missione/hideout" [HOOK].
+- Più finestre Ispeziona possono restare aperte.
+
+### 14.2 Esame degli oggetti sconosciuti
+
+- Un template non presente in `examined_templates` e senza `examined_by_default` è **sconosciuto**: sagoma grigia, nome "Oggetto sconosciuto", nessuna statistica, Ispeziona sostituito da Esamina.
+- **Esame:** azione a tempo `examine_time_s × (1 - bonus_abilità)` [HOOK abilità], con barra di avanzamento sulla tile; al termine il template diventa noto **per tutto il profilo** e si assegna `examine_xp` [HOOK].
+- Si interrompe se l'oggetto viene spostato o l'inventario chiuso [CONFIG].
+- **Nel mondo:** l'interazione con un oggetto a terra sconosciuto propone solo "Esamina"; dopo l'esame compare "Raccogli" [VERIFICA].
+- Un oggetto sconosciuto si può comunque spostare in inventario (se già in un contenitore accessibile).
+
+---
+
+## 15. Meccaniche di raid
+
+### 15.1 Contesto
+
+`InventoryContext` è passato a ogni validazione:
+
+```gdscript
+class_name InventoryContext extends RefCounted
+var in_raid: bool
+var actor_id: String              # chi agisce
+var open_side_b_root: String      # root aperta a destra (stash/loot/cadavere/trader)
+var searched_grids: Dictionary    # (uid contenitore, grid_id) -> true/progress, per actor
+var is_server: bool
+```
+
+### 15.2 Perquisizione (contenitori del mondo e cadaveri)
+
+- All'apertura di un contenitore di loot non ancora perquisito dall'attore, la ricerca parte automaticamente: le griglie appaiono vuote e gli oggetti vengono rivelati **uno alla volta**.
+  - Ordine di rivelazione: posizione di lettura, per righe [CONFIG].
+  - Tempo per oggetto: `search_time_per_item × (1 - bonus_attenzione)` [HOOK abilità]. Esiste anche una probabilità di rivelazione istantanea a livelli alti di abilità [CONFIG].
+- **Cadavere:** gli oggetti negli slot di equipaggiamento sono visibili subito; il **contenuto** di rig, zaino e tasche richiede una perquisizione per ciascun contenitore (pulsante "Perquisisci" con lente sul contenitore, o automatica [CONFIG]).
+- Gli oggetti non ancora rivelati NON possono essere spostati, ispezionati o evidenziati; le loro celle risultano "occupate ma invisibili" (il drop su quelle celle fallisce con `E_NO_SPACE`).
+- Chiudere il pannello interrompe la ricerca; il progresso già fatto resta (gli oggetti rivelati restano rivelati per quell'attore).
+- **Perquisizione parallela:** di default si può perquisire un contenitore alla volta; con l'abilità di ricerca al massimo livello due in parallelo [HOOK] [CONFIG].
+- Lo stato di perquisizione è **per attore**: in multiplayer ogni giocatore perquisisce per conto proprio.
+- Gli oggetti posati da un giocatore in un contenitore risultano già perquisiti per quel giocatore.
+
+### 15.3 Raccolta da terra
+
+- Interazione "Raccogli" (tasto F) → `PickUpOp`: unione agli stack, poi `find_free_spot` con la priorità per categoria di §12.5 (caso B), poi gli slot di equipaggiamento liberi (armi, zaino, rig, ecc.).
+- Se non c'è spazio → messaggio "Spazio insufficiente".
+- Le armi si possono equipaggiare direttamente dal prompt di interazione se lo slot è libero [CONFIG].
+
+### 15.4 Found in Raid (FIR)
+
+- Un oggetto raccolto in raid riceve `spawned_in_session = true`.
+- All'estrazione con stato "Sopravvissuto": tutti gli oggetti con `spawned_in_session` diventano `fir = true`.
+- Esiti che NON conferiscono FIR: abbandono del raid, morte (KIA), dispersione (MIA), "Run Through". Il "Run Through" si evita superando una soglia minima di esperienza o di tempo in raid [CONFIG] [HOOK].
+- Gli oggetti portati dentro il raid perdono lo stato FIR all'ingresso.
+- Sono FIR anche gli oggetti prodotti nell'hideout e le ricompense di missione [HOOK].
+- I servizi che trasferiscono oggetti in stash durante il raid (consegna o transito) mantengono lo stato FIR [HOOK].
+- Il filtro "solo FIR" della stash (§17.4) usa questo flag.
+- Divisione e unione: vedi §10.1.
+
+### 15.5 Morte e oggetti non saccheggiabili
+
+- Alla morte l'albero `equipment_root` diventa un cadavere; il proprietario perde tutto tranne:
+  - il pouch e il suo contenuto;
+  - gli oggetti negli special slot;
+  - l'armband;
+  - l'arma bianca nello scabbard.
+- Questi oggetti restano al giocatore e non compaiono come saccheggiabili sul cadavere.
+- [HOOK] Assicurazione: gli oggetti assicurati non presi da altri giocatori possono tornare in seguito.
+- Lo stesso vale per l'inventario missione [CONFIG].
+
+### 15.6 Restrizioni in raid
+
+| Regola | Campo | Errore |
+|---|---|---|
+| Limite di istanze per template nell'inventario del giocatore (es. "solo 1 in raid") | `raid_limit` | `E_RAID_LIMIT` |
+| Divieto di inserimento nel pouch durante il raid | `can_put_into_secure_during_raid` | `E_RAID_RESTRICTED` |
+| Mod/piastre non rimovibili in raid | `cant_remove_from_slots_during_raid` | `E_RAID_RESTRICTED` |
+| Pouch non rimovibile in raid | regola fissa | `E_RAID_RESTRICTED` |
+| Stash non accessibile in raid | regola fissa | `E_NO_ACCESS` |
+| Azioni a tempo (carica, scarica, esame, perquisizione) | §11, §14, §15.2 | — |
+| Cambio di armatura/rig in raid con tempo di vestizione | [CONFIG] default 0 s [VERIFICA] | — |
+
+**Controllo pre-raid:** prima di entrare si esegue `RaidRules.validate_loadout()` che verifica i limiti di istanze e le restrizioni dei contenitori; in caso di violazione mostra l'elenco degli oggetti da togliere e blocca l'ingresso.
+
+### 15.7 Lancio rapido dello zaino
+
+- Doppio Z in gioco: lo zaino indossato viene lasciato a terra (`DropToWorldOp` con animazione rapida); il contenuto resta nello zaino.
+- Lo zaino a terra si raccoglie con F e torna nello slot se è libero, altrimenti si apre come contenitore.
+
+### 15.8 Pannello di loot e trasferimento
+
+- Ctrl+Click funziona tra lato A e lato B (§12.5).
+- "Prendi tutto" [CONFIG, default disattivato perché assente nell'originale] [VERIFICA].
+- Un contenitore del mondo è condiviso: in multiplayer le modifiche sono replicate e la validazione è sul server (§19.10).
+
+---
+
+## 16. Peso e ingombro
+
+### 16.1 Calcolo
+
+```
+peso_totale = Σ peso(istanza) su tutto equipment_root (ricorsivo: mod, caricatori, cartucce, contenuto dei contenitori)
+peso(istanza) = tpl.weight_kg × stack (impilabili) + Σ peso(figli)
+```
+
+- **Eccezione:** con la Forza al livello d'élite le armi negli slot `on_sling` e `on_back` non contano nel peso totale [HOOK abilità].
+- Il peso è ricalcolato incrementalmente: a ogni operazione si aggiornano solo i rami toccati (cache del peso per nodo, invalidata risalendo verso la root).
+
+### 16.2 Soglie [CONFIG]
+
+| Soglia | Effetto |
+|---|---|
+| `overweight_start_kg` | Inizio del sovraccarico: consumo di stamina maggiore, rumore dell'equipaggiamento, riduzione progressiva della velocità. |
+| `overweight_critical_kg` | Sovraccarico critico: impossibile correre, velocità fortemente ridotta. |
+| `overweight_max_kg` | Movimento quasi impossibile. |
+
+- Tutte le soglie sono moltiplicate dal bonus di trasporto dell'abilità Forza [HOOK].
+- Nell'originale il bonus di Forza arriva al +30% al livello d'élite.
+- I valori numerici delle soglie NON sono pubblicati in modo ufficiale: vanno tarati in playtest. Valori di partenza suggeriti: 26 / 61 / 70 kg (da calibrare).
+- Le penalità di movimento sono interpolate tra le soglie con curve `Curve` [CONFIG] e consumate dal controller del personaggio [HOOK].
+
+### 16.3 Indicatore UI
+
+- Testo `23.4 kg` nella colonna gear, più una barra sottile con marcatori alle soglie.
+- Colore: bianco sotto la prima soglia, giallo tra la prima e la critica, rosso oltre la critica.
+- Durante il drag dal lato B al lato A l'indicatore mostra in anteprima il peso risultante [CONFIG].
+
+### 16.4 Penalità dell'equipaggiamento
+
+- Ogni oggetto indossato contribuisce con `GearPenalties` (velocità di movimento %, velocità di rotazione %, ergonomia %, riduzione udito).
+- I valori si sommano su tutti gli oggetti indossati e sui loro componenti (piastre, visiere).
+- Il riepilogo è visibile nella scheda Panoramica e nel tooltip esteso dello slot.
+- Applicazione sul personaggio: [HOOK].
+
+---
+
+## 17. Stash
+
+### 17.1 Dimensioni
+
+- **10 colonne** fisse; righe = `base_rows[stash_level] + purchased_rows` [CONFIG].
+- Riferimento originale: 28 / 38 / 48 / 68 righe ai livelli 1–4 di potenziamento della stash; le edizioni più recenti partono da 30 / 40 / 50 / 72 righe; fino a 28 righe acquistabili come espansione permanente [VERIFICA].
+- Aumentare le righe aggiunge righe vuote in fondo. Ridurle (non previsto in gioco) DEVE spostare gli oggetti eccedenti nel tavolo di smistamento.
+
+### 17.2 Ordinamento automatico (`SortOp`)
+
+- Pulsante con icona a doppia freccia nell'intestazione della stash e nelle finestre contenitore (ordina quel contenitore).
+- Algoritmo [CONFIG]:
+  1. raccoglie tutti gli oggetti diretti della griglia che NON sono fissati (pin) né bloccati;
+  2. ordina per `category.sort_order`, poi per area del footprint (decrescente), poi altezza (decrescente), poi nome;
+  3. svuota logicamente quegli oggetti mantenendo fissati e bloccati al loro posto;
+  4. reinserisce in sequenza con `find_free_spot` (provando entrambe le orientazioni, preferendo quella che lascia meno buchi sulla riga corrente [CONFIG]);
+  5. unisce prima gli stack compatibili non pieni.
+- Se un oggetto non trova spazio, l'intera operazione viene annullata (rollback) e si mostra "Impossibile ordinare".
+- Deve essere idempotente: un secondo ordinamento immediato non cambia nulla.
+- [CONFIG] `sort_recursive`: ordina anche l'interno dei contenitori.
+
+### 17.3 Pin e Lock
+
+Funzioni introdotte nell'originale nella versione 0.15.5.
+
+- **Modalità Pin (tasto P):**
+  - ogni click su una tile alterna il pin;
+  - gli oggetti fissati sono ignorati dall'ordinamento automatico ma restano spostabili a mano;
+  - il pin si perde se l'oggetto viene portato nell'inventario o in raid.
+- **Modalità Lock (tasto L):**
+  - ogni click alterna il blocco;
+  - un oggetto bloccato non può essere eliminato, venduto, spostato o usato (eccetto l'apertura se è un contenitore);
+  - è escluso da crafting, potenziamenti, assemblaggio preset e pagamenti;
+  - un contenitore bloccato mantiene lo stato e non può essere spostato nell'inventario;
+  - gli oggetti al suo interno restano gestibili [CONFIG] [VERIFICA].
+- **Feedback delle modalità:**
+  - cursore dedicato;
+  - banner "Modalità Pin/Lock — Esc per uscire";
+  - le tile mostrano un'anteprima dello stato al passaggio del mouse.
+- Entrambe le funzioni sono disponibili anche dal menu contestuale.
+
+### 17.4 Filtri e ricerca
+
+- **Filtri per categoria:** barra di icone nell'intestazione (Tutto, Armi, Mod, Equipaggiamento, Munizioni, Medicinali, Provviste, Baratto, Chiavi, Contenitori, Valute, Info).
+  - Gli oggetti che non corrispondono vengono scuriti (alpha 0.25), non nascosti: la disposizione non cambia.
+- **Filtro FIR:** mostra in evidenza solo gli oggetti con `fir = true` (filtro introdotto nell'originale).
+- **Ricerca testuale:**
+  - confronto senza maiuscole/minuscole su nome e nome breve localizzati;
+  - i contenitori che contengono un risultato si evidenziano (ricerca ricorsiva);
+  - [CONFIG] `search_deep = true`.
+- Filtri e ricerca si combinano in AND.
+
+### 17.5 Valore della stash [HOOK]
+
+- Barra sotto la griglia: valore totale stimato degli oggetti, fornito da `ItemValueProvider` (prezzo trader/mercato).
+- L'inventario fornisce solo l'iterazione sugli oggetti.
+
+### 17.6 Tavolo di smistamento
+
+- Griglia temporanea ad alta capacità [CONFIG, es. 10×60] visibile come scheda accanto alla stash nelle schermate di scambio e ricezione messaggi.
+- Riceve gli oggetti in arrivo (ricompense, acquisti [HOOK], oggetti spostati dalla validazione d'integrità) quando la stash non ha spazio.
+- L'utente DEVE svuotarlo prima di entrare in raid [CONFIG] [VERIFICA]; gli oggetti nel tavolo non possono essere portati in raid.
+
+---
+
+## 18. Quick slot (barra di accesso rapido)
+
+- 6 quick slot collegati ai tasti 4–9 [CONFIG: numero e tasti].
+- **Collegamento:**
+  - trascinare l'oggetto sul quick slot del pannello di accesso rapido (in basso nella schermata inventario);
+  - premere il tasto numerico con il cursore sulla tile;
+  - dal menu contestuale "Collega".
+- **Oggetti collegabili** [CONFIG]: medicinali, stimolanti, granate, cibo e bevande, caricatori, armi bianche, strumenti speciali.
+- **Uso in gioco:** l'oggetto deve trovarsi nel **tactical rig o nelle tasche** (o negli special slot per gli strumenti) [CONFIG]. Se si trova altrove (zaino, pouch) il collegamento resta ma il tasto non ha effetto e lo slot appare grigio.
+- Il collegamento è per `uid`: se l'oggetto si consuma o viene perso, lo slot si svuota. Per stack consumabili [CONFIG] si ricollega automaticamente a un altro stack dello stesso template nel rig o nelle tasche.
+- Pannello rapido in gioco: compare per qualche secondo alla pressione di un tasto numerico o del tasto della granata [HOOK HUD].
+- Gli slot arma 1–3 (pistola, principale 1, principale 2) non sono quick slot ma sono mostrati nello stesso pannello.
+
+---
+
+## 19. Implementazione in Godot 4.7
+
+### 19.1 Struttura del progetto
+
+```
+res://inventory/
+├── data/
+│   ├── item_category.gd, item_template.gd, grid_def.gd, slot_def.gd, item_filter.gd
+│   ├── container_layout.gd, grid_placement.gd, gear_penalties.gd
+│   ├── components/ (ammo_comp.gd, magazine_comp.gd, weapon_comp.gd, med_comp.gd, ...)
+│   ├── categories/*.tres
+│   ├── templates/**/*.tres
+│   ├── nesting_rules.tres
+│   └── inventory_config.tres
+├── model/
+│   ├── item_instance.gd, item_address.gd, grid_index.gd, inventory_model.gd, journal.gd
+├── rules/
+│   ├── placement_validator.gd, equip_rules.gd, raid_rules.gd, nesting_rules.gd
+│   ├── size_calculator.gd, weight_calculator.gd, stack_rules.gd, quick_move_resolver.gd
+├── ops/
+│   ├── inventory_operation.gd (base), move_op.gd, split_op.gd, merge_op.gd, swap_op.gd,
+│   ├── equip_op.gd, attach_mod_op.gd, detach_mod_op.gd, fold_op.gd, load_ammo_op.gd,
+│   ├── unload_ammo_op.gd, check_mag_op.gd, examine_op.gd, search_op.gd, discard_op.gd,
+│   ├── drop_to_world_op.gd, pick_up_op.gd, unpack_op.gd, tag_op.gd, pin_op.gd, lock_op.gd,
+│   ├── sort_op.gd, bind_quick_slot_op.gd, use_op.gd, assemble_preset_op.gd
+│   └── inv_errors.gd
+├── services/
+│   ├── inventory_service.gd (autoload), timed_action_runner.gd, item_db.gd (autoload)
+│   ├── icon_renderer.gd (autoload), icon_cache.gd, persistence.gd, migrations/
+│   └── net/inventory_net.gd
+├── ui/
+│   ├── inventory_screen.tscn/.gd, gear_panel.tscn, worn_containers_panel.tscn
+│   ├── stash_panel.tscn, loot_panel.tscn, sorting_table_panel.tscn
+│   ├── grid_view.gd, slot_view.gd, container_layout_view.gd, item_tile.gd
+│   ├── container_window.tscn, inspect_window.tscn, slot_detail_window.tscn
+│   ├── split_dialog.tscn, tag_dialog.tscn, context_menu.gd, weight_indicator.tscn
+│   ├── quick_access_bar.tscn, tooltip_layer.tscn, drag_controller.tscn (autoload)
+│   ├── modding/ (modding_screen.tscn, slot_label_3d.gd, stats_panel.tscn)
+│   └── theme/inventory_theme.tres
+└── tests/
+```
+
+### 19.2 Autoload
+
+| Nome | Tipo | Responsabilità |
+|---|---|---|
+| `ItemDB` | Node | Carica e indicizza tutti i template e le categorie all'avvio (`Dictionary[StringName, ItemTemplate]`). |
+| `InventoryService` | Node | Possiede i modelli attivi (giocatore, stash, loot aperti), esegue le operazioni, coda delle azioni a tempo, autosave. |
+| `DragController` | CanvasLayer (layer 100) | Stato del drag, anteprima, risoluzione del bersaglio, registro dei drop target. |
+| `IconRenderer` | Node | Rendering delle icone 3D in SubViewport con cache. |
+
+`InventoryConfig` non è un autoload: è una `Resource` caricata da `ItemDB` e accessibile come `ItemDB.config`.
+
+### 19.3 `InventoryModel` (estratto)
+
+```gdscript
+# res://inventory/model/inventory_model.gd
+class_name InventoryModel extends RefCounted
+
+signal item_added(item: ItemInstance)
+signal item_removed(item: ItemInstance, old_address: ItemAddress)
+signal item_moved(item: ItemInstance, from: ItemAddress, to: ItemAddress)
+signal item_changed(item: ItemInstance, fields: PackedStringArray)
+
+var _items: Dictionary[String, ItemInstance] = {}
+var _children: Dictionary[String, PackedStringArray] = {}
+var _grids: Dictionary[String, GridIndex] = {}        # chiave "uid|grid_id"
+var _by_handle: Array[ItemInstance] = []
+var _size_cache: Dictionary[String, Vector2i] = {}
+var _weight_cache: Dictionary[String, float] = {}
+var _journal: Journal = null                           # transazione corrente
+
+func get_item(uid: String) -> ItemInstance:
+	return _items.get(uid)
+
+func children_of(uid: String) -> PackedStringArray:
+	return _children.get(uid, PackedStringArray())
+
+func grid_index(container_uid: String, grid_id: StringName) -> GridIndex:
+	var key := "%s|%s" % [container_uid, grid_id]
+	if not _grids.has(key):
+		var item := get_item(container_uid)
+		for g in item.tpl.grids:
+			if g.id == grid_id:
+				_grids[key] = GridIndex.new(g.size)
+				break
+	return _grids.get(key)
+
+func footprint(item: ItemInstance) -> Rect2i:
+	var s := effective_size(item)
+	if item.rotated:
+		s = Vector2i(s.y, s.x)
+	return Rect2i(item.pos, s)
+
+func effective_size(item: ItemInstance) -> Vector2i:
+	if not _size_cache.has(item.uid):
+		_size_cache[item.uid] = SizeCalculator.effective_size(self, item)
+	return _size_cache[item.uid]
+
+# --- Transazioni ---
+func begin() -> void:
+	assert(_journal == null, "Transazioni annidate non supportate")
+	_journal = Journal.new()
+
+func commit() -> void:
+	var events := _journal.pending_events
+	_journal = null
+	for e in events:          # i segnali partono solo a transazione conclusa
+		e.call()
+
+func rollback() -> void:
+	_journal.undo_all(self)   # ripristina in ordine inverso
+	_journal = null
+
+# Primitive di mutazione: TUTTE passano dal journal
+func _attach(item: ItemInstance, addr: ItemAddress) -> void: pass   # aggiorna indici e cache
+func _detach(item: ItemInstance) -> ItemAddress: return null
+func _set_field(item: ItemInstance, field: StringName, value: Variant) -> void: pass
+```
+
+- Le primitive `_attach`, `_detach` e `_set_field` aggiornano `GridIndex`, `_children` e invalidano le cache di dimensione e peso risalendo l'albero.
+- Ogni primitiva registra nel journal l'inverso per il rollback.
+
+### 19.4 Operazioni e servizio
+
+```gdscript
+# res://inventory/ops/inventory_operation.gd
+class_name InventoryOperation extends RefCounted
+
+var client_seq: int = 0
+
+func validate(_m: InventoryModel, _ctx: InventoryContext) -> int:
+	return InvErrors.OK
+
+## Durata in secondi (0 = istantanea). Le operazioni progressive usano step_count/step_duration.
+func duration_s(_m: InventoryModel, _ctx: InventoryContext) -> float:
+	return 0.0
+
+func step_count(_m: InventoryModel, _ctx: InventoryContext) -> int:
+	return 1
+
+func apply(_m: InventoryModel, _ctx: InventoryContext) -> void:
+	pass
+
+## Per operazioni progressive (carica/scarica, perquisizione): applica un passo.
+func apply_step(m: InventoryModel, ctx: InventoryContext, _step: int) -> void:
+	apply(m, ctx)
+
+func to_dict() -> Dictionary:
+	return {}
+```
+
+```gdscript
+# res://inventory/services/inventory_service.gd  (autoload "InventoryService")
+extends Node
+
+signal operation_failed(op: InventoryOperation, code: int)
+signal operation_started(op: InventoryOperation, duration: float)
+signal operation_progress(op: InventoryOperation, ratio: float)
+signal operation_completed(op: InventoryOperation)
+
+var model: InventoryModel
+var runner: TimedActionRunner
+
+func execute(op: InventoryOperation, ctx: InventoryContext) -> int:
+	var err := op.validate(model, ctx)
+	if err != InvErrors.OK:
+		operation_failed.emit(op, err)
+		return err
+	if ctx.in_raid and op.duration_s(model, ctx) > 0.0:
+		runner.enqueue(op, ctx)        # ogni step ri-valida prima di applicare
+		operation_started.emit(op, op.duration_s(model, ctx))
+		return InvErrors.PENDING
+	model.begin()
+	op.apply(model, ctx)
+	model.commit()
+	operation_completed.emit(op)
+	return InvErrors.OK
+```
+
+- `TimedActionRunner` (Node con `_process`) avanza le azioni, ri-valida a ogni passo (es. lo stack di munizioni è ancora lì?), applica `apply_step` in una mini-transazione ed emette il progresso.
+- Annulla le azioni quando riceve `inventory_closed` o quando l'oggetto coinvolto viene mosso; gli step già applicati restano.
+
+### 19.5 UI: nodi e scelte implementative
+
+**`GridView` (estende `Control`, NON `Container`)**
+
+- Disegna lo sfondo delle celle in `_draw()` con una singola `draw_texture_rect(cell_tex, rect, true)` in modalità tile: una sola draw call per griglia, a prescindere dal numero di celle.
+- Le `ItemTile` sono figli posizionati manualmente (`position = pos * cell_px`): niente container automatici, così rotazioni e animazioni non vengono sovrascritte dal layout.
+- Disegna in `_draw()` l'evidenziazione del footprint ricevuta da `DragController`.
+- Si registra come drop target in `_enter_tree()` e si deregistra in `_exit_tree()`.
+- Ascolta i segnali del modello filtrando per `container_uid`/`grid_id`: aggiunge, rimuove o riposiziona solo le tile toccate.
+
+**`ItemTile` (estende `Control`)**
+
+- Tutto il disegno avviene in `_draw()`: sfondo, bordo, icona, testi, icone di stato, barra di avanzamento.
+- Icona ruotata con `draw_set_transform(center, PI/2, Vector2.ONE)`.
+- `mouse_filter = MOUSE_FILTER_STOP`; gestisce `_gui_input` per press/release/doppio click e delega a `InputRouter`.
+- Le animazioni usano `offset_transform_*` (Godot 4.7) con `Tween` per non toccare `position`/`size`.
+
+**`SlotView`**
+
+- Riquadro con etichetta; contiene al massimo una `ItemTile` in modalità "contain".
+- Overlay di blocco e di compatibilità.
+
+**`ContainerLayoutView`**
+
+- Istanzia una `GridView` per ogni `GridPlacement` del `ContainerLayout`, posizionata a `offset_cells * cell_px`.
+- Per la creazione dei layout si fornisce uno strumento `@tool`: una scena in cui il designer trascina placeholder di griglia e salva il risultato nella risorsa.
+
+**`ContainerWindow`**
+
+- `PanelContainer` dentro `WindowLayer` (non finestre native, per controllare stile e z-order).
+- Barra del titolo trascinabile, pulsante di chiusura, contenuto `ContainerLayoutView`.
+- La pila LIFO delle finestre è gestita da `InventoryScreen` per il comportamento di Esc.
+
+**`ContextMenu`**
+
+- Basato su `PopupMenu` con sottomenu (`add_submenu_node_item`).
+- I sottomenu lunghi ("Carica munizioni") possono sfruttare la barra di ricerca dei `PopupMenu` introdotta in Godot 4.7.
+
+**`SplitDialog`**
+
+- `HSlider` + `SpinBox` sincronizzati, con focus automatico sullo SpinBox.
+
+**Stash grande**
+
+- La `GridView` della stash sta in uno `ScrollContainer`.
+- Per stash oltre ~800 oggetti, abilitare la **virtualizzazione**: si istanziano solo le tile il cui rettangolo interseca l'area visibile più un margine di 4 righe, riciclandole da un pool [CONFIG].
+
+### 19.6 `DragController` e hit-test
+
+- Non si usa il drag & drop integrato (`_get_drag_data` / `_can_drop_data` / `_drop_data`): serve controllo totale su rotazione a metà drag, modificatori al rilascio, bersagli "oggetto" e risoluzione con priorità.
+- Registro dei target: `Array[DropTarget]` dove ogni target espone `get_global_rect()`, `z_order_key()` e `resolve(drag_state, global_mouse) -> DropResolution`.
+- A ogni `InputEventMouseMotion` (in `_input`, solo in stato DRAGGING) si scorrono i target in ordine di z decrescente (finestre in cima → pannelli) e si chiama `resolve` sul primo il cui rettangolo contiene il mouse.
+- L'anteprima è un `Control` su CanvasLayer 100 con `mouse_filter = IGNORE`; usa la stessa routine di disegno della `ItemTile`.
+- Al rilascio: `DropResolution.build_operation()` → `InventoryService.execute()`.
+- Mentre è attivo un drag, la rotellina del mouse scorre lo `ScrollContainer` sotto il cursore. Lo scroll automatico parte avvicinandosi ai bordi della stash (zona di 1 cella, velocità [CONFIG]).
+
+### 19.7 `IconRenderer`
+
+- `SubViewport` con `own_world_3d = true`, `transparent_bg = true`, `render_target_update_mode = UPDATE_ONCE`, `Camera3D` ortografica, luce direzionale e luce di riempimento fisse.
+- **Assemblaggio:** istanzia la `world_scene` dell'oggetto principale e, per ogni mod, la sua scena agganciata a un `Marker3D` con lo stesso nome dello slot (`mod_scope`, `mod_stock`, ...). Applica la piegatura (rotazione del ramo calcio secondo un `Marker3D` di cerniera).
+- **Inquadratura:** calcola l'AABB complessiva, imposta la `size` della camera ortografica per riempire `effective_size × cell_px` con un margine del 6%.
+- **Cattura:**
+
+```gdscript
+func render_icon(root_scene: Node3D, px_size: Vector2i) -> Texture2D:
+	_viewport.size = px_size * 2                     # supersampling 2x
+	_stage.add_child(root_scene)
+	_frame_camera(root_scene)
+	_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	await RenderingServer.frame_post_draw
+	var img := _viewport.get_texture().get_image()
+	img.resize(px_size.x, px_size.y, Image.INTERPOLATE_LANCZOS)
+	root_scene.queue_free()
+	return ImageTexture.create_from_image(img)
+```
+
+- **Cache:** LRU in memoria (512 voci [CONFIG]) e su disco in `user://icon_cache/<hash>.webp`. Chiave = SHA-1 (`HashingContext`) di template, stato di piegatura e albero dei figli ordinato per slot.
+- **Coda di rendering:** al massimo N icone per frame [CONFIG: 2]; nel frattempo la tile mostra l'icona statica del template base.
+
+### 19.8 Tema e localizzazione
+
+- Colori, font, stylebox e dimensioni in `inventory_theme.tres`, con costanti personalizzate (`cell_px`, `grid_border_alpha`, ...).
+- Tutte le stringhe passano da `tr()` con chiavi (`INV_SLOT_HEADWEAR`, `INV_ERR_NO_SPACE`, ...).
+- Italiano e inglese al lancio.
+
+### 19.9 Persistenza
+
+- **Formato:** JSON (§5.11) per la leggibilità e il debug; [CONFIG] binario (`var_to_bytes`) per i salvataggi di produzione.
+- **Scrittura atomica:** si scrive su `profile.json.tmp` e si rinomina con `DirAccess.rename_absolute`; si mantengono 3 backup a rotazione.
+- **Autosave:** con debounce di 2 s dopo l'ultima operazione e sempre all'uscita da una schermata o all'ingresso in raid.
+- **UID:**
+  - in single player: `Crypto.new().generate_random_bytes(8).hex_encode()` con controllo di collisione;
+  - in multiplayer: generati solo dal server.
+- **Validazione d'integrità** al caricamento (§5.11, regola 3).
+
+### 19.10 Rete (opzionale ma prevista)
+
+- **Server autoritativo:** il client invia `op.to_dict()` con `client_seq` tramite `@rpc("any_peer", "call_remote", "reliable")`; il server ricostruisce l'operazione, valida con lo stesso codice ed esegue.
+- **Delta:** il server invia agli osservatori interessati (owner del lato A e chi ha aperto quel contenitore) una lista di delta (`added`, `removed`, `moved`, `changed`) con un numero di versione per owner.
+- **Predizione:**
+  - [CONFIG] per gli alberi posseduti in esclusiva (inventario proprio, stash) il client applica in modo ottimistico e, in caso di rifiuto, esegue un resync dell'owner;
+  - per i contenitori condivisi (loot) si attende sempre la conferma.
+- **Perquisizione:** lo stato è per attore; il server invia il contenuto della griglia solo dopo la rivelazione (anti-cheat: il client non deve conoscere oggetti non rivelati).
+- **Azioni a tempo:** il server cronometra; il client mostra il progresso stimato.
+
+### 19.11 Obiettivi di prestazione
+
+| Scenario (hardware di riferimento medio) | Obiettivo |
+|---|---|
+| Apertura dell'inventario con stash 10×72 piena (~700 oggetti) | < 50 ms |
+| Aggiornamento del drag per frame (risoluzione bersaglio + highlight) | < 0.5 ms |
+| `SortOp` su 700 oggetti | < 30 ms |
+| Ricalcolo del peso dopo un'operazione | O(profondità), < 0.1 ms |
+| Memoria per 1000 istanze (senza icone) | < 2 MB |
+
+---
+
+## 20. Catalogo operazioni e codici di errore
+
+### 20.1 Operazioni
+
+| Operazione | Parametri | Durata in raid | Note |
+|---|---|---|---|
+| `MoveOp` | item, to: ItemAddress | 0 | Griglia↔griglia, griglia↔slot. |
+| `SwapOp` | a, b | 0 | Atomica; valida entrambe le destinazioni. |
+| `EquipOp` | item, slot_id | 0 [CONFIG] | Controlla i blocchi. |
+| `SplitOp` | item, amount, to | 0 | Nuovo uid. |
+| `MergeOp` | src, dst | 0 | Il resto rimane nella sorgente. |
+| `QuickMoveOp` | item, ctx | 0 | Si risolve in Move/Merge multipli (atomici). |
+| `QuickEquipOp` | item | 0 | Si risolve in Equip o Swap. |
+| `AttachModOp` | mod, parent, slot_id | 0 | Ricalcola dimensione e icona. |
+| `DetachModOp` | mod, to | 0 | |
+| `FoldOp` | weapon, folded | 0 | Controlla lo spazio per spiegare. |
+| `LoadAmmoOp` | ammo_sources[], magazine, max | per cartuccia | Progressiva. |
+| `UnloadAmmoOp` | magazine | per cartuccia | Progressiva. |
+| `CheckMagOp` | magazine | sì | Imposta `count_known`. |
+| `ExamineOp` | item | sì | Aggiorna il profilo. |
+| `SearchOp` | container, grid_id | per oggetto | Progressiva, per attore. |
+| `UnpackOp` | ammo_box | 0 | |
+| `DiscardOp` | item | 0 | Fuori raid: distruzione. |
+| `DropToWorldOp` | item, transform | 0 | Crea l'oggetto nel mondo. |
+| `PickUpOp` | world_item | 0 | |
+| `UseOp` | item | [HOOK] | |
+| `TagOp` | container, name, color | 0 | |
+| `PinOp` / `LockOp` | item, value | 0 | Solo stash, fuori raid. |
+| `SortOp` | container, grid_id | 0 | Atomica con rollback. |
+| `BindQuickSlotOp` | item, index | 0 | |
+| `AssemblePresetOp` | preset, target | 0 | Atomica. |
+
+### 20.2 Codici di errore e messaggi
+
+| Codice | Messaggio (chiave tr) | Suono |
+|---|---|---|
+| `OK` / `PENDING` | — | — |
+| `E_OUT_OF_BOUNDS` | "Spazio insufficiente" | errore |
+| `E_NO_SPACE` | "Spazio insufficiente" | errore |
+| `E_NO_SPACE_AFTER_RESIZE` | "Spazio insufficiente per l'oggetto modificato" | errore |
+| `E_SELF_CONTAINMENT` | "Impossibile inserire un contenitore in sé stesso" | errore |
+| `E_FILTER` | "Questo contenitore non accetta questo oggetto" | errore |
+| `E_FILTER_NESTED` | "Il contenuto dell'oggetto non è ammesso qui" | errore |
+| `E_NESTING` | "Svuota l'oggetto prima di inserirlo" | errore |
+| `E_GRID_LIMIT` | "Limite del contenitore raggiunto" | errore |
+| `E_RAID_RESTRICTED` | "Azione non consentita durante il raid" | errore |
+| `E_RAID_LIMIT` | "Puoi avere solo N di questi oggetti in raid" | errore |
+| `E_LOCKED` | "L'oggetto è bloccato" | errore |
+| `E_NO_ACCESS` | "Non accessibile" | errore |
+| `E_SLOT_BLOCKED` | "Lo slot è bloccato da: <oggetto>" | errore |
+| `E_INCOMPATIBLE` | "Oggetto incompatibile" | errore |
+| `E_CONFLICT` | "In conflitto con: <oggetto>" | errore |
+| `E_CALIBER` | "Calibro non compatibile" | errore |
+| `E_MAG_FULL` | "Caricatore pieno" | errore |
+| `E_SWAP_IMPOSSIBLE` | "Impossibile scambiare" | errore |
+| `E_CANNOT_EQUIP` | "Impossibile equipaggiare" | errore |
+| `E_UNKNOWN_ITEM` | "Esamina prima l'oggetto" | errore |
+| `E_NOT_SEARCHED` | "Perquisisci prima il contenitore" | errore |
+
+**Feedback dell'errore:**
+
+- notifica testuale in basso al centro per 2 s [CONFIG];
+- suono di errore;
+- scuotimento della tile (offset transform);
+- un errore uguale ripetuto entro 300 ms non genera una nuova notifica.
+
+---
+
+## 21. Segnali (contratto tra modello e UI)
+
+| Emettitore | Segnale | Payload |
+|---|---|---|
+| InventoryModel | `item_added` | item |
+| InventoryModel | `item_removed` | item, old_address |
+| InventoryModel | `item_moved` | item, from, to |
+| InventoryModel | `item_changed` | item, fields (es. `["stack"]`, `["folded","size"]`) |
+| InventoryModel | `weight_changed` | root_uid, new_weight |
+| InventoryService | `operation_failed` | op, code |
+| InventoryService | `operation_started` / `operation_progress` / `operation_completed` | op, durata/ratio |
+| InventoryService | `search_revealed` | container_uid, grid_id, item_uid |
+| InventoryService | `examined` | template_id |
+| InventoryScreen | `inventory_opened` / `inventory_closed` | ctx |
+| DragController | `drag_started` / `drag_target_changed` / `drag_ended` | drag_state, resolution |
+
+**Regola:** le View si aggiornano **solo** su segnali, mai rileggendo tutto il modello a ogni frame.
+
+---
+
+## 22. Audio
+
+| Evento | Suono | Note |
+|---|---|---|
+| Presa / rilascio | per `sound_profile` (arma, equipaggiamento, munizioni, cibo/bottiglia, metallo, plastica, carta) | variazioni casuali di pitch ±5% |
+| Equipaggia / togli | per `sound_profile`, versione "indossa" | |
+| Apertura contenitore | zip/velcro/scatto in base al template | |
+| Carica / scarica cartuccia | click per cartuccia | ritmo legato alla durata dello step |
+| Controllo caricatore | sequenza breve | |
+| Perquisizione | loop "fruga" più un tick a ogni rivelazione | si ferma all'interruzione |
+| Esame | loop leggero | |
+| Piega / spiega | scatto meccanico | |
+| Errore | tono di errore UI | |
+| Ordinamento | fruscio unico | |
+
+Bus audio dedicato `UI_Inventory` [CONFIG]. In raid i suoni di presa e rilascio sono anche **3D e udibili da altri giocatori** [HOOK].
+
+---
+
+## 23. Valori di configurazione (`InventoryConfig`)
+
+| Chiave | Default | Note |
+|---|---|---|
+| `cell_px` | 64 | |
+| `rotation_clockwise` | true | |
+| `drag_threshold_px` | 6 | |
+| `drag_source_alpha` | 0.35 | |
+| `tooltip_delay_s` | 0.35 | |
+| `scan_order` | ROW_MAJOR | [VERIFICA] |
+| `split_default` | HALF_FLOOR | |
+| `fir_must_match_to_stack` | true | [VERIFICA] |
+| `quick_slot_keys` | 4,5,6,7,8,9 | |
+| `quick_slot_usable_from` | [tactical_rig, pockets, special] | |
+| `quick_move_priorities` | tabella §12.5 | |
+| `allow_pistol_in_primary_slots` | true | [VERIFICA] |
+| `nesting_rules` | risorsa §8.4 | |
+| `stash_columns` | 10 | |
+| `stash_base_rows` | [28, 38, 48, 68] | per livello |
+| `stash_max_purchased_rows` | 28 | |
+| `sorting_table_size` | 10×60 | |
+| `sort_recursive` | false | |
+| `search_deep` | true | |
+| `overweight_start_kg` / `critical_kg` / `max_kg` | 26 / 61 / 70 | da tarare in playtest |
+| `base_round_load_s` / `base_round_unload_s` | 0.85 / 0.3 | da tarare |
+| `mag_check_s` | 2.0 | |
+| `search_time_per_item_s` | 1.2 | da tarare |
+| `max_parallel_searches` | 1 | 2 con abilità élite |
+| `quest_items_use_separate_inventory` | true | |
+| `drop_outside_to_ground` | false | [VERIFICA] |
+| `double_click_use_consumables` | false | opzione utente |
+| `icon_cache_entries` | 512 | |
+| `icons_rendered_per_frame` | 2 | |
+| `virtualize_stash_over_items` | 800 | |
+| `error_toast_s` | 2.0 | |
+
+---
+
+## 24. Piano di test e criteri di accettazione
+
+### 24.1 Test automatici (GdUnit4 o GUT)
+
+**Motore spaziale**
+
+- `can_place` per bordi, sovrapposizione, rotazione, auto-ignoranza della sorgente.
+- `find_free_spot` con ordine di scansione definito e fallback ruotato.
+- Footprint dopo `AttachModOp` (massimo per lato vs `force_add`).
+- Piegatura: la dimensione si riduce; spiegare senza spazio fallisce.
+- Crescita in griglia bloccata (`E_NO_SPACE_AFTER_RESIZE`).
+
+**Filtri e annidamento**
+
+- Whitelist, blacklist, precedenza dell'esclusione, ereditarietà delle categorie.
+- Auto-contenimento a profondità 5.
+- Zaino pieno dentro zaino (regola configurata).
+- Filtri a cascata del pouch.
+
+**Equipaggiamento**
+
+- Ogni regola di blocco in entrambe le direzioni.
+- Swap valido e non valido.
+- Alt+Click con slot libero, occupato e non scambiabile.
+
+**Stack**
+
+- Unione parziale, divisione ai limiti (1 e n-1), mancata unione con FIR diverso, nuovo uid alla divisione.
+
+**Caricatori**
+
+- Ordine LIFO con tipi misti.
+- Rifiuto per calibro errato e caricatore pieno.
+- Interruzione a metà con cartucce già caricate conservate.
+- Conteggio sconosciuto, controllo, mantenimento dello stato controllato.
+
+**Quick move**
+
+- Ogni riga della tabella di priorità, caso A e caso B.
+- Unione prima dello spazio libero.
+
+**Raid**
+
+- `raid_limit`, divieto di inserimento nel pouch, stash inaccessibile.
+- Perquisizione per attore, oggetti non rivelati non spostabili.
+- FIR assegnato solo con esito "Sopravvissuto".
+- Perdita alla morte con le eccezioni di §15.5.
+
+**Peso**
+
+- Somma ricorsiva, eccezione della Forza élite, invalidazione incrementale coerente con il ricalcolo completo (property test su 1000 operazioni casuali).
+
+**Ordinamento**
+
+- Idempotenza, rispetto di pin e lock, rollback in caso di mancanza di spazio.
+
+**Persistenza**
+
+- Andata e ritorno JSON identici; migrazione di schema; la validazione d'integrità sposta e non cancella.
+
+**Transazioni**
+
+- Rollback completo su errore iniettato a metà `apply`; i segnali non partono in caso di rollback.
+
+**Fuzzing**
+
+- 100.000 operazioni casuali validate: l'indice delle griglie resta sempre coerente con il modello (invariante verificata dopo ogni operazione).
+
+### 24.2 Criteri di accettazione per feature
+
+| ID | Criterio di accettazione |
+|---|---|
+| F01 | Un oggetto 2×3 occupa esattamente 6 celle; nessuna sovrapposizione possibile da UI o API. |
+| F02 | Premendo R durante il drag il footprint si scambia, l'anteprima resta sotto il cursore e la validità si aggiorna nello stesso frame. |
+| F03 | I 15 slot accettano solo le categorie della tabella §7.1. |
+| F04 | Con un casco che blocca le cuffie, lo slot cuffie appare bloccato e qualsiasi tentativo restituisce `E_SLOT_BLOCKED` con il nome del casco. |
+| F05 | Un rig con 8 tasche mostra il layout disegnato; un oggetto non può stare a cavallo di due tasche. |
+| F06 | Uno zaino con ingombro 6×7 e griglia 6×8 funziona; un telaio 4×5 con griglia 2×7 funziona. |
+| F07 | Una custodia munizioni rifiuta un medicinale con anteprima rossa e messaggio di filtro. |
+| F08 | Non è possibile inserire un contenitore in sé stesso o in un discendente. |
+| F09 | Tre finestre annidate aperte; Esc le chiude in ordine inverso, poi chiude l'inventario. |
+| F10 | Ctrl al rilascio apre il dialogo con il valore a metà; Invio crea il nuovo stack nella posizione dell'anteprima. |
+| F11 | I totali delle valute nell'intestazione corrispondono alla somma ricorsiva. |
+| F12 | In raid caricare 30 cartucce richiede 30 step; chiudendo a 12, il caricatore resta con 12. |
+| F13 | Montare un silenziatore aumenta la larghezza dell'arma; piegare il calcio la riduce; l'icona si aggiorna. |
+| F14 | Un preset salvato si riassembla dalla stash in un'unica operazione; le mod mancanti sono elencate. |
+| F15 | Le piastre si montano negli slot dell'armatura e il peso aumenta. |
+| F16 | Ctrl+Click su un caricatore nella stash lo mette nel rig; se il rig è pieno, nelle tasche; poi nello zaino. |
+| F17 | Alt+Click su un'arma principale con ON SLING occupato la mette in ON BACK. |
+| F18 | Canc in raid fa cadere l'oggetto nel mondo; fuori raid chiede conferma. |
+| F19 | Il menu mostra solo voci pertinenti; quelle impossibili sono grigie con motivo. |
+| F20 | Un oggetto sconosciuto mostra "?"; dopo l'esame tutte le istanze di quel template sono note. |
+| F21 | Aprendo un cadavere, lo slot armatura è visibile subito; lo zaino si rivela un oggetto alla volta. |
+| F22 | Oggetti raccolti e poi estratti con "Sopravvissuto" sono FIR; con "MIA" no. |
+| F23 | Alla morte, pouch, special slot, armband e scabbard restano al giocatore. |
+| F24 | Un secondo oggetto con `raid_limit = 1` è rifiutato in raid e segnalato nel controllo pre-raid. |
+| F25 | Il peso cambia colore alle soglie; con la Forza élite le armi a tracolla e sulla schiena non contano. |
+| F26 | Le righe della stash cambiano con livello ed espansioni. |
+| F27 | L'ordinamento è deterministico, rispetta i pin e annulla tutto se non c'è spazio. |
+| F28 | In modalità L un click blocca; un oggetto bloccato non si sposta, non si scarta e non si vende. |
+| F29 | Il tag (nome e colore) appare sulla tile e sopravvive a salvataggio e raid. |
+| F30 | Con il filtro "Munizioni" e la ricerca "7.62" restano evidenziati solo gli oggetti corrispondenti e i loro contenitori. |
+| F31 | La barra del valore si aggiorna dopo ogni operazione (fornitore mock). |
+| F32 | Gli oggetti in arrivo senza spazio finiscono nel tavolo di smistamento. |
+| F33 | Un medicinale collegato al 4 nello zaino non si usa; spostato nel rig si usa. |
+| F34 | Una bussola nello special slot si usa con il suo tasto e non è saccheggiabile. |
+| F35 | Le tasche rifiutano un oggetto 1×2. |
+| F36 | Il pouch rifiuta uno zaino; il contenuto sopravvive alla morte. |
+| F37 | L'icona dell'arma mostra l'ottica appena montata entro 2 frame. |
+| F38 | Cambiando il colore di categoria nelle impostazioni, le tile si ridisegnano. |
+| F39 | Le tile mostrano nome breve, contatori e icone di stato secondo §13.4. |
+| F40 | Con l'opzione attiva, il doppio click su un medicinale in raid lo usa. |
+| F41 | Doppio Z fa cadere lo zaino con il contenuto intatto. |
+| F42 | Un oggetto missione raccolto non occupa celle. |
+| F43 | Chiavi, medicinali e armature mostrano rispettivamente usi, risorsa e durabilità. |
+| F44 | Il flag di assicurazione si salva e mostra l'icona. |
+| F45 | Un'operazione serializzata e rieseguita su un modello clonato produce lo stesso stato. |
+
+---
+
+## 25. Piano di sviluppo (milestone)
+
+Stima indicativa per un solo sviluppatore senior.
+
+| Milestone | Contenuto | Feature | Stima |
+|---|---|---|---|
+| M1 — Nucleo | Dati, modello, GridIndex, transazioni, Move/Split/Merge, validazione, test | F01, F07, F08, F10, F45 | 2–3 settimane |
+| M2 — UI base | GridView, ItemTile, DragController, rotazione, highlight, tooltip, menu contestuale base | F02, F19, F39 | 2–3 settimane |
+| M3 — Equipaggiamento | Slot, blocchi, tasche, special slot, pouch, layout dei contenitori, finestre | F03–F06, F09, F34–F36 | 2–3 settimane |
+| M4 — Input avanzato | Ctrl/Alt+Click, Canc, doppio click, quick slot | F16–F18, F33, F40 | 1–2 settimane |
+| M5 — Armi | Slot mod, dimensione dinamica, piegatura, caricatori, munizioni | F12, F13, F15 | 3 settimane |
+| M6 — Raid | Contesto raid, perquisizione, esame, FIR, morte, limiti, peso | F20–F25, F41, F42 | 3 settimane |
+| M7 — Stash | Righe, ordinamento, pin/lock, filtri, ricerca, tag, valute, tavolo di smistamento | F11, F26–F32 | 2 settimane |
+| M8 — Rifinitura | IconRenderer, modding/preset, audio, animazioni 4.7, tema, localizzazione | F14, F37, F38 | 3 settimane |
+| M9 — Rete | Operazioni via RPC, delta, perquisizione lato server | F45 (rete) | 3–4 settimane |
+
+---
+
+## 26. Appendice — Esempi di dati (nomi fittizi)
+
+### 26.1 Tactical rig "Vespa-20" (ingombro 4×4, 20 celle)
+
+| Griglia | Dimensione | Offset nel layout (celle) | Filtro |
+|---|---|---|---|
+| `p1`…`p4` | 1×2 ciascuna | (0,0) (1,0) (2,0) (3,0) | nessuno |
+| `p5`…`p6` | 2×2 ciascuna | (0,2.2) (2,2.2) | nessuno |
+| `p7`…`p8` | 1×1 ciascuna | (0,4.4) (1,4.4) | nessuno |
+
+Altri campi: `weight_kg = 1.7`; `blocks_body_armor = false`; nessuna penalità.
+
+### 26.2 Zaino "Gufo G2" (ingombro 5×7, 35 celle in 3 griglie)
+
+| Griglia | Dimensione | Offset | Filtro |
+|---|---|---|---|
+| `main` | 3×5 | (0,0) | nessuno |
+| `scabbard` | 2×7 | (3.2,0) | nessuno |
+| `lid` | 3×2 | (0,5.2) | nessuno |
+
+`penalties`: velocità -4%, rotazione -1%, ergonomia -3%.
+
+### 26.3 Caricatore "M-30"
+
+- `size = 1×2`, `weight_kg = 0.33`;
+- `MagazineComp`: `caliber = &"5.45x39"`, `capacity = 30`, `load_time_mod = 1.0`;
+- `extra_size_down = 1` quando montato su un'arma (aggiunge una riga sotto l'arma).
+
+### 26.4 Importazione massiva
+
+Per creare centinaia di template si fornisce uno strumento `EditorScript` (`tools/import_templates.gd`) che:
+
+- legge file JSON o CSV con i campi di §5.2–§5.5;
+- genera o aggiorna i file `.tres` mantenendo gli `id` stabili;
+- produce un report degli errori (categorie mancanti, griglie con dimensioni nulle, filtri che referenziano id inesistenti).
+
+---
+
+## 27. Fonti consultate
+
+Fonti usate per ricostruire meccaniche e comportamenti del gioco originale (consultate a ottobre 2026):
+
+- Wiki ufficiale — Controlli (scorciatoie dell'inventario): https://escapefromtarkov.fandom.com/wiki/Controls
+- Wiki ufficiale — Found in raid: https://escapefromtarkov.fandom.com/wiki/Found_in_raid
+- Wiki ufficiale — Forza (peso trasportabile, eccezione élite): https://escapefromtarkov.fandom.com/wiki/Strength
+- Wiki ufficiale — Changelog (filtro FIR, ordinamento, valore stash): https://escapefromtarkov.fandom.com/wiki/Changelog
+- Wiki — Stash, inventario, pouch, contenitori di loot: https://escapefromtarkov.gamepedia.com/File:Jackets.png
+- Wiki — esempi di zaini e rig con griglie interne, penalità e limite "1 in raid":
+  - https://escapefromtarkov.fandom.com/wiki/6Sh118_raid_backpack_(EMR)
+  - https://escapefromtarkov.fandom.com/wiki/Eberlestock_G2_Gunslinger_II_backpack_(Dry_Earth)
+  - https://escapefromtarkov.fandom.com/wiki/Mystery_Ranch_NICE_COMM_3_BVS_frame_system_(Coyote)
+  - https://escapefromtarkov.fandom.com/wiki/ANA_Tactical_Alpha_chest_rig_(Olive_Drab)
+- Wiki — esempio di casco con flag di blocco: https://escapefromtarkov.fandom.com/wiki/ShPM_Firefighter_helmet
+- Elenco degli slot di equipaggiamento: https://tarkov-market.com/gear
+- Patch 0.15.5 (Pin e Lock): https://primagames.com/tips/escape-from-tarkov-0-15-5-patch-notes-new-gun-and-zombie-outbreak
+- Patch 0.8 (tempi di caricamento, conteggio sconosciuto): https://www.gamestar.de/artikel/escape-from-tarkov-patch-08-neue-map-mehr-waffen-altbekannte-probleme-bleiben-bestehen,3328869,seite2.html
+- Patch 0.12.4 (sovraccarico): https://www.dexerto.com/escape-from-tarkov/escape-from-tarkov-update-0-12-4-patch-notes-overweight-system-more-1340788/
+- Patch con ordinamento automatico e slot speciale bussola: https://bbs.io-tech.fi/threads/escape-from-tarkov-pc.10746/post-8069403
+- Abilità Attention e Mag Drills: https://tarkovforge.com/skills/attention, https://tarkovforge.com/skills/mag-drills
+- Edizioni e righe della stash: https://tarkovforge.com/game-editions
+- Contenitori sicuri: https://afkgaming.com/esports/guide/everything-about-secure-containers-in-escape-from-tarkov
+- Rotazione e piegatura: https://www.gamerevolution.com/?p=630292
+- Godot 4.7 (offset transform dei Control, barra di ricerca nei PopupMenu):
+  - https://godotengine.org/releases/4.7/
+  - https://godotengine.org/article/dev-snapshot-godot-4-7-dev-3/
+
+---
+
+*Fine del documento.*

@@ -8,7 +8,7 @@ Questo file è il punto di riferimento permanente per qualunque sessione di Clau
 
 ## 1. Cos'è questo progetto
 
-RPG open world cooperativo, visuale isometrica dall'alto, ambientazione survival/action in stile **S.T.A.L.K.E.R.** (atmosfera, IA nemica, zona ostile) con un sistema di **inventario a griglia in stile Escape from Tarkov** (peso, ingombro, slot dedicati). Il gioco include:
+RPG open world cooperativo, visuale in **prima persona** (full-body: la camera segue la testa del rig, il corpo che si vede è quello animato che vedono gli altri), ambientazione survival/action in stile **S.T.A.L.K.E.R.** (atmosfera, IA nemica, zona ostile) con un sistema di **inventario a griglia in stile Escape from Tarkov** (peso, ingombro, slot dedicati). Il gioco include:
 
 - Movimento e combattimento in tempo reale (shooting).
 - Inventario a griglia (dimensioni oggetti, peso, container annidati tipo zaino/tasche).
@@ -101,13 +101,12 @@ I nomi delle cartelle in `scenes/` e `scripts/` sono **per sistema di gameplay**
 ├── core/            # Codice condiviso, non specifico di un sistema
 │   ├── Authority/   # Helper per pattern server-authoritative
 │   ├── Motion/      # CharacterMotor: movimento a piedi condiviso player/NPC
-│   └── Utils/       # NetworkConstants, CollisionLayers, RenderLayers
+│   └── Utils/       # NetworkConstants, CollisionLayers, InputBindings, Loc
 ├── animation/       # Rig, AnimationTree, IK e procedurale       -> skill `character-animation`
-├── player/          # Input locale, camera isometrica, veicoli
+├── player/          # Input locale, camera in prima persona (FirstPersonCamera), trasporto sui veicoli
 ├── combat/          # Armi, tiro, salute, hitbox        -> skill `combat-shooting`
 ├── inventory/       # Griglia, item, equipaggiamento, HUD -> skill `inventory-tarkov`
 ├── vehicles/        # Barche, acqua, galleggiamento           -> skill `vehicles-boats`
-├── vision/          # Campo visivo, nebbia dinamica, occultamento -> skill `vision-fog`
 ├── ai/              # NPC umani e navigazione                          -> skill `ai-npc`
 ├── world/           # Livelli, spawn di giocatori e oggetti
 ├── quests/          # Riservato, non implementare ora (post-prototipo)
@@ -122,7 +121,8 @@ I nomi delle cartelle in `scenes/` e `scripts/` sono **per sistema di gameplay**
 - **`autoload/` contiene solo singleton veri.** Se un manager non deve essere unico e globale, non è un autoload.
 - **`resources/` contiene solo dati (`Resource`/`.tres`), mai logica con side-effect.** Un `ItemDefinition` descrive un oggetto, non lo istanzia da solo.
 - **`quests/` e `building/` restano vuote (con un `.gitkeep`) fino a quando i tre prototipi non sono conclusi.** Non generare codice speculativo per sistemi non ancora prototipati: porta a rework inutile. Attenzione: `building/` è riservata alla **costruzione della base** da parte del giocatore; gli edifici del mondo stanno in `world/scenes/Buildings/`.
-- **Due schemi di layer, entrambi con fonte di verità in `core/Utils/`.** `CollisionLayers` per la fisica, `RenderLayers` per ciò che una camera disegna (`VisualInstance3D.Layers`, `Camera3D.CullMask`). Si somigliano ma non sono la stessa cosa: cambiare un render layer non ha alcun effetto sulla simulazione, ed è proprio questo che permette al cutaway degli edifici di essere una decisione locale del singolo peer senza violare §3. Ogni numero nuovo va aggiunto a queste classi **e** alla sezione `[layer_names]` di `project.godot`; le scene scrivono i letterali, quindi vanno aggiornate a mano.
+- **I collision layer hanno la fonte di verità in `core/Utils/CollisionLayers.cs`.** Ogni numero nuovo va aggiunto lì **e** alla sezione `[layer_names]` di `project.godot`; le scene scrivono i letterali, quindi vanno aggiornate a mano. Non esistono render layer dedicati: la camera disegna tutto.
+- **Prima persona: tre regole trasversali.** (1) Lo sguardo è di `FirstPersonCamera` (`LookYaw`/`LookPitch`), il corpo lo insegue e lo pubblica in `SyncAimYaw`/`SyncAimPitch`. (2) La mira è il centro dello schermo e il colpo parte dagli occhi: l'host li ricostruisce con `CharacterMotor.ResolvedEyePosition`, mai da dati del client. (3) Il mouse è catturato in gioco e **solo `PlayerHud`** lo rilascia (inventario o `GameManager.UiModalOpen`): nessun altro tocca `Input.MouseMode`.
 
 ---
 
@@ -175,7 +175,5 @@ La documentazione d'ambito vive in `.claude/skills/<nome>/SKILL.md`. **Carica la
 | `blender-pipeline` | `assets/models/`, `tools/blender/` — pipeline Blender→`.glb`→Godot, `Body_Base`, `Armature_Character`, rig e animazioni Mixamo, scala/unità di un modello importato, dialogo con Blender via MCP |
 | `character-animation` | `animation/` — AnimationTree e BlendSpace, stance armata, layer e filtri, clip e loop, aggancio dell'arma alla mano, IK e modificatori di scheletro, mira e piedi procedurali, T-pose o animazioni ferme |
 | `ai-npc` | `ai/` — NPC umani, navigazione, waypoint, autorita' host sui personaggi non giocanti |
-| `vision-fog` | `vision/` — campo visivo, cono di mira, linea di vista e occlusione, nebbia dinamica (shroud), occultamento dei nemici, la maschera polare che alimenta gli shader, shader di post-process |
-| `building-cutaway` | **la camera isometrica e il materiale di qualunque mesh del mondo** — rotazione della visuale (Q/E), `WorldSurface.gdshader`, edifici e piani che spariscono entrando, muri che sfumano, porte e finestre, `CullMask` di una camera, render layer, `CursorMask`/`ShotMask`, layer fisico `building_cover` |
 
 Ambiti ancora senza skill perché non implementati: quest, base building. Quando uno di questi viene prototipato, la sua documentazione va in una skill nuova, non qui.

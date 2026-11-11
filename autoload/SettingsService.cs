@@ -40,6 +40,9 @@ public partial class SettingsService : Node
     public const float MinUiScale = 0.75f;
     public const float MaxUiScale = 2.0f;
 
+    public const float MinMouseSensitivity = 0.1f;
+    public const float MaxMouseSensitivity = 3.0f;
+
     /// Istanza autoload, per i chiamanti che non possono comodamente fare GetNode (helper statici).
     public static SettingsService? Instance { get; private set; }
 
@@ -83,6 +86,16 @@ public partial class SettingsService : Node
 
     /// Accovacciamento a interruttore invece che a pressione mantenuta. Vedi <see cref="AimToggle"/>.
     public bool CrouchToggle { get; set; }
+
+    private float _mouseSensitivity = 1.0f;
+
+    /// Moltiplicatore della velocita' dello sguardo. Non c'e' nulla da applicare: lo legge
+    /// <see cref="FirstPersonCamera"/> a ogni movimento del mouse.
+    public float MouseSensitivity
+    {
+        get => _mouseSensitivity;
+        set => _mouseSensitivity = Mathf.Clamp(value, MinMouseSensitivity, MaxMouseSensitivity);
+    }
 
     /// <summary>
     /// Comandi riassegnati dal giocatore: azione -> evento in forma testuale
@@ -254,6 +267,7 @@ public partial class SettingsService : Node
 
         AimToggle = (bool)config.GetValue(SectionGameplay, "aim_toggle", AimToggle);
         CrouchToggle = (bool)config.GetValue(SectionGameplay, "crouch_toggle", CrouchToggle);
+        MouseSensitivity = (float)config.GetValue(SectionGameplay, "mouse_sensitivity", _mouseSensitivity);
 
         _bindingOverrides.Clear();
         if (config.HasSection(SectionInput))
@@ -276,6 +290,7 @@ public partial class SettingsService : Node
 
         config.SetValue(SectionGameplay, "aim_toggle", AimToggle);
         config.SetValue(SectionGameplay, "crouch_toggle", CrouchToggle);
+        config.SetValue(SectionGameplay, "mouse_sensitivity", MouseSensitivity);
 
         // Solo gli scostamenti: le azioni mai toccate restano governate da project.godot.
         foreach ((string action, string serialized) in _bindingOverrides)

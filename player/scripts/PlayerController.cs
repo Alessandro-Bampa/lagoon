@@ -53,19 +53,18 @@ public partial class PlayerController : CharacterMotor
 
     private PlayerInput _input = null!;
 
+    /// Sguardo massimo rispetto alla prua mentre si e' al timone, in gradi: oltre, ci si
+    /// guarderebbe attraverso le spalle.
+    [Export] public float HelmLookLimitDegrees { get; set; } = 110.0f;
+
     /// <summary>
-    /// La camera locale, letta per il suo <see cref="IsometricCamera.CurrentYawDegrees"/>: l'input
-    /// WASD si ruota di quell'angolo, cosi' "avanti" sullo schermo resta avanti anche dopo che il
-    /// giocatore ha ruotato la visuale con Q/E.
-    ///
-    /// Prima era una costante esportata (<c>CameraYawDegrees</c>) da tenere in sincrono a mano con
-    /// la camera: corretta solo finche' la camera non ruotava. La fonte di verita' e' una sola, ed e'
-    /// la camera stessa.
+    /// La camera locale: e' la fonte di verita' dello sguardo. WASD si muove rispetto al suo
+    /// <see cref="FirstPersonCamera.LookYaw"/>, il corpo lo insegue, e imbardata e inclinazione
+    /// vengono pubblicate in <c>SyncAimYaw</c>/<c>SyncAimPitch</c>.
     /// </summary>
-    private IsometricCamera _camera = null!;
+    private FirstPersonCamera _camera = null!;
 
     private WeaponController? _weapon;
-    private WeaponInput? _weaponInput;
     private RayCast3D _groundProbe = null!;
     private WaterVolume? _water;
     private int _ownerPeerId;
@@ -75,8 +74,12 @@ public partial class PlayerController : CharacterMotor
     private Transform3D _lastAnchorFrame;
     private bool _hasAnchorFrame;
 
-    /// Tempo residuo del latch di mira dopo un hip-fire (vedi CharacterMotor.HipFireAimSeconds).
+    /// Tempo residuo dell'arma alzata dopo un colpo sparato in corsa (CharacterMotor.HipFireAimSeconds).
     private float _hipFireTimer;
+
+    /// Prua al tick precedente, per far girare lo sguardo insieme alla barca che si pilota.
+    private float _lastHelmHeading;
+    private bool _hasHelmHeading;
 
     // --- Su ogni peer: derivato dallo stato replicato della barca --------------------------
     private BoatController? _drivingBoat;
@@ -131,16 +134,15 @@ public partial class PlayerController : CharacterMotor
 
         _input = GetNode<PlayerInput>("Input");
         _groundProbe = GetNode<RayCast3D>("GroundProbe");
-        _camera = GetNode<IsometricCamera>("PlayerCamera");
+        _camera = GetNode<FirstPersonCamera>("PlayerCamera");
         _water = WaterVolume.Find(this);
 
         // Opzionali: un avatar puo' esistere senza armi, il movimento non deve dipenderne.
         _weapon = GetNodeOrNull<WeaponController>("Weapon");
-        _weaponInput = GetNodeOrNull<WeaponInput>("WeaponInput");
 
-        // Hip-fire: un colpo sparato senza mirare alza comunque l'arma per un attimo, cosi' il
-        // gesto si legge. Ci si aggancia allo sparo gia' risolto invece di rileggere l'input di
-        // fuoco: un solo punto di verita' su "ho sparato davvero".
+        // Un colpo sparato con l'arma abbassata (in corsa) la alza comunque per un attimo, cosi'
+        // il gesto si legge. Ci si aggancia allo sparo gia' risolto invece di rileggere l'input
+        // di fuoco: un solo punto di verita' su "ho sparato davvero".
         if (_weapon != null)
             _weapon.ShotResolved += OnShotResolved;
 
@@ -179,6 +181,7 @@ public partial class PlayerController : CharacterMotor
         // verra' ricostruito dal GroundProbe al primo tick a piedi.
         _anchor = null;
         _hasAnchorFrame = false;
+        _hasHelmHeading = false;
     }
 
     private void AuthoritativeMovement(double delta)
@@ -191,119 +194,73 @@ public partial class PlayerController : CharacterMotor
 
         CarryWithAnchor();
 
+        // WASD rispetto allo SGUARDO: avanti e' dove si guarda, sul piano orizzontale.
         Vector2 motion = _input.ReadMovement();
-        Vector3 worldDir = new Vector3(motion.X, 0f, motion.Y)
-            .Rotated(Vector3.Up, Mathf.DegToRad(_camera.CurrentYawDegrees));
+        float yaw = _camera.LookYaw;
+        Vector3 forward = new(Mathf.Sin(yaw), 0f, Mathf.Cos(yaw));
+        Vector3 right = new(-forward.Z, 0f, forward.X);
+        Vector3 worldDir = forward * -motion.Y + right * motion.X;
         if (worldDir.LengthSquared() > 1f)
             worldDir = worldDir.Normalized();
 
+        bool armed = _weapon is { IsArmed: true };
+        bool sighting = armed && _input.ReadAim();
+        bool sprinting = !SyncCrouching && !sighting && _input.ReadSprint();
+        float speed = SyncCrouching ? CrouchSpeed : (sprinting ? RunSpeed : WalkSpeed);
+
         // Accelerazione, pendenza, gradini, salto, gravita' e atterraggio: tutto nel motore condiviso.
-        StepMotion(worldDir, SelectSpeed(), _input.ReadJumpPressed(), _input.ReadCrouch(), delta);
+        StepMotion(worldDir, speed, _input.ReadJumpPressed(), _input.ReadCrouch(), delta);
 
         RefreshAnchor();
         CheckWaterFallback();
 
         // Pubblica lo stato che verra' replicato agli altri peer.
         PublishState();
-        UpdateAiming(worldDir, delta);
+        UpdateView(armed, sighting, sprinting && worldDir.LengthSquared() > 0.001f, delta);
         PublishLocomotionState();
     }
 
-    /// <summary>
-    /// Velocita' orizzontale corrente. L'accovacciamento vince sulla corsa: non si sprinta accovacciati.
-    /// Sono modificatori di velocita', non stati esclusivi, cosi' il BlendSpace2D riceve un valore
-    /// continuo invece di un enum.
-    /// </summary>
-    private float SelectSpeed()
-    {
-        if (SyncCrouching)
-            return CrouchSpeed;
-
-        return _input.ReadSprint() ? RunSpeed : WalkSpeed;
-    }
-
-    /// <summary>
-    /// Orientamento e mira dell'avatar, in TRE stati.
-    ///
-    /// IN MIRA (RMB, o latch dopo un hip-fire): la mira la calcola il cursore e la insegue il
-    /// BUSTO (SpineAimModifier via SyncAimYaw/SyncAimPitch). Il corpo la segue solo quando serve:
-    /// sempre in movimento (e' cio' che attiva lo strafe armato, perche' la velocita' locale si
-    /// proietta su SyncFacing), con zona morta e isteresi da fermi (turn-in-place,
-    /// <see cref="CharacterMotor.PlanAimFacing"/>). Mirare "dietro" non e' un caso speciale: lo
-    /// scarto supera la soglia e il corpo recupera da solo per la via piu' corta.
-    ///
-    /// ARMATO SENZA MIRA e DISARMATO: il corpo guarda dove va, il pitch rientra smorzato e
-    /// SyncAimYaw resta agganciato a SyncFacing, cosi' sui peer remoti il busto non punta mai a un
-    /// residuo stantio.
-    ///
-    /// Il punto di mira si legge da <see cref="WeaponInput.AimPoint"/>, che lo ricalcola gia' ogni
-    /// frame per il tiro: non si duplica <see cref="AimResolver"/>.
-    /// </summary>
-    /// Latch dell'hip-fire: parte solo sul peer proprietario, che e' l'unico a leggere l'input.
+    /// Parte solo sul peer proprietario, che e' l'unico a leggere l'input.
     private void OnShotResolved(Vector3 origin, Vector3 end, bool hit, bool isLocalShooter)
     {
         if (isLocalShooter)
             _hipFireTimer = HipFireAimSeconds;
     }
 
-    private void UpdateAiming(Vector3 worldDir, double delta)
+    /// <summary>
+    /// Sguardo, orientamento del corpo e stance dell'arma.
+    ///
+    /// Lo sguardo si pubblica SEMPRE (<c>SyncAimYaw</c>/<c>SyncAimPitch</c>): e' cio' che punta
+    /// busto e arma sugli altri peer. Il corpo lo insegue smorzato — in prima persona si cammina
+    /// in strafe, mai "verso dove si va" — e lo scarto residuo lo chiude SpineAimModifier.
+    ///
+    /// <c>SyncAiming</c> = arma alzata sullo sguardo: da armati sempre, tranne in corsa (porto
+    /// rilassato), con un breve latch se si spara correndo. Il tasto <c>aim</c> stringe il campo
+    /// visivo ed e' solo locale: non cambia nulla che l'host debba conoscere.
+    ///
+    /// Durante il parkour il corpo NON segue lo sguardo: TryStartParkour lo ha raddrizzato sulla
+    /// normale della parete, e girarlo farebbe entrare la manovra di sbieco nel muro. Lo sguardo
+    /// resta libero; l'arma non si vede e non spara (WeaponController.HandsFree).
+    /// </summary>
+    private void UpdateView(bool armed, bool sighting, bool sprinting, double delta)
     {
-        bool armed = _weapon is { IsArmed: true } && _weaponInput != null;
-
         if (_hipFireTimer > 0f)
             _hipFireTimer -= (float)delta;
 
-        // Durante scavalcamento e arrampicata l'orientamento lo decide la GEOMETRIA: TryStartParkour
-        // ha raddrizzato il corpo sulla normale della parete, e la traiettoria si percorre lungo
-        // quella. Lasciar girare la mira lo riporterebbe verso il cursore, cioe' farebbe entrare la
-        // manovra di sbieco nel muro — che e' esattamente il difetto che quel raddrizzamento evita.
-        // Il busto si riallinea al corpo (SyncAimYaw = SyncFacing) e il pitch rientra, cosi' i peer
-        // remoti non vedono l'arma puntata a un residuo stantio; l'arma comunque non si vede e non
-        // spara (WeaponController.HandsFree).
+        SyncAimYaw = _camera.LookYaw;
+        SyncAimPitch = _camera.LookPitch;
+
         if (Vaulting)
         {
             SyncAiming = false;
-            SyncAimPitch = Mathf.Lerp(SyncAimPitch, 0f, Damp(8f, (float)delta));
+            _camera.Zoomed = false;
             UpdateFacing(SyncFacing, delta);
-            SyncAimYaw = SyncFacing;
             return;
         }
 
-        bool aiming = armed && (_input.ReadAim() || _hipFireTimer > 0f);
-        SyncAiming = aiming;
-
-        bool moving = worldDir.LengthSquared() > 0.001f;
-        float target = SyncFacing;
-
-        if (aiming)
-        {
-            // L'origine e' la SPALLA, non i piedi: il pitch di mira misurato dal suolo sarebbe
-            // sempre inclinato verso l'alto anche mirando dritto davanti a se'.
-            Vector3 muzzle = GlobalPosition + Vector3.Up * WeaponController.MuzzleHeight;
-            Vector3 toAim = _weaponInput!.AimPoint - muzzle;
-
-            Vector3 flat = new(toAim.X, 0f, toAim.Z);
-            if (flat.LengthSquared() > 0.0001f)
-            {
-                SyncAimYaw = Mathf.Atan2(flat.X, flat.Z);
-                SyncAimPitch = Mathf.Atan2(toAim.Y, flat.Length());
-            }
-
-            target = PlanAimFacing(SyncFacing, SyncAimYaw, moving);
-        }
-        else
-        {
-            SyncAimPitch = Mathf.Lerp(SyncAimPitch, 0f, Damp(8f, (float)delta));
-            if (moving)
-                target = Mathf.Atan2(worldDir.X, worldDir.Z);
-        }
-
-        UpdateFacing(target, delta);
-
-        // Fuori mira il busto segue il corpo per definizione: si riallinea DOPO UpdateFacing,
-        // cosi' i due angoli replicati non divergono mai di un frame.
-        if (!aiming)
-            SyncAimYaw = SyncFacing;
+        SyncAiming = armed && (!sprinting || _hipFireTimer > 0f);
+        _camera.Zoomed = sighting;
+        UpdateFacing(_camera.LookYaw, delta);
     }
 
     /// <summary>
@@ -355,6 +312,18 @@ public partial class PlayerController : CharacterMotor
         SyncPosition = boat.HelmLocalPosition;
         SyncFacing = boat.HeadingYaw;
         Visual.Rotation = new Vector3(0f, SyncFacing, 0f);
+
+        // Il corpo guarda la prua; lo sguardo resta libero ma vira con la barca, entro il limite.
+        if (_hasHelmHeading)
+            _camera.AddYaw(Mathf.AngleDifference(_lastHelmHeading, SyncFacing));
+        _lastHelmHeading = SyncFacing;
+        _hasHelmHeading = true;
+        _camera.ClampYawAround(SyncFacing, HelmLookLimitDegrees);
+        _camera.Zoomed = false;
+
+        SyncAiming = false;
+        SyncAimYaw = _camera.LookYaw;
+        SyncAimPitch = _camera.LookPitch;
     }
 
     /// <summary>
@@ -383,7 +352,13 @@ public partial class PlayerController : CharacterMotor
 
         Transform3D now = _anchor.GlobalTransform;
         if (_hasAnchorFrame)
+        {
             GlobalPosition = now * (_lastAnchorFrame.AffineInverse() * GlobalPosition);
+
+            // Anche lo sguardo e' trasportato: su un ponte che vira si resta rivolti allo stesso
+            // punto dello SCAFO, non del mondo, altrimenti la barca "scappa" da sotto la visuale.
+            _camera.AddYaw(Mathf.AngleDifference(HeadingOf(_lastAnchorFrame), HeadingOf(now)));
+        }
 
         _lastAnchorFrame = now;
         _hasAnchorFrame = true;
@@ -410,6 +385,13 @@ public partial class PlayerController : CharacterMotor
         // Cambio di appoggio: il frame precedente appartiene a un altro riferimento, va scartato.
         _anchor = found;
         _hasAnchorFrame = false;
+    }
+
+    /// Imbardata di una trasformata, nella stessa convenzione di <c>BoatController.HeadingYaw</c>.
+    private static float HeadingOf(Transform3D frame)
+    {
+        Vector3 forward = -frame.Basis.Z;
+        return Mathf.Atan2(forward.X, forward.Z);
     }
 
     private static BoatController? FindOwningBoat(Node? node)

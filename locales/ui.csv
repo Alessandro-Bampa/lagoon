@@ -31,6 +31,7 @@ UI_SETTINGS_PERCENT,{0}%,{0}%
 UI_SETTINGS_HINT,The UI has a fixed pixel size: raise the scale on 2K/4K displays.,La UI ha dimensione in pixel fissa: alza la scala su schermi 2K/4K.
 UI_SETTINGS_AIM_TOGGLE,Aim as toggle,Toggle Mira 
 UI_SETTINGS_CROUCH_TOGGLE,Crouch as toggle,Toggle Accovacciato
+UI_SETTINGS_MOUSE_SENSITIVITY,Mouse sensitivity,Sensibilità mouse
 UI_SETTINGS_BINDINGS,Key bindings,Comandi
 UI_SETTINGS_BACK,Back,Indietro
 UI_BIND_TITLE,KEY BINDINGS,COMANDI
@@ -48,8 +49,6 @@ UI_ACTION_MOVE_RIGHT,Right,Destra
 UI_ACTION_JUMP,Jump,Salto
 UI_ACTION_SPRINT,Sprint,Corsa
 UI_ACTION_CROUCH,Crouch,Accovacciarsi
-UI_ACTION_CAMERA_ROTATE_LEFT,Rotate camera left,Ruota camera a sinistra
-UI_ACTION_CAMERA_ROTATE_RIGHT,Rotate camera right,Ruota camera a destra
 UI_ACTION_FIRE,Fire,Fuoco
 UI_ACTION_AIM,Aim,Mira
 UI_ACTION_RELOAD,Reload,Ricarica

@@ -1479,24 +1479,6 @@ func _verify_npc() -> void:
 	_check("WorldToLocalVelocity: mondo +Z a yaw 0 e' AVANTI (+Y locale)",
 		local.distance_to(Vector2(0, 1)) < 0.001, str(local))
 
-	# Turn-in-place: zona morta con isteresi (PlanAimFacing, soglie 55/8 gradi). La sequenza
-	# e' STATEFUL apposta: attraversa ingresso, inseguimento, stop e reset in movimento.
-	var yaw: float = npc.call("PlanAimFacing", 0.0, deg_to_rad(40.0), false)
-	_check("PlanAimFacing: dentro la zona morta il corpo non ruota",
-		absf(yaw) < 0.001, "target = %.3f rad" % yaw)
-	yaw = npc.call("PlanAimFacing", 0.0, deg_to_rad(80.0), false)
-	_check("PlanAimFacing: oltre la soglia parte il turn-in-place",
-		absf(yaw - deg_to_rad(80.0)) < 0.001, "target = %.3f rad" % yaw)
-	yaw = npc.call("PlanAimFacing", deg_to_rad(60.0), deg_to_rad(80.0), false)
-	_check("PlanAimFacing: isteresi, il recupero continua sotto la soglia d'ingresso",
-		absf(yaw - deg_to_rad(80.0)) < 0.001, "target = %.3f rad" % yaw)
-	yaw = npc.call("PlanAimFacing", deg_to_rad(76.0), deg_to_rad(80.0), false)
-	_check("PlanAimFacing: sotto la soglia di stop il corpo si ferma",
-		absf(yaw - deg_to_rad(76.0)) < 0.001, "target = %.3f rad" % yaw)
-	yaw = npc.call("PlanAimFacing", 0.0, deg_to_rad(10.0), true)
-	_check("PlanAimFacing: in movimento il corpo insegue sempre la mira",
-		absf(yaw - deg_to_rad(10.0)) < 0.001, "target = %.3f rad" % yaw)
-
 	npc.queue_free()
 
 

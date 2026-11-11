@@ -4,7 +4,7 @@ using Godot;
 namespace Lagoon;
 
 /// <summary>
-/// Schermata inventario in stile Tarkov, adattata all'isometrico. Impianto a DOPPIO PANNELLO:
+/// Schermata inventario in stile Tarkov. Impianto a DOPPIO PANNELLO:
 ///  - a sinistra il proprio equipaggiamento (slot indossati, tasche, rig, zaino, contenitore sicuro);
 ///  - a destra la fonte esterna: gli oggetti a terra vicini, oppure il contenuto del contenitore
 ///    aperto con F (cassa, zaino droppato);

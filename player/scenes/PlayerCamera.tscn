@@ -1,8 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3]
 
-[ext_resource type="Script" path="res://player/scripts/IsometricCamera.cs" id="1"]
+[ext_resource type="Script" path="res://player/scripts/FirstPersonCamera.cs" id="1"]
 
 [node name="PlayerCamera" type="Camera3D"]
-projection = 1
-size = 14.0
+near = 0.05
 script = ExtResource("1")

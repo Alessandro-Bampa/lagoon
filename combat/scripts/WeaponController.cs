@@ -17,9 +17,12 @@ namespace Lagoon;
 /// Stato replicato a TUTTI i peer (non solo al proprietario, a differenza dell'inventario): serve
 /// agli altri per vedere chi impugna cosa e, per il proprietario, ad avere una HUD coerente.
 ///
-/// L'origine del colpo si legge da <see cref="PlayerController.ResolvedSyncPosition"/> e non da
-/// <c>SyncPosition</c>: dalla Fase 4 quest'ultima puo' essere espressa in coordinate locali a
-/// un'imbarcazione, quindi usarla direttamente farebbe partire i colpi dall'origine dello scafo.
+/// L'origine del colpo sono gli OCCHI (<see cref="CharacterMotor.ResolvedEyePosition"/>): in prima
+/// persona il colpo parte dal punto di vista, cosi' cio' che sta sotto al reticolo e' cio' che viene
+/// colpito. Passa da <c>ResolvedSyncPosition</c> e non da <c>SyncPosition</c>, che dalla Fase 4 puo'
+/// essere in coordinate locali a un'imbarcazione. La camera del client segue la testa animata e
+/// sta a pochi centimetri dal punto nominale dell'host: lo scarto conta solo sparando rasente a
+/// uno spigolo.
 ///
 /// LIMITE NOTO (accettato in Fase 3): nessuna lag compensation. L'host ri-traccia dalla posizione
 /// replicata del tiratore, che per un tiratore remoto e' vecchia fino a ~1 RTT.
@@ -30,9 +33,6 @@ namespace Lagoon;
 /// </summary>
 public partial class WeaponController : Node
 {
-    /// Altezza della bocca dell'arma rispetto ai piedi dell'avatar.
-    public const float MuzzleHeight = 1.1f;
-
     /// Emesso in locale su ogni peer quando arriva un colpo (per gli effetti e l'hit marker).
     [Signal]
     public delegate void ShotResolvedEventHandler(Vector3 origin, Vector3 end, bool hit, bool isLocalShooter);
@@ -236,7 +236,7 @@ public partial class WeaponController : Node
 
         // Origine SEMPRE ricavata dallo stato replicato del tiratore, mai fornita dal client, e mai
         // da GlobalPosition (che sugli avatar remoti e' il risultato dell'interpolazione).
-        Vector3 origin = _player.ResolvedSyncPosition + Vector3.Up * MuzzleHeight;
+        Vector3 origin = _player.ResolvedEyePosition;
 
         Vector3 toAim = aimPoint - origin;
         if (toAim.LengthSquared() < 0.0001f)
@@ -304,14 +304,6 @@ public partial class WeaponController : Node
         TransferMode = MultiplayerPeer.TransferModeEnum.Unreliable)]
     public void BroadcastShot(Vector3 origin, Vector3 end, bool hit)
     {
-        Node? world = GetTree().GetFirstNodeInGroup(GameWorld.GroupName);
-        if (world != null)
-        {
-            ShotEffects.SpawnTracer(world, origin, end);
-            if (hit)
-                ShotEffects.SpawnImpact(world, end);
-        }
-
         var mount = _player.GetNodeOrNull<WeaponVisual>("Visual/WeaponMount");
         if (mount != null)
         {
@@ -319,11 +311,24 @@ public partial class WeaponController : Node
             mount.PlayKick();
         }
 
+        Node? world = GetTree().GetFirstNodeInGroup(GameWorld.GroupName);
+        if (world != null)
+        {
+            // Il tracciante si disegna dalla BOCCA dell'arma, non dall'origine vera (gli occhi):
+            // dal punto di vista sarebbe un segmento visto di punta, invisibile a chi spara.
+            Vector3 tracerStart = mount != null
+                ? mount.GlobalTransform * ShotEffects.MuzzleOffset
+                : origin;
+            ShotEffects.SpawnTracer(world, tracerStart, end);
+            if (hit)
+                ShotEffects.SpawnImpact(world, end);
+        }
+
         bool isLocalShooter = _player.IsMultiplayerAuthority();
         if (isLocalShooter)
         {
             WeaponDefinition? weapon = HeldWeapon;
-            var camera = _player.GetNodeOrNull<IsometricCamera>("PlayerCamera");
+            var camera = _player.GetNodeOrNull<FirstPersonCamera>("PlayerCamera");
             if (camera != null && weapon != null)
                 camera.AddKick(weapon.CameraKick);
         }

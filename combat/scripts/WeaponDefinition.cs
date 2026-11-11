@@ -75,8 +75,8 @@ public partial class WeaponDefinition : ItemDefinition
     /// Tetto del solo contributo di rinculo.
     [Export] public float MaxRecoilSpreadDegrees { get; set; } = 5f;
 
-    /// Ampiezza (in metri) della scossa locale della camera a ogni colpo. Puramente estetico.
-    [Export] public float CameraKick { get; set; } = 0.06f;
+    /// Calcio della visuale a ogni colpo, in gradi: la camera sale e poi rientra. Solo locale.
+    [Export] public float CameraKick { get; set; } = 0.6f;
 
     // ====================================================================================
     //  Cadenza e munizioni
