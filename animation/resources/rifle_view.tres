@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="WeaponAnimationSet" format=3]
+
+[ext_resource type="Script" path="res://animation/scripts/WeaponAnimationSet.cs" id="1"]
+[ext_resource type="PackedScene" path="res://assets/models/weapons/VM_Rifle.glb" id="2"]
+[ext_resource type="PackedScene" path="res://assets/models/weapons/W_Rifle.glb" id="3"]
+
+[resource]
+script = ExtResource("1")
+ViewmodelScene = ExtResource("2")
+WorldScene = ExtResource("3")
+AimFovDegrees = 52.0
+AimSeconds = 0.2
+AimPitchDegrees = 0.93
+KickBack = 0.03
+KickPitchDegrees = 1.8
+KickRollDegrees = 1.2
+AimKickFactor = 0.4

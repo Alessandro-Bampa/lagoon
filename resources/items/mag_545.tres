@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="MagazineDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://inventory/scripts/data/MagazineDefinition.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+ItemId = "mag_545"
+Width = 1
+Height = 2
+Weight = 0.22
+Category = 10
+Caliber = "5.45x39"
+Capacity = 30

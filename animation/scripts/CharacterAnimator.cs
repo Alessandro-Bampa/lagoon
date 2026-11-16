@@ -3,640 +3,554 @@ using Godot;
 namespace Lagoon;
 
 /// <summary>
-/// Pilota l'<see cref="AnimationTree"/> del personaggio.
+/// Anima il CORPO di un personaggio (terza persona): quello che gli altri giocatori vedono, e
+/// che il giocatore locale vede come gambe e ombra. Il viewmodel in prima persona e'
+/// <see cref="ViewmodelAnimator"/>.
 ///
 /// E' un RICEVITORE PURO: non sa chi lo alimenta e non legge nulla dal mondo. Non conosce
 /// <c>PlayerController</c>, non interroga il <c>Multiplayer</c>, non valida niente. Chi lo guida
-/// scrive nelle proprieta' pubbliche e chiama i metodi <c>Trigger*</c> — per il giocatore lo fa
-/// <see cref="PlayerAnimationBridge"/>, per gli NPC lo fara' la loro IA. E' cosi' che lo stesso rig
-/// serve entrambi senza che <c>animation/</c> dipenda da <c>player/</c>.
+/// scrive nelle proprieta' pubbliche e chiama i metodi <c>Trigger*</c> — per il giocatore
+/// <see cref="PlayerAnimationBridge"/>, per gli NPC <c>NpcAnimationBridge</c>. Rispetto a
+/// CLAUDE.md §3 sta interamente dal lato "resa": riceve stato gia' replicato e lo trasforma in pose.
 ///
-/// Rispetto a CLAUDE.md §3 questo componente sta interamente dal lato "resa": riceve stato gia'
-/// replicato e lo trasforma in pose. L'autorita' e la validazione vivono nei controller di movimento
-/// e combattimento, mai qui.
+/// Le clip sono quelle della Universal Animation Library (dentro <c>Mannequin.glb</c>). L'albero
+/// di blend si costruisce QUI da codice: i nomi delle clip e dei nodi stanno in un solo file.
+///
+/// <code>
+/// Move (Idle/Walk/Jog/Sprint per velocita') ─ MoveScale ─┐
+/// Crouch (Crouch_Idle/Crouch_Fwd) ─ CrouchScale ─────────┴ Stance ─┐
+/// Jump (posa di volo) ─────────────────────────────────────────────┴ Air ─ Land ─ Hit ─┐
+/// Death01 ─────────────────────────────────────────────────────────────────────────────┴ Life
+/// </code>
+/// Scavalcamento e arrampicata non hanno clip: li compongono delle curve sul tempo (vedi
+/// <see cref="StepManeuver"/>).
+/// Sopra l'albero lavorano due modificatori di scheletro: <see cref="BodyAimModifier"/> (bacino
+/// verso il moto, busto verso lo sguardo) e <see cref="ArmIkModifier"/> (mani e dita sull'arma).
 /// </summary>
 public partial class CharacterAnimator : Node3D
 {
-    // Percorsi dei parametri dell'AnimationTree. Corrispondono ai nomi dei nodi creati da
-    // tools/build_animation_tree.gd: cambiando l'albero vanno cambiati anche qui. Sono l'UNICO
-    // punto di accoppiamento fra questo C# e la struttura dell'albero.
-    private const string WalkPosition = "parameters/WalkSpace/blend_position";
-    private const string RunPosition = "parameters/RunSpace/blend_position";
-    private const string RunAmount = "parameters/MoveBlend/blend_amount";
-    private const string CrouchPosition = "parameters/CrouchSpace/blend_position";
-    private const string AirAmount = "parameters/AirBlend/blend_amount";
+    // Clip della libreria. L'import di Godot toglie il suffisso "_Loop" e imposta il loop da solo.
+    private const string ClipIdle = "Idle";
+    private const string ClipWalk = "Walk";
+    private const string ClipJog = "Jog_Fwd";
+    private const string ClipSprint = "Sprint";
+    private const string ClipCrouchIdle = "Crouch_Idle";
+    private const string ClipCrouchMove = "Crouch_Fwd";
+    private const string ClipAir = "Jump";
+    private const string ClipLand = "Jump_Land";
+    private const string ClipHitChest = "Hit_Chest";
+    private const string ClipHitHead = "Hit_Head";
+    private const string ClipDeath = "Death01";
+
+    // Parametri dell'albero.
+    private const string MovePosition = "parameters/Move/blend_position";
+    private const string MoveScale = "parameters/MoveScale/scale";
+    private const string CrouchPosition = "parameters/Crouch/blend_position";
+    private const string CrouchScale = "parameters/CrouchScale/scale";
+    private const string StanceAmount = "parameters/Stance/blend_amount";
+    private const string AirAmount = "parameters/Air/blend_amount";
     private const string LandRequest = "parameters/Land/request";
-    private const string CrouchAmount = "parameters/CrouchBlend/blend_amount";
-    private const string HoldAmount = "parameters/HoldMask/blend_amount";
-    private const string AimAmount = "parameters/AimAdd/add_amount";
-    private const string AimPosition = "parameters/AimSpace/blend_position";
-    private const string WeaponPoseRequest = "parameters/WeaponPose/transition_request";
-    private const string FirePoseRequest = "parameters/FirePose/transition_request";
-    private const string HitPoseRequest = "parameters/HitPose/transition_request";
-    private const string LandPoseRequest = "parameters/LandPose/transition_request";
-    private const string FireRequest = "parameters/Fire/request";
     private const string HitRequest = "parameters/Hit/request";
-    private const string JumpRequest = "parameters/Jump/request";
-    private const string VaultRequest = "parameters/Vault/request";
-    private const string VaultPoseRequest = "parameters/VaultPose/transition_request";
-    private const string JumpTimeScale = "parameters/JumpScale/scale";
+    private const string HitPoseRequest = "parameters/HitPose/transition_request";
+    private const string LifeRequest = "parameters/Life/transition_request";
 
-    // Escursione dell'aim offset, in gradi: DEVONO combaciare con AIM_YAW_DEG e AIM_PITCH_DEG di
-    // tools/blender/build_procedural_clips.py, perche' le pose additive sono authorate a quegli
-    // angoli e la blend_position e' normalizzata su di essi.
-    private const float AimYawRangeDeg = 60.0f;
-    private const float AimPitchRangeDeg = 45.0f;
-
-    private const string WalkSpaceNode = "WalkSpace";
-    private const string RunSpaceNode = "RunSpace";
-    private const string CrouchSpaceNode = "CrouchSpace";
-    private const string JumpClipName = "jump";
-    private const string VaultClipName = "vault_low";
-    private const string MantleClipName = "mantle_high";
-
-    /// Velocita' di transizione dei pesi di blend (crouch, arma), in frazione al secondo.
-    [Export] public float BlendSpeed { get; set; } = 10.0f;
-
-    /// Reattivita' del filtro sulla velocita' di locomozione: piu' alto = piu' scattante.
-    [Export] public float VelocitySmoothing { get; set; } = 18.0f;
+    /// Percorso delle tracce d'osso nelle clip: lo scheletro ha un nome unico dato dal retarget.
+    private const string TrackPrefix = "%GeneralSkeleton:";
 
     /// <summary>
-    /// Velocita' di camminata e di corsa in m/s. Devono combaciare con quelle di chi pilota: la prima
-    /// e' anche il raggio del rombo dello spazio di camminata, la seconda decide a che punto il peso
-    /// della corsa arriva a 1. <see cref="PlayerAnimationBridge"/> le riallinea a
-    /// <c>PlayerController</c> in <c>_Ready</c>.
+    /// Velocita' di chi si muove, in m/s: sono i punti dello spazio di blend, quindi devono
+    /// combaciare con quelle del controller. Le riallineano i bridge in <c>_Ready</c>, PRIMA che
+    /// l'albero venga costruito.
     /// </summary>
     [Export] public float WalkSpeed { get; set; } = 4.0f;
 
     [Export] public float RunSpeed { get; set; } = 7.0f;
-
-    /// Velocita' da accovacciati, cioe' il raggio del rombo di CrouchSpace.
     [Export] public float CrouchSpeed { get; set; } = 2.0f;
 
-    /// Velocita' con cui si entra e si esce dalla posa di caduta.
-    [Export] public float AirBlendSpeed { get; set; } = 12.0f;
+    /// Velocita' a cui la clip <c>Walk</c> (una camminata lenta) e' a pieno peso, in m/s.
+    [Export] public float StrollSpeed { get; set; } = 1.6f;
 
-    /// <summary>
-    /// Abbassamento massimo del bacino all'atterraggio, in metri. E' l'ammortizzazione PROCEDURALE:
-    /// non esiste (ancora) una clip di atterraggio, e una flessione smorzata rende l'impatto leggibile
-    /// senza spendere due clip su un evento che dura un terzo di secondo.
-    /// </summary>
-    [Export] public float LandingDip { get; set; } = 0.18f;
-
-    /// Velocita' d'impatto a cui l'abbassamento e' massimo, in m/s. Sotto, scala proporzionalmente.
+    /// Velocita' d'impatto oltre la quale parte la clip di atterraggio, in m/s.
     [Export] public float HardLandingSpeed { get; set; } = 9.0f;
 
-    /// <summary>
-    /// Velocita' d'impatto oltre la quale parte la clip di atterraggio MORBIDO (land_soft).
-    /// Sta sopra la velocita' d'impatto di un salto normale (JumpVelocity = 6 m/s): il salto
-    /// resta coperto dalla sola flessione procedurale, la clip e' per le cadute vere.
-    /// </summary>
-    [Export] public float SoftLandingSpeed { get; set; } = 6.5f;
+    /// Rotazione massima del bacino verso la direzione del moto, in gradi.
+    [Export] public float MaxHipSwivelDegrees { get; set; } = 65.0f;
 
-    /// Velocita' di riassorbimento dell'abbassamento d'atterraggio, in frazione al secondo.
-    [Export] public float LandingRecoverySpeed { get; set; } = 9.0f;
-
-    /// <summary>
-    /// Ampiezza del passo sintetico del turn-in-place, in metri di blend per radiante al secondo di
-    /// rotazione del corpo. Il turn-in-place non ha una clip propria: mentre il corpo ruota da
-    /// fermo, si alimenta l'asse X del blend space con la velocita' di rotazione, cosi' le gambe
-    /// riproducono i passetti dello strafe invece di scivolare sul posto.
-    /// </summary>
-    [Export] public float TurnStepScale { get; set; } = 0.4f;
-
-    /// Rotazione minima (rad/s) perche' il passo sintetico si attivi: sotto, il corpo e' fermo.
-    [Export] public float TurnStepThreshold { get; set; } = 0.5f;
-
-
-    /// <summary>
-    /// Altezza dell'ostacolo, in metri, oltre la quale il parkour usa la clip di ARRAMPICATA invece
-    /// di quella di scavalcamento.
-    ///
-    /// Sta qui e non in chi si muove per la stessa ragione di <see cref="SoftLandingSpeed"/>: chi
-    /// si muove manda una misura geometrica (l'altezza), la scelta della posa e' una decisione di
-    /// resa. Va tenuta allineata a <c>CharacterMotor.VaultMaxHeight</c>, che decide quale delle due
-    /// TRAIETTORIE si percorre: se divergono, la clip di una manovra accompagna il moto dell'altra.
-    /// </summary>
-    [Export] public float MantleHeight { get; set; } = 1.2f;
+    [Export] public float BlendSpeed { get; set; } = 10.0f;
+    [Export] public float VelocitySmoothing { get; set; } = 14.0f;
+    [Export] public float AirBlendSpeed { get; set; } = 12.0f;
 
     // ====================================================================================
     //  Stato in ingresso: lo scrive chi pilota, ogni frame
     // ====================================================================================
 
-    /// <summary>
-    /// Velocita' orizzontale nel riferimento dell'AVATAR: X = destra, Y = avanti, in m/s.
-    /// Stesse unita' e stesso riferimento di <c>PlayerController.SyncLocalVelocity</c>, e stessi assi
-    /// del BlendSpace2D: non serve nessuna conversione lungo la catena.
-    /// </summary>
+    /// Velocita' orizzontale nel riferimento dell'avatar: X = destra, Y = avanti, in m/s.
     public Vector2 LocalVelocity { get; set; }
 
-    /// Accovacciato.
     public bool Crouching { get; set; }
-
-    /// A terra. In aria la locomozione resta ferma sull'ultima posa invece di "camminare nel vuoto".
     public bool Grounded { get; set; } = true;
 
-    /// <summary>
-    /// Durata reale del volo di un salto, in secondi. Serve a riscalare la clip <c>jump</c>, che e' un
-    /// arco completo di 1,03 s: senza, il personaggio atterra mentre la clip e' ancora a mezz'aria.
-    /// Chi pilota la calcola dai propri parametri di salto (per il giocatore: 2 * JumpVelocity / Gravity).
-    /// Zero o negativo = nessuna riscalatura.
-    /// </summary>
-    public float JumpFlightTime { get; set; }
+    /// Scavalcamento o arrampicata in corso: arma riposta, posa di <see cref="TriggerVault"/>.
+    public bool Vaulting { get; set; }
 
-    /// <summary>
-    /// Posa dell'arma impugnata, o null da disarmato. Da null il layer arma si spegne e resta la sola
-    /// locomozione. Cambiare arma non tocca in alcun modo la locomozione: e' l'unico punto che serve
-    /// aggiornare per aggiungere un'arma nuova.
-    /// </summary>
-    public WeaponAnimationSet? WeaponPose { get; set; }
-
-    /// <summary>
-    /// Direzione in cui si sta mirando, in coordinate MONDO. Vettore nullo = non si mira.
-    ///
-    /// Non e' ridondante con l'orientamento dell'avatar: da quando la mira e' uno stato (RMB) il
-    /// busto puo' guardare dove il corpo non guarda, e questa porta anche l'INCLINAZIONE, che
-    /// nessuna clip contiene e che senza un layer procedurale non esisterebbe affatto.
-    /// </summary>
-    public Vector3 AimDirection { get; set; }
-
-    /// <summary>
-    /// Stance di mira attiva. Decide se aim offset e mira procedurale sono accesi: da armati SENZA
-    /// mira l'arma e' portata rilassata (delta di porto basso) e il corpo cammina come da disarmato.
-    /// </summary>
+    /// Arma all'occhio (mira col tasto destro).
     public bool Aiming { get; set; }
 
-    /// <summary>
-    /// Velocita' di rotazione del corpo in rad/s (positiva = verso sinistra), gia' smorzata da chi
-    /// pilota. Alimenta il passo sintetico del turn-in-place.
-    /// </summary>
-    public float TurnRate { get; set; }
+    public bool Reloading { get; set; }
+    public bool Dead { get; set; }
+
+    /// Sguardo in coordinate mondo, in radianti: imbardata (zero guarda +Z) e inclinazione.
+    public float LookYaw { get; set; }
+
+    public float LookPitch { get; set; }
+
+    /// Arma impugnata, o null da disarmato.
+    public WeaponAnimationSet? Weapon { get; set; }
 
     /// <summary>
-    /// Quanto e' in corso una manovra di parkour, da 0 a 1. Zero se il rig non c'e'.
-    ///
-    /// Unico punto da cui il resto dell'animatore legge "sto scavalcando": la misura la tiene
-    /// <see cref="VaultIkRig"/>, che e' anche l'unico a sapere quanto dura davvero la clip.
+    /// True sull'avatar del giocatore locale: l'arma in terza persona fa solo ombra, perche' in
+    /// vista c'e' il viewmodel.
     /// </summary>
-    private float ParkourBlend => _vaultRig?.ParkourActive ?? 0f;
+    public bool FirstPersonOwner { get; set; }
 
-    /// <summary>
-    /// Ricostruisce la direzione di mira in coordinate mondo da imbardata e inclinazione replicate.
-    /// Sta qui, e non nei bridge, perche' e' la stessa formula per giocatore e NPC e definisce il
-    /// contratto di <see cref="AimDirection"/>.
-    /// </summary>
-    public static Vector3 AimVector(float yaw, float pitch)
+    // ====================================================================================
+    //  Uscite
+    // ====================================================================================
+
+    /// L'arma in terza persona e la sua bocca.
+    public WeaponHoldRig Hold { get; private set; } = null!;
+
+    public Skeleton3D? Skeleton { get; private set; }
+
+    private AnimationTree? _tree;
+    private BodyAimModifier? _bodyAim;
+    private ArmIkModifier? _armIk;
+    private readonly RandomNumberGenerator _rng = new();
+
+    private Vector2 _velocity;
+    private float _crouchWeight;
+    private float _airWeight;
+    private float _hipYaw;
+    private bool _backward;
+    private bool _wasDead;
+
+    /// Manovra di parkour in corso: le pose le danno delle curve sul tempo, non una clip.
+    private enum Maneuver
     {
-        float horizontal = Mathf.Cos(pitch);
-        return new Vector3(
-            Mathf.Sin(yaw) * horizontal,
-            Mathf.Sin(pitch),
-            Mathf.Cos(yaw) * horizontal);
+        None,
+
+        /// Si passa oltre l'ostacolo: mani sul bordo, gambe raccolte, corpo proteso in avanti.
+        Vault,
+
+        /// Ci si issa in cima: appesi per le mani, poi ginocchia sul bordo, poi in piedi.
+        Mantle,
     }
 
-    private AnimationTree _tree = null!;
-    private AimRig? _aimRig;
-    private FootIkRig? _footRig;
-    private WeaponGripRig? _gripRig;
-    private VaultIkRig? _vaultRig;
-    private Vector2 _smoothedVelocity;
-    private float _crouchWeight;
-    private float _weaponWeight;
-    private float _aimWeight;
-    private Vector2 _aimOffset;
-    private float _runWeight;
-    private float _airWeight;
-    private string _lastPoseRequest = "";
-    private string _lastFirePoseRequest = "";
-    private Vector3 _restPosition;
-    private float _landingOffset;
+    /// Quanto conta ogni ingrediente della posa in un istante della manovra.
+    private struct ManeuverPose
+    {
+        public float Tuck;
+        public float Air;
+        public float Lean;
+        public float Hands;
+
+        /// Di quanto il corpo sta piu' in basso della traiettoria, in metri.
+        public float Drop;
+    }
+
+    private Maneuver _maneuver = Maneuver.None;
+    private float _maneuverTime;
+    private float _maneuverDuration = 1f;
+    private bool _maneuverConfirmed;
+    private Vector3 _ledgePoint;
+    private Vector3 _wallNormal;
+    private float _ledgeHeight;
+    private Node3D? _bodyNode;
 
     public override void _Ready()
     {
-        _tree = GetNode<AnimationTree>("AnimationTree");
+        Hold = new WeaponHoldRig { Name = "WeaponHold" };
+
+        Node body = GetNode("Body");
+        _bodyNode = body as Node3D;
+        Skeleton = body.FindChild("GeneralSkeleton", true, false) as Skeleton3D;
+        if (Skeleton == null)
+        {
+            AddChild(Hold);
+            GD.PushWarning("[CharacterAnimator] nessun GeneralSkeleton sotto Body: controlla la BoneMap nell'import del modello.");
+            return;
+        }
+
+        // L'arma e' figlia dello SCHELETRO: vive nel suo spazio e ne eredita il movimento.
+        Skeleton.AddChild(Hold);
+
+        // Differito per due ragioni: i bridge impostano le velocita' nel proprio _Ready, che
+        // viene DOPO questo; e creare un modificatore mentre lo scheletro sta ancora entrando
+        // nell'albero pianta il processo.
+        CallDeferred(MethodName.Build);
+    }
+
+    private void Build()
+    {
+        Node body = GetNode("Body");
+        if (body.FindChild("AnimationPlayer", true, false) is not AnimationPlayer player)
+        {
+            GD.PushWarning("[CharacterAnimator] nessun AnimationPlayer sotto Body: il corpo restera' in T-pose.");
+            return;
+        }
+
+        _tree = new AnimationTree { Name = "AnimationTree" };
+        AddChild(_tree);
+        foreach (StringName library in player.GetAnimationLibraryList())
+            _tree.AddAnimationLibrary(library, player.GetAnimationLibrary(library));
+        _tree.RootNode = _tree.GetPathTo(player.GetNode(player.RootNode));
+
+        foreach (string clip in new[]
+        {
+            ClipIdle, ClipWalk, ClipJog, ClipSprint, ClipCrouchIdle, ClipCrouchMove, ClipAir,
+            ClipLand, ClipHitChest, ClipHitHead, ClipDeath,
+        })
+        {
+            if (!_tree.HasAnimation(clip))
+                GD.PushWarning($"[CharacterAnimator] clip '{clip}' assente dalla libreria: quel ramo restera' in T-pose.");
+        }
+
+        _tree.TreeRoot = BuildTree();
         _tree.Active = true;
 
-        // Opzionale: un rig senza layer procedurale continua a funzionare, solo senza mira verticale.
-        _aimRig = GetNodeOrNull<AimRig>("AimRig");
-        _footRig = GetNodeOrNull<FootIkRig>("FootIkRig");
-        _gripRig = GetNodeOrNull<WeaponGripRig>("GripRig");
-        _vaultRig = GetNodeOrNull<VaultIkRig>("VaultRig");
+        // Un Transition non produce NULLA finche' non riceve la prima richiesta: senza queste
+        // due righe l'intero albero (Life e' l'ultimo nodo) resterebbe muto, cioe' in T-pose.
+        _tree.Set(LifeRequest, "alive");
+        _tree.Set(HitPoseRequest, "chest");
 
-        // Posizione a riposo del rig: l'abbassamento d'atterraggio e' un OFFSET da questa, non un
-        // valore assoluto. Il rig sta gia' a Y = -1 sotto Visual (origine ai piedi contro capsula
-        // centrata), e scrivere Position senza ripartire da qui lo farebbe risalire di un metro.
-        _restPosition = Position;
-
-        VerifyBlendSpaceBounds();
+        // L'ordine dei figli dello scheletro e' l'ordine di esecuzione: prima il busto, poi le
+        // braccia, che sono un vincolo e vanno risolte dopo tutto cio' che muove le spalle.
+        _bodyAim = new BodyAimModifier { Name = "BodyAim" };
+        Skeleton!.AddChild(_bodyAim);
+        _armIk = new ArmIkModifier { Name = "ArmIk", Hold = Hold };
+        Skeleton.AddChild(_armIk);
     }
 
-    /// <summary>
-    /// Controlla che <see cref="WalkSpeed"/> combaci col raggio del rombo di <c>WalkSpace</c>.
-    ///
-    /// Le due grandezze vivono in posti diversi — qui e in <c>tools/build_animation_tree.gd</c> — e se
-    /// divergono il sintomo e' muto: la posizione di blend finisce fuori dai triangoli e lo scheletro
-    /// ricade sulla rest pose, cioe' la T-pose, senza un solo errore. Meglio dirlo in console.
-    /// </summary>
-    private void VerifyBlendSpaceBounds()
+    private AnimationNodeBlendTree BuildTree()
     {
-        if (_tree.TreeRoot is not AnimationNodeBlendTree blendTree)
-            return;
+        var tree = new AnimationNodeBlendTree();
 
-        WarnIfMismatched(blendTree, WalkSpaceNode, WalkSpeed, nameof(WalkSpeed));
-        WarnIfMismatched(blendTree, RunSpaceNode, RunSpeed, nameof(RunSpeed));
-        WarnIfMismatched(blendTree, CrouchSpaceNode, CrouchSpeed, nameof(CrouchSpeed));
-    }
+        var move = new AnimationNodeBlendSpace1D { MinSpace = 0f, MaxSpace = RunSpeed, SyncMode = AnimationNodeBlendSpace1D.SyncModeEnum.Independent };
+        move.AddBlendPoint(Clip(ClipIdle), 0f, name: ClipIdle);
+        move.AddBlendPoint(Clip(ClipWalk), Mathf.Min(StrollSpeed, WalkSpeed * 0.6f), name: ClipWalk);
+        move.AddBlendPoint(Clip(ClipJog), WalkSpeed, name: ClipJog);
+        move.AddBlendPoint(Clip(ClipSprint), RunSpeed, name: ClipSprint);
+        tree.AddNode("Move", move);
+        tree.AddNode("MoveScale", new AnimationNodeTimeScale());
+        tree.ConnectNode("MoveScale", 0, "Move");
 
-    private static void WarnIfMismatched(AnimationNodeBlendTree tree, string node, float speed, string label)
-    {
-        if (tree.GetNode(node) is not AnimationNodeBlendSpace2D space)
-            return;
+        var crouch = new AnimationNodeBlendSpace1D { MinSpace = 0f, MaxSpace = CrouchSpeed, SyncMode = AnimationNodeBlendSpace1D.SyncModeEnum.Independent };
+        crouch.AddBlendPoint(Clip(ClipCrouchIdle), 0f, name: ClipCrouchIdle);
+        crouch.AddBlendPoint(Clip(ClipCrouchMove), CrouchSpeed, name: ClipCrouchMove);
+        tree.AddNode("Crouch", crouch);
+        tree.AddNode("CrouchScale", new AnimationNodeTimeScale());
+        tree.ConnectNode("CrouchScale", 0, "Crouch");
 
-        float radius = space.MaxSpace.Y;
-        if (!Mathf.IsEqualApprox(radius, speed))
+        tree.AddNode("Stance", new AnimationNodeBlend2());
+        tree.ConnectNode("Stance", 0, "MoveScale");
+        tree.ConnectNode("Stance", 1, "CrouchScale");
+
+        tree.AddNode("AirPose", Clip(ClipAir));
+        tree.AddNode("Air", new AnimationNodeBlend2());
+        tree.ConnectNode("Air", 0, "Stance");
+        tree.ConnectNode("Air", 1, "AirPose");
+
+        tree.AddNode("LandPose", Clip(ClipLand));
+        tree.AddNode("Land", new AnimationNodeOneShot { FadeInTime = 0.08f, FadeOutTime = 0.3f });
+        tree.ConnectNode("Land", 0, "Air");
+        tree.ConnectNode("Land", 1, "LandPose");
+
+        // Reazione al colpo: solo busto e braccia, le gambe continuano a camminare.
+        var hitPose = new AnimationNodeTransition { XfadeTime = 0f };
+        hitPose.AddInput("chest");
+        hitPose.AddInput("head");
+        tree.AddNode("HitChest", Clip(ClipHitChest));
+        tree.AddNode("HitHead", Clip(ClipHitHead));
+        tree.AddNode("HitPose", hitPose);
+        tree.ConnectNode("HitPose", 0, "HitChest");
+        tree.ConnectNode("HitPose", 1, "HitHead");
+
+        var hit = new AnimationNodeOneShot { FadeInTime = 0.04f, FadeOutTime = 0.18f, FilterEnabled = true };
+        foreach (string bone in HumanoidBones.SpineChain)
+            hit.SetFilterPath(TrackPrefix + bone, true);
+        foreach (string side in new[] { "Left", "Right" })
         {
-            GD.PushWarning($"[CharacterAnimator] {label}={speed} ma {node} arriva a {radius}: " +
-                "rigenera l'albero con tools/build_animation_tree.gd o riallinea le velocita'.");
+            foreach (string bone in new[] { "Shoulder", "UpperArm", "LowerArm", "Hand" })
+                hit.SetFilterPath(TrackPrefix + side + bone, true);
         }
+
+        tree.AddNode("Hit", hit);
+        tree.ConnectNode("Hit", 0, "Land");
+        tree.ConnectNode("Hit", 1, "HitPose");
+
+        var life = new AnimationNodeTransition { XfadeTime = 0.2f };
+        life.AddInput("alive");
+        life.AddInput("dead");
+        tree.AddNode("DeathPose", Clip(ClipDeath));
+        tree.AddNode("Life", life);
+        tree.ConnectNode("Life", 0, "Hit");
+        tree.ConnectNode("Life", 1, "DeathPose");
+
+        tree.ConnectNode("output", 0, "Life");
+        return tree;
     }
+
+    private static AnimationNodeAnimation Clip(string name) => new() { Animation = name };
 
     public override void _Process(double delta)
     {
         float dt = (float)delta;
+        _velocity = _velocity.Lerp(LocalVelocity, SkeletonMath.Damp(VelocitySmoothing, dt));
+        float speed = _velocity.Length();
 
-        // La velocita' NON si azzera piu' in aria: a coprire il volo c'e' il layer di caduta, che
-        // SOSTITUISCE la locomozione invece di metterla a riposo. Cosi' all'atterraggio il ciclo di
-        // passo riprende alla velocita' giusta, senza ripartire da fermo.
-        _smoothedVelocity = _smoothedVelocity.Lerp(LocalVelocity, Damp(VelocitySmoothing, dt));
+        ManeuverPose maneuver = StepManeuver(dt);
+        bool inManeuver = _maneuver != Maneuver.None;
 
-        UpdateLocomotion();
-        UpdateAir(dt);
-        UpdateCrouch(dt);
-        UpdateWeapon(dt);
-        UpdateAimOffset(dt);
-        UpdateAimRig();
-        UpdateFootRig();
-        UpdatePelvisOffset(dt);
-    }
+        _crouchWeight = Mathf.Lerp(_crouchWeight, Crouching ? 1f : 0f, SkeletonMath.Damp(BlendSpeed, dt));
 
-    /// <summary>
-    /// Alimenta il layer procedurale. La mira ha effetto solo da armati e a terra: a mezz'aria il
-    /// busto segue la caduta, e torcerlo verso il cursore mentre si vola sarebbe piu' strano
-    /// dell'assenza di mira.
-    /// </summary>
-    private void UpdateAimRig()
-    {
-        if (_aimRig == null)
+        // In una manovra la posa di volo la decide la curva; fuori, il contatto col suolo. Se la
+        // manovra e' in corso ma il suo evento non e' arrivato, resta la posa di volo di prima.
+        if (inManeuver)
+            _airWeight = maneuver.Air;
+        else
+            _airWeight = Mathf.Lerp(_airWeight, Grounded && !Vaulting ? 0f : 1f, SkeletonMath.Damp(AirBlendSpeed, dt));
+
+        UpdateSwivel(speed, dt);
+        UpdateWeapon(speed, dt);
+
+        if (_bodyNode != null)
+            _bodyNode.Position = new Vector3(0f, -maneuver.Drop, 0f);
+
+        if (_tree == null)
             return;
 
-        _aimRig.AimDirection = AimDirection;
-        _aimRig.LocalVelocity = _smoothedVelocity;
-
-        // Contro un muro l'arma si alza in "port arms": inseguire ancora il bersaglio col busto
-        // torcerebbe il torso verso un punto che l'arma non sta piu' guardando.
-        // Il busto insegue la mira SOLO in mira: fuori mira l'arma e' portata rilassata e il
-        // torso appartiene alla locomozione. Da accovacciati e' stato provato a raddrizzarlo, per
-        // togliere l'arma dalle gambe: a schermo peggiora — il personaggio si accovaccia con la
-        // schiena dritta e la posa non legge piu' come un accovacciamento. La correzione giusta
-        // e' locale alle braccia (WeaponGripRig.CrouchLift), non al busto.
-        //
-        // Durante il parkour la mira si spegne come in aria. Non basta la condizione su Grounded:
-        // chi scavalca si dichiara A TERRA per tutta la manovra (la posa la mette la clip, non il
-        // layer di caduta), quindi senza questo il busto continuerebbe a inseguire il cursore
-        // mentre le braccia sono su un muro.
-        float clearance = 1f - (_gripRig?.MuzzleBlocked ?? 0f);
-        bool armedOnFoot = WeaponPose != null && Grounded && ParkourBlend < 0.05f;
-        _aimRig.Weight = armedOnFoot && Aiming ? clearance : 0f;
-
-        // La mano di supporto sta sull'arma SEMPRE, non solo in mira: e' un vincolo fisico — la
-        // mano sinistra impugna l'astina — e un vincolo che vale solo mirando lascia la mano a
-        // fluttuare accanto all'arma in tutto il resto del gioco.
-        //
-        // Prima era legata ad Aiming perche' il polo del gomito, misurato sulla posa di mira,
-        // nel porto rilassato flippava. Non piu': il porto e' derivato dalla mira ruotando le
-        // braccia in blocco, quindi l'arma resta fra le mani anche li', e il polo — figlio del
-        // punto di presa — ruota con l'arma. Verificato su porto e mira, fermi, in camminata e in
-        // corsa: la mano resta entro 3 mm dall'astina.
-        //
-        // L'unica eccezione e' il PARKOUR, dove le stesse mani le vuole VaultIkRig per metterle sul
-        // bordo. Due IK sulle stesse ossa vanno arbitrati da un punto solo — la stessa regola del
-        // bacino in UpdatePelvisOffset — e qui vince il bordo: e' l'appiglio a reggere il peso del
-        // personaggio, l'arma puo' aspettare mezzo secondo.
-        if (_gripRig != null)
-        {
-            _gripRig.SupportActive = WeaponPose != null && (_vaultRig?.HandsOnLedge ?? 0f) < 0.05f;
-
-            // Braccia e canna alzate da accovacciati, e solo fuori mira: li' le ginocchia stanno
-            // alte davanti al petto e il porto rilassato porta avambracci e canna dentro le
-            // cosce. In mira resta a zero — l'arma deve guardare dove guarda il giocatore, e la
-            // posa di mira tiene gia' le braccia alte.
-            _gripRig.CrouchLift = armedOnFoot && !Aiming ? _crouchWeight : 0f;
-
-            // Riposta per l'intera manovra, non solo mentre le mani toccano: vedere l'arma
-            // riapparire fra lo stacco e l'appoggio sarebbe peggio che non toglierla affatto.
-            _gripRig.Stowed = ParkourBlend >= 0.5f;
-        }
-    }
-
-    /// Alimenta i piedi a terra. In aria si spegne da solo: non c'e' suolo da assecondare.
-    private void UpdateFootRig()
-    {
-        if (_footRig == null)
-            return;
-
-        _footRig.Grounded = Grounded;
-        _footRig.LocalVelocity = _smoothedVelocity;
-    }
-
-    /// <summary>
-    /// Smorzamento esponenziale, indipendente dal frame rate.
-    ///
-    /// La forma ingenua <c>clamp(k * dt)</c> non lo e': a 30 fps converge quasi il doppio piu' in
-    /// fretta per unita' di tempo che a 144. Qui conta perche' questo componente gira in
-    /// <c>_Process</c> (frame di RENDER) mentre il movimento che lo alimenta gira in
-    /// <c>_PhysicsProcess</c> (tick FISSO): i due passi non coincidono quasi mai, e con la forma
-    /// ingenua la locomozione risulterebbe piu' o meno reattiva a seconda del frame rate.
-    /// </summary>
-    private static float Damp(float speed, float dt) => 1.0f - Mathf.Exp(-speed * dt);
-
-    private void UpdateLocomotion()
-    {
-        // La posizione di blend va confinata nel ROMBO |x| + |y| <= WalkSpeed, che e' esattamente la
-        // regione coperta dai quattro triangoli di WalkSpace. In diagonale a piena velocita' si avrebbe
-        // |x| = |y| = WalkSpeed / sqrt(2), cioe' una somma di 1,41 * WalkSpeed: un punto FUORI dai
-        // triangoli, dove il blend space non produce nulla e lo scheletro torna in T-pose.
-        //
-        // La stessa velocita' si scrive in TUTTI gli spazi, ognuno proiettato sul proprio rombo:
-        // sono alternativi fra loro, e quello con peso 0 continua comunque ad avanzare (sync) per
-        // non ripartire da un tempo vecchio quando torna in scena.
-        Vector2 blendVelocity = _smoothedVelocity;
-
-        // Passo sintetico del turn-in-place: da fermi, mentre il corpo ruota (in prima persona
-        // segue lo sguardo, armati o no), le gambe riproducono lo strafe proporzionale alla
-        // rotazione. TurnRate positivo = il corpo gira a SINISTRA, quindi i piedi fanno passetti
-        // a sinistra: X di blend negativa (X = destra).
-        if (Grounded && blendVelocity.Length() < 0.5f
-            && Mathf.Abs(TurnRate) > TurnStepThreshold)
-        {
-            float maxStep = WalkSpeed * 0.6f;
-            blendVelocity.X += Mathf.Clamp(-TurnRate * TurnStepScale, -maxStep, maxStep);
-        }
-
-        Vector2 walk = ClampToDiamond(blendVelocity, WalkSpeed);
-        Vector2 run = ClampToDiamond(blendVelocity, RunSpeed);
-
-        _tree.Set(WalkPosition, walk);
-        _tree.Set(RunPosition, run);
-        _tree.Set(CrouchPosition, ClampToDiamond(blendVelocity, CrouchSpeed));
-
-        // Peso della corsa: cresce fra WalkSpeed e RunSpeed, e basta. Non serve piu' il fattore di
-        // "avantezza" che c'era quando l'unica clip di corsa era quella frontale: ora ogni spazio ha
-        // tutti e quattro gli assi, quindi correre di lato mostra lo strafe di corsa.
-        float speed = _smoothedVelocity.Length();
-        float band = Mathf.Max(RunSpeed - WalkSpeed, 0.001f);
-        _runWeight = Mathf.Clamp((speed - WalkSpeed) / band, 0f, 1f);
-        _tree.Set(RunAmount, _runWeight);
-    }
-
-    /// Proiezione sulla palla L1 di raggio <paramref name="radius"/> (il rombo dei triangoli).
-    private static Vector2 ClampToDiamond(Vector2 v, float radius)
-    {
-        float l1 = Mathf.Abs(v.X) + Mathf.Abs(v.Y);
-        return l1 > radius ? v * (radius / l1) : v;
-    }
-
-    /// Posa di caduta: sostituisce la locomozione mentre si e' in aria.
-    private void UpdateAir(float dt)
-    {
-        _airWeight = Mathf.Lerp(_airWeight, Grounded ? 0f : 1f, Damp(AirBlendSpeed, dt));
+        float direction = _backward ? -1f : 1f;
+        _tree.Set(MovePosition, Mathf.Min(speed, RunSpeed));
+        _tree.Set(MoveScale, direction);
+        _tree.Set(CrouchPosition, Mathf.Min(speed, CrouchSpeed));
+        _tree.Set(CrouchScale, direction);
+        _tree.Set(StanceAmount, Mathf.Max(_crouchWeight, maneuver.Tuck));
         _tree.Set(AirAmount, _airWeight);
-    }
 
-    private void UpdateCrouch(float dt)
-    {
-        _crouchWeight = Mathf.Lerp(_crouchWeight, Crouching ? 1f : 0f, Damp(BlendSpeed, dt));
-        _tree.Set(CrouchAmount, _crouchWeight);
+        if (Dead != _wasDead)
+        {
+            _wasDead = Dead;
+            _tree.Set(LifeRequest, Dead ? "dead" : "alive");
+        }
+
+        // Sguardo nello spazio dello scheletro. Il rig ruota solo attorno alla verticale, quindi
+        // basta togliere la sua imbardata; il mezzo giro e' lo stesso della camera (-Z = sguardo).
+        float relativeYaw = Mathf.AngleDifference(GlobalRotation.Y, LookYaw);
+
+        // Da morti la posa e' tutta della clip: niente mira del busto, niente mani sull'arma.
+        float alive = Dead ? 0f : 1f;
+        if (_bodyAim != null)
+        {
+            _bodyAim.Influence = alive;
+            _bodyAim.HipYaw = -_hipYaw * (1f - _airWeight) * (inManeuver ? 0f : 1f);
+            _bodyAim.LookYaw = relativeYaw;
+            _bodyAim.LookPitch = LookPitch;
+            _bodyAim.LeanPitch = maneuver.Lean;
+        }
+
+        if (_armIk != null)
+        {
+            _armIk.Influence = alive;
+            _armIk.LookBasis = Basis.FromEuler(new Vector3(LookPitch, relativeYaw + Mathf.Pi, 0f));
+            FillLedgeGoals(maneuver.Hands);
+        }
     }
 
     /// <summary>
-    /// Layer di impugnatura: una posa ASSOLUTA delle sole braccia, sostituita alla locomozione da un
-    /// <c>Blend2</c> filtrato sulle otto ossa delle braccia (<c>HoldMask</c>).
+    /// Avanza la manovra di parkour e ne restituisce la posa. Fuori manovra tutti i pesi sono zero.
     ///
-    /// La locomozione resta agnostica dall'arma: reggere un fucile o una pistola non cambia come si
-    /// cammina. Ma la presa e' un VINCOLO geometrico — due mani sulla stessa arma — e non uno scarto
-    /// da sommare: come delta additivo riproduceva la posa giusta solo sopra la clip di riferimento,
-    /// e su qualunque locomozione le mani finivano fuori dall'arma (misure nell'intestazione di
-    /// <c>tools/build_weapon_poses.gd</c>). Rachide e bacino NON sono nella maschera, quindi le
-    /// braccia seguono in blocco il busto della locomozione tenendo la presa, e l'errore residuo di
-    /// mira lo chiude <c>SpineAimModifier</c>.
+    /// Non esistono clip di scavalcamento nella libreria: la posa si compone da cio' che c'e' —
+    /// l'accovacciata come "gambe raccolte", la posa di volo come "appeso" — piu' le mani portate
+    /// sul bordo in IK e il busto proteso. La traiettoria la scrive <c>CharacterMotor</c>; qui si
+    /// segue solo il tempo, che e' lo stesso (<c>VaultDuration</c> / <c>MantleDuration</c>).
     /// </summary>
-    private void UpdateWeapon(float dt)
+    private ManeuverPose StepManeuver(float dt)
     {
-        // La posa dell'arma si sceglie PRIMA di alzarne il peso: cambiando arma la transizione
-        // avviene mentre il layer e' gia' visibile, senza passare da disarmato.
-        bool armed = WeaponPose != null && !string.IsNullOrEmpty(WeaponPose.HoldPose);
-        bool twoHanded = armed && WeaponPose!.IsTwoHanded;
+        if (_maneuver == Maneuver.None)
+            return default;
 
-        if (armed)
+        _maneuverTime += dt;
+        _maneuverConfirmed |= Vaulting;
+
+        // Lo stato replicato dice che la manovra e' finita prima del previsto (interrotta, o
+        // durata diversa da quella stimata): si salta alla coda della curva invece di restare appesi.
+        float tail = _maneuverDuration * 0.85f;
+        if (_maneuverConfirmed && !Vaulting && _maneuverTime < tail)
+            _maneuverTime = tail;
+
+        float t = Mathf.Clamp(_maneuverTime / Mathf.Max(_maneuverDuration, 0.01f), 0f, 1f);
+        if (t >= 1f && !Vaulting)
         {
-            // La posa dipende da arma E stato di mira: porto rilassato senza RMB, mira con.
-            // I nomi sono gli ingressi del Transition WeaponPose (build_animation_tree.gd).
-            string request = twoHanded
-                ? (Aiming ? "rifle_aim" : "rifle_lowered")
-                : (Aiming ? "pistol_aim" : "pistol");
-            if (request != _lastPoseRequest)
-            {
-                _tree.Set(WeaponPoseRequest, request);
-                _lastPoseRequest = request;
-            }
+            _maneuver = Maneuver.None;
+            return default;
+        }
 
-            // La clip di sparo la dichiara l'ARMA (FirePose = nome dell'ingresso del
-            // Transition FirePose): cosi' la pistola non spara con l'animazione del fucile.
-            // Si imposta al cambio d'arma, PRIMA che il one-shot Fire possa partire.
-            string firePose = WeaponPose!.FirePose;
-            if (!string.IsNullOrEmpty(firePose) && firePose != _lastFirePoseRequest)
+        if (_maneuver == Maneuver.Vault)
+        {
+            return new ManeuverPose
             {
-                _tree.Set(FirePoseRequest, firePose);
-                _lastFirePoseRequest = firePose;
-            }
+                Tuck = Bump(t, 0.05f, 0.30f, 0.60f, 0.90f),
+                Air = 0f,
+                Lean = 0.45f * Bump(t, 0.10f, 0.35f, 0.55f, 0.85f),
+                Hands = Bump(t, 0.08f, 0.22f, 0.50f, 0.68f),
+            };
+        }
+
+        // La traiettoria di CharacterMotor porta i PIEDI all'altezza del bordo prima di avanzare
+        // (era pensata per una clip che teneva il corpo appeso sotto la radice). Senza quella
+        // clip il corpo resterebbe in piedi a mezz'aria accanto al muro: lo si tiene piu' in
+        // basso finche' ci si issa — petto al bordo, non piedi — e lo si riallinea mentre sale.
+        float hang = Mathf.Clamp(_ledgeHeight - 0.5f, 0f, 0.95f);
+        return new ManeuverPose
+        {
+            Tuck = Bump(t, 0.55f, 0.72f, 0.84f, 1.00f),
+            Air = Bump(t, 0.00f, 0.08f, 0.50f, 0.68f),
+            Lean = 0.35f * Bump(t, 0.50f, 0.65f, 0.80f, 0.95f),
+            Hands = Bump(t, 0.00f, 0.12f, 0.72f, 0.86f),
+            Drop = hang * Bump(t, 0.00f, 0.62f, 0.62f, 0.86f),
+        };
+    }
+
+    /// Sale fra <paramref name="in0"/> e <paramref name="in1"/>, scende fra <paramref name="out0"/> e <paramref name="out1"/>.
+    private static float Bump(float t, float in0, float in1, float out0, float out1) =>
+        Mathf.SmoothStep(in0, in1, t) * (1f - Mathf.SmoothStep(out0, out1, t));
+
+    /// Mani sul bordo dell'ostacolo: palmi in giu', dita in avanti, a larghezza di spalle.
+    private void FillLedgeGoals(float weight)
+    {
+        _armIk!.Right.Weight = weight;
+        _armIk.Left.Weight = weight;
+        if (weight <= 0.001f || Skeleton == null)
+            return;
+
+        Transform3D toSkeleton = Skeleton.GlobalTransform.AffineInverse();
+        Vector3 forward = -_wallNormal;
+        Vector3 right = forward.Cross(Vector3.Up).Normalized();
+
+        // Un palmo oltre lo spigolo e appena sopra, cosi' la mano appoggia sul piano.
+        Vector3 rest = _ledgePoint + forward * 0.08f + Vector3.Up * 0.03f;
+
+        FillLedgeGoal(ref _armIk.Right, toSkeleton, rest + right * 0.22f, forward, -right, right, weight);
+        FillLedgeGoal(ref _armIk.Left, toSkeleton, rest - right * 0.22f, forward, right, -right, weight);
+    }
+
+    private static void FillLedgeGoal(
+        ref ArmIkModifier.HandGoal goal, Transform3D toSkeleton, Vector3 position,
+        Vector3 fingers, Vector3 across, Vector3 outward, float weight)
+    {
+        goal.Position = toSkeleton * position;
+        goal.Fingers = toSkeleton.Basis * fingers;
+        goal.Across = toSkeleton.Basis * across;
+        goal.PoleDirection = toSkeleton.Basis * (outward * 0.7f - fingers * 0.4f + Vector3.Down * 0.3f);
+        goal.Weight = weight;
+        goal.Curl = 0.15f;
+    }
+
+    /// <summary>
+    /// Direzione delle gambe. La libreria ha solo clip in avanti: di lato si gira il bacino verso
+    /// il moto, all'indietro la clip gira al contrario col bacino girato dalla parte opposta.
+    /// </summary>
+    private void UpdateSwivel(float speed, float dt)
+    {
+        float target = 0f;
+        if (speed > 0.25f)
+        {
+            // Zero = avanti, positivo = verso destra.
+            float angle = Mathf.Atan2(_velocity.X, _velocity.Y);
+            float abs = Mathf.Abs(angle);
+
+            // Isteresi: senza, camminando di lato il verso della clip si invertirebbe a ogni frame.
+            if (_backward ? abs < Mathf.DegToRad(80f) : abs > Mathf.DegToRad(110f))
+                _backward = !_backward;
+
+            target = _backward ? angle - Mathf.Sign(angle) * Mathf.Pi : angle;
+            float max = Mathf.DegToRad(MaxHipSwivelDegrees);
+            target = Mathf.Clamp(target, -max, max);
         }
         else
         {
-            // Da disarmato il Transition resta sull'ultimo ingresso: si azzerano le richieste
-            // memorizzate cosi' al prossimo equipaggiamento vengono rimandate anche se l'arma
-            // e' la stessa di prima.
-            _lastPoseRequest = "";
-            _lastFirePoseRequest = "";
+            _backward = false;
         }
 
-        // Peso della maschera di impugnatura: da armati e' sempre acceso, con qualunque locomozione
-        // sotto (in piedi, accovacciati, in aria). La posa la sceglie il Transition qui sopra.
-        //
-        // L'unica eccezione e' il PARKOUR: durante scavalcamento e arrampicata le braccia servono a
-        // reggere il peso del corpo, e tenere la posa d'impugnatura sopra la clip la annullerebbe.
-        // L'arma non viene rinfoderata davvero — resta equipaggiata, con caricatore e slot intatti:
-        // qui si toglie solo di mezzo, e WeaponVisual la nasconde dalla stessa misura.
-        float overlay = armed && ParkourBlend < 0.5f ? 1f : 0f;
-        _weaponWeight = Mathf.Lerp(_weaponWeight, overlay, Damp(BlendSpeed, dt));
-        _tree.Set(HoldAmount, _weaponWeight);
+        _hipYaw = Mathf.Lerp(_hipYaw, target, SkeletonMath.Damp(10f, dt));
     }
 
-    /// <summary>
-    /// Aim offset additivo: la "sfera di mira" a 5 pose, pilotata da yaw/pitch della mira RELATIVI
-    /// al corpo. Il grosso della posa (spalle e braccia comprese, che il procedurale non tocca) lo
-    /// mette questo layer; l'errore residuo — che dipende da quale clip sta girando e con che peso —
-    /// lo chiude SpineAimModifier rimisurando la posa vera di ogni frame.
-    /// </summary>
-    private void UpdateAimOffset(float dt)
+    private void UpdateWeapon(float speed, float dt)
     {
-        Vector2 target = Vector2.Zero;
-        bool aiming = Aiming && WeaponPose != null && AimDirection.LengthSquared() > 0.0001f;
-        if (aiming)
-        {
-            // La mira e' in coordinate MONDO: si porta nel riferimento del rig, dove il corpo
-            // guarda +Z e la sua sinistra e' +X. Yaw POSITIVO = mira a DESTRA del corpo (quindi
-            // -X locale), pitch positivo = in alto: sono gli assi dell'AimSpace.
-            Vector3 local = GlobalTransform.Basis.Inverse() * AimDirection;
-            float yaw = Mathf.Atan2(-local.X, local.Z);
-            float pitch = Mathf.Asin(Mathf.Clamp(local.Y, -1f, 1f));
-            target = new Vector2(
-                Mathf.Clamp(yaw / Mathf.DegToRad(AimYawRangeDeg), -1f, 1f),
-                Mathf.Clamp(pitch / Mathf.DegToRad(AimPitchRangeDeg), -1f, 1f));
-        }
+        WeaponAnimationSet? weapon = Dead ? null : Weapon;
+        Hold.SetWeapon(weapon);
+        Hold.ShadowOnly = FirstPersonOwner;
 
-        float weight = aiming ? 1f : 0f;
-        _aimWeight = Mathf.Lerp(_aimWeight, weight, Damp(BlendSpeed, dt));
-        _aimOffset = _aimOffset.Lerp(target, Damp(BlendSpeed, dt));
-        _tree.Set(AimAmount, _aimWeight);
-        _tree.Set(AimPosition, _aimOffset);
-    }
-
-    /// <summary>
-    /// Posizione verticale del rig: un solo scrittore per due contributi.
-    ///
-    /// L'ammortizzazione d'atterraggio e l'abbassamento dei piedi a terra vogliono entrambi
-    /// abbassare il bacino. Tenerli separati significherebbe due nodi che scrivono la stessa
-    /// <c>Position</c> nello stesso frame, e chi arriva secondo cancella il primo — un conflitto che
-    /// non da' errori e si manifesta come "l'IK dei piedi ogni tanto non funziona".
-    /// Si sommano: l'atterraggio e' un impulso che rientra, i piedi un offset continuo.
-    /// </summary>
-    private void UpdatePelvisOffset(float dt)
-    {
-        _landingOffset = _landingOffset <= 0.0001f
-            ? 0f
-            : Mathf.Lerp(_landingOffset, 0f, Damp(LandingRecoverySpeed, dt));
-
-        float drop = _landingOffset + (_footRig?.PelvisDrop ?? 0f);
-        Position = _restPosition - new Vector3(0f, drop, 0f);
+        bool sprinting = Grounded && !Aiming && speed > WalkSpeed * 1.15f;
+        bool stowed = Vaulting || _maneuver != Maneuver.None;
+        Hold.UpdateState(dt, Aiming, sprinting, Reloading, stowed);
     }
 
     // ====================================================================================
     //  Eventi one-shot
     // ====================================================================================
 
-    /// <summary>
-    /// Sparo. Filtrato sull'upper body dall'albero, quindi si sovrappone alla locomozione senza
-    /// interromperla: sparare correndo non ferma le gambe.
-    /// </summary>
-    public void TriggerFire() => Request(FireRequest);
+    /// Salto: la posa di volo entra subito, senza aspettare che lo stato "a terra" si aggiorni.
+    public void TriggerJump() => _airWeight = Mathf.Max(_airWeight, 0.5f);
 
     /// <summary>
-    /// Salto. Coinvolge tutto il corpo, nessun filtro. La clip viene riscalata sul tempo di volo
-    /// dichiarato da chi pilota, cosi' l'arco animato finisce quando finisce il volo vero.
-    /// </summary>
-    public void TriggerJump()
-    {
-        if (JumpFlightTime > 0.01f && _tree.HasAnimation(JumpClipName))
-        {
-            float clipLength = (float)_tree.GetAnimation(JumpClipName).Length;
-            _tree.Set(JumpTimeScale, clipLength / JumpFlightTime);
-        }
-
-        Request(JumpRequest);
-    }
-
-    /// <summary>
-    /// Atterraggio, con la velocita' d'impatto in m/s.
-    ///
-    /// TRE regimi alternativi, mai sommati (la clip contiene gia' la propria flessione, e
-    /// sommarci quella procedurale farebbe sprofondare il personaggio nel pavimento):
-    ///  - oltre <see cref="HardLandingSpeed"/>: clip di atterraggio duro;
-    ///  - fra <see cref="SoftLandingSpeed"/> e Hard: clip di atterraggio morbido (procedurale);
-    ///  - sotto: sola ammortizzazione del bacino — un salto normale non merita una clip.
-    /// La posa la sceglie il Transition LandPose, impostato PRIMA del one-shot.
+    /// Atterraggio, con la velocita' d'impatto in m/s. La clip parte solo sugli atterraggi duri,
+    /// quelli in cui il movimento resta bloccato (<c>CharacterMotor.HardLandingLockSeconds</c>):
+    /// sotto, le gambe devono poter ripartire subito.
     /// </summary>
     public void TriggerLand(float impactSpeed)
     {
-        if (impactSpeed >= SoftLandingSpeed)
-        {
-            _tree.Set(LandPoseRequest, impactSpeed >= HardLandingSpeed ? "land_hard" : "land_soft");
+        if (impactSpeed >= HardLandingSpeed)
             Request(LandRequest);
-            return;
-        }
+    }
 
-        float hardness = Mathf.Clamp(impactSpeed / Mathf.Max(HardLandingSpeed, 0.001f), 0f, 1f);
-        _landingOffset = Mathf.Max(_landingOffset, hardness * LandingDip);
+    /// Sparo: rinculo dell'arma in terza persona.
+    public void TriggerFire() => Hold.Kick();
+
+    /// <summary>
+    /// Scavalcamento (<paramref name="mantle"/> falso: si passa oltre) o arrampicata (vero: si
+    /// resta in cima). Bordo e normale sono misure geometriche dell'ostacolo, in coordinate
+    /// mondo: servono a portare le mani sul bordo. <paramref name="duration"/> e' la durata
+    /// della traiettoria scritta da chi si muove, perche' posa e moto restino in fase.
+    /// </summary>
+    public void TriggerVault(Vector3 ledgePoint, Vector3 wallNormal, bool mantle, float duration)
+    {
+        if (Dead)
+            return;
+
+        var flat = new Vector3(wallNormal.X, 0f, wallNormal.Z);
+        _wallNormal = flat.LengthSquared() > 0.0001f ? flat.Normalized() : -GlobalTransform.Basis.Z;
+        _ledgePoint = ledgePoint;
+        _ledgeHeight = ledgePoint.Y - GlobalPosition.Y;
+        _maneuver = mantle ? Maneuver.Mantle : Maneuver.Vault;
+        _maneuverDuration = Mathf.Max(duration, 0.1f);
+        _maneuverTime = 0f;
+        _maneuverConfirmed = false;
     }
 
     /// <summary>
-    /// Reazione al colpo. <paramref name="worldDirection"/> e' la direzione di VOLO del proiettile
-    /// in coordinate mondo, calcolata dall'host (nel payload di rete viaggia la direzione, mai il
-    /// danno: CLAUDE.md §3). Il flinch e' un delta additivo sul busto: si somma a qualunque
-    /// locomozione/mira in corso, identico in piedi, accovacciati o in corsa.
+    /// Reazione al colpo. <paramref name="worldDirection"/> e' la direzione di volo del
+    /// proiettile calcolata dall'host: nel payload viaggia la direzione, mai il danno (CLAUDE.md §3).
     /// </summary>
     public void TriggerHitReaction(Vector3 worldDirection)
     {
-        if (worldDirection.LengthSquared() < 0.0001f)
+        if (_tree == null || Dead)
             return;
 
-        // Nel riferimento del rig il corpo guarda +Z e la sua sinistra e' +X. Un proiettile che
-        // viaggia verso -Z arriva da davanti; uno che viaggia verso -X arriva dalla sua sinistra.
-        Vector3 local = GlobalTransform.Basis.Inverse() * worldDirection;
-        string pose = Mathf.Abs(local.Z) >= Mathf.Abs(local.X)
-            ? (local.Z < 0f ? "front" : "back")
-            : (local.X < 0f ? "left" : "right");
-
-        _tree.Set(HitPoseRequest, pose);
+        _tree.Set(HitPoseRequest, _rng.Randf() < 0.5f ? "chest" : "head");
         Request(HitRequest);
     }
 
-    /// <summary>
-    /// Parkour: scavalcamento o arrampicata, scelti QUI dall'altezza misurata dell'ostacolo — allo
-    /// stesso modo in cui <see cref="TriggerLand"/> sceglie il tipo di atterraggio dalla sola
-    /// velocita' d'impatto. Chi si muove manda misure, non decisioni di resa.
-    ///
-    /// Le clip sono IN PLACE e generiche: la traiettoria della radice la deforma il motion warping
-    /// di chi pilota (che da <see cref="VaultClipLength"/> e <see cref="MantleClipLength"/> sa
-    /// quanto durano le pose), le mani le mette <see cref="VaultIkRig"/> sul bordo misurato.
-    /// </summary>
-    /// <param name="ledgePoint">Punto d'appiglio sul bordo, in coordinate mondo.</param>
-    /// <param name="wallNormal">Normale orizzontale della parete: da' l'orientamento delle mani.</param>
-    /// <param name="height">Altezza dell'ostacolo rispetto ai piedi, in metri.</param>
-    public void TriggerVault(Vector3 ledgePoint, Vector3 wallNormal, float height)
-    {
-        bool mantle = height > MantleHeight;
-
-        _tree.Set(VaultPoseRequest, mantle ? MantleClipName : VaultClipName);
-
-        // Arrampicandosi le mani reggono il peso quasi fino in cima; scavalcando l'appoggio e' un
-        // tocco a meta' traiettoria. La finestra e' una proprieta' della clip, non del rig.
-        if (mantle)
-            _vaultRig?.Begin(ledgePoint, wallNormal, MantleClipLength, 0.10f, 0.80f);
-        else
-            _vaultRig?.Begin(ledgePoint, wallNormal, VaultClipLength);
-
-        Request(VaultRequest);
-    }
-
-    /// Durata della clip di scavalcamento, per sincronizzare il motion warping alla posa.
-    public float VaultClipLength => ClipLength(VaultClipName, 0.9f);
-
-    /// Durata della clip di arrampicata. Finche' la clip non esiste, vale il valore dichiarato.
-    public float MantleClipLength => ClipLength(MantleClipName, 1.4f);
-
-    private float ClipLength(string clip, float fallback) =>
-        _tree.HasAnimation(clip) ? (float)_tree.GetAnimation(clip).Length : fallback;
-
     private void Request(string parameter) =>
-        _tree.Set(parameter, (int)AnimationNodeOneShot.OneShotRequest.Fire);
+        _tree?.Set(parameter, (int)AnimationNodeOneShot.OneShotRequest.Fire);
 }

@@ -155,6 +155,11 @@ public partial class PauseMenu : Control
         if (!@event.IsActionPressed("toggle_menu"))
             return;
 
+        // A inventario aperto Esc e' suo (chiude l'ultima finestra, poi l'inventario): lo gestisce
+        // PlayerHud. L'ordine di _Input fra i due nodi non e' garantito, quindi qui ci si astiene.
+        if (!Visible && GetNode<GameManager>("/root/GameManager").InventoryOpen)
+            return;
+
         if (!Visible)
             Open();
         else if (_bindingsPage.Visible)

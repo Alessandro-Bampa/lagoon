@@ -1,34 +1,91 @@
 keys,en,it
-ITEM_AMMO_NAME,Ammo,Munizioni
-ITEM_AMMO_DESC,Loose rounds. Kept in reserve and consumed when reloading.,Cartucce sfuse. Restano di riserva e si consumano ricaricando.
-ITEM_AMMO_CRATE_NAME,Ammo crate,Cassa munizioni
-ITEM_AMMO_CRATE_DESC,Crate anchored to the ground: it can be opened and looted but not picked up.,Cassa fissata al terreno: si apre e si saccheggia ma non si raccoglie.
-ITEM_AMMO_PACK_NAME,Ammo pack,Pacchetto munizioni
-ITEM_AMMO_PACK_DESC,Sealed pack. Open it to turn it into loose rounds.,Pacchetto sigillato. Aprilo per ottenere cartucce sfuse.
-ITEM_AMMO_PACK_EFFECT,Yields loose rounds when opened.,Aprendolo produce cartucce sfuse.
+ITEM_POCKETS_NAME,Pockets,Tasche
+ITEM_VEST_NAME,Tactical rig,Gilet tattico
+ITEM_VEST_SHORT,Rig,Rig
+ITEM_VEST_DESC,Chest rig with separate pouches. What it holds is within reach of the quick slots.,Gilet con tasche separate. Quello che contiene è a portata degli slot rapidi.
+ITEM_ARMORED_RIG_NAME,Armored rig,Gilet corazzato
+ITEM_ARMORED_RIG_SHORT,Arm. rig,Rig cor.
+ITEM_ARMORED_RIG_DESC,Plate carrier with pouches. Takes the place of body armor.,Portapiastre con tasche. Prende il posto del corpetto antiproiettile.
 ITEM_BACKPACK_NAME,Backpack,Zaino
-ITEM_BACKPACK_DESC,Large pack worn on the back. The bulkiest way to carry loot.,Zaino capiente da portare in spalla. Il modo più ingombrante di trasportare bottino.
-ITEM_BACKPACK_EFFECT,Adds a large storage grid.,Aggiunge una griglia di stivaggio ampia.
-ITEM_BODY_ARMOR_NAME,Body armor,Corpetto antiproiettile
-ITEM_BODY_ARMOR_DESC,Plated vest worn on the torso.,Corpetto con piastre da indossare sul torso.
-ITEM_BOOTS_NAME,Boots,Stivali
-ITEM_BOOTS_DESC,Sturdy boots for the marshland.,Stivali robusti adatti alla palude.
+ITEM_BACKPACK_DESC,"Large pack worn on the back. Roomy, but nothing in it is at hand.","Zaino capiente da portare in spalla. Spazioso, ma niente di ciò che contiene è a portata di mano."
+ITEM_SECURE_CONTAINER_NAME,Secure container,Contenitore sicuro
+ITEM_SECURE_CONTAINER_SHORT,Pouch,Pouch
+ITEM_SECURE_CONTAINER_DESC,"Small container always worn. It refuses bags, armor and long weapons.","Piccolo contenitore sempre indossato. Rifiuta zaini, armature e armi lunghe."
+ITEM_AMMO_CASE_NAME,Ammo case,Custodia munizioni
+ITEM_AMMO_CASE_SHORT,Ammo case,Cust. mun.
+ITEM_AMMO_CASE_DESC,Rigid case that only takes ammunition and magazines. Holds more than its size suggests.,Custodia rigida che accetta solo munizioni e caricatori. Contiene più di quanto ingombra.
 ITEM_HELMET_NAME,Helmet,Elmetto
-ITEM_HELMET_DESC,Hard helmet worn on the head.,Elmetto rigido da indossare sulla testa.
-ITEM_MEDKIT_NAME,Medkit,Kit medico
-ITEM_MEDKIT_DESC,Field medical kit. Assignable to a quick slot.,Kit medico da campo. Assegnabile a uno slot rapido.
-ITEM_MEDKIT_EFFECT,Restores health when used.,Ripristina salute quando viene usato.
-ITEM_PANTS_NAME,Trousers,Pantaloni
-ITEM_PANTS_DESC,Reinforced trousers worn on the legs.,Pantaloni rinforzati da indossare sulle gambe.
+ITEM_HELMET_DESC,Hard helmet with ear protection: it cannot be worn with a headset.,Elmetto rigido con paraorecchie: non si indossa insieme alle cuffie.
+ITEM_HEADSET_NAME,Headset,Cuffie
+ITEM_HEADSET_DESC,Active hearing protection.,Cuffie di protezione attive.
+ITEM_BODY_ARMOR_NAME,Body armor,Corpetto antiproiettile
+ITEM_BODY_ARMOR_SHORT,Armor,Corpetto
+ITEM_BODY_ARMOR_DESC,Plated vest worn on the torso.,Corpetto con piastre da indossare sul torso.
+ITEM_SUPPLY_CRATE_NAME,Supply crate,Cassa rifornimenti
+ITEM_SUPPLY_CRATE_SHORT,Crate,Cassa
+ITEM_SUPPLY_CRATE_DESC,Crate anchored to the ground: it can be opened and looted but not picked up.,Cassa fissata al terreno: si apre e si saccheggia ma non si raccoglie.
+ITEM_STASH_BOX_NAME,Stash crate,Cassa deposito
+ITEM_STASH_BOX_SHORT,Stash,Deposito
+ITEM_STASH_BOX_DESC,Large wooden crate anchored to the ground. Ten columns of storage.,Grande cassa di legno fissata al terreno. Dieci colonne di deposito.
+ITEM_CARDBOARD_BOX_NAME,Cardboard box,Scatola di cartone
+ITEM_CARDBOARD_BOX_SHORT,Box,Scatola
+ITEM_CARDBOARD_BOX_DESC,A box somebody left behind.,Una scatola lasciata da qualcuno.
+ITEM_AMMO_545_NAME,5.45x39 rounds,Cartucce 5.45x39
+ITEM_AMMO_545_SHORT,5.45,5.45
+ITEM_AMMO_545_DESC,Loose rifle rounds. They must be loaded into a magazine before use.,Cartucce sfuse da fucile. Vanno caricate in un caricatore prima dell’uso.
+ITEM_AMMO_9MM_NAME,9x19 rounds,Cartucce 9x19
+ITEM_AMMO_9MM_SHORT,9x19,9x19
+ITEM_AMMO_9MM_DESC,Loose pistol rounds. They must be loaded into a magazine before use.,Cartucce sfuse da pistola. Vanno caricate in un caricatore prima dell’uso.
+ITEM_AMMO_545_BOX_NAME,5.45x39 ammo box,Scatola di cartucce 5.45x39
+ITEM_AMMO_545_BOX_SHORT,5.45 box,Scat. 5.45
+ITEM_AMMO_545_BOX_DESC,Sealed box of thirty rounds. Open it to get loose rounds.,Scatola sigillata da trenta colpi. Aprila per ottenere cartucce sfuse.
+ITEM_MAG_545_NAME,5.45x39 30-round magazine,Caricatore 5.45x39 da 30
+ITEM_MAG_545_SHORT,Mag 5.45,Car. 5.45
+ITEM_MAG_545_DESC,"Rifle magazine. Drop rounds on it to load it, drop it on a rifle to mount it.","Caricatore da fucile. Rilascia le cartucce sopra per caricarlo, rilascialo su un fucile per montarlo."
+ITEM_MAG_9MM_NAME,9x19 12-round magazine,Caricatore 9x19 da 12
+ITEM_MAG_9MM_SHORT,Mag 9x19,Car. 9x19
+ITEM_MAG_9MM_DESC,Pistol magazine.,Caricatore da pistola.
+ITEM_RIFLE_NAME,Assault rifle,Fucile d’assalto
+ITEM_RIFLE_SHORT,Rifle,Fucile
+ITEM_RIFLE_DESC,Automatic primary weapon. Heavy and bulky but accurate at range.,Arma primaria automatica. Pesante e ingombrante ma precisa a distanza.
 ITEM_PISTOL_NAME,Pistol,Pistola
 ITEM_PISTOL_DESC,Compact sidearm. Fast to draw but short ranged.,Arma corta compatta. Rapida da estrarre ma di portata ridotta.
-ITEM_RIFLE_NAME,Assault rifle,Fucile d'assalto
-ITEM_RIFLE_DESC,Automatic primary weapon. Heavy and bulky but accurate at range.,Arma primaria automatica. Pesante e ingombrante ma precisa a distanza.
-ITEM_SECURE_CONTAINER_NAME,Secure container,Contenitore sicuro
-ITEM_SECURE_CONTAINER_DESC,Small container always worn. Its contents stay with you.,Piccolo contenitore sempre indossato. Il contenuto resta con te.
-ITEM_SECURE_CONTAINER_EFFECT,Adds a small always-worn storage grid.,Aggiunge una piccola griglia sempre indossata.
-ITEM_STASH_BOX_NAME,Stash box,Baule
-ITEM_STASH_BOX_DESC,Chest anchored to the ground: it can be opened and looted but not picked up.,Baule fissato al terreno: si apre e si saccheggia ma non si raccoglie.
-ITEM_VEST_NAME,Tactical rig,Gilet tattico
-ITEM_VEST_DESC,Rig worn over the torso with pouches for quick-access items.,Gilet da indossare sul torso con tasche per gli oggetti a portata di mano.
-ITEM_VEST_EFFECT,Adds a storage grid usable by the quick slots.,Aggiunge una griglia utilizzabile dagli slot rapidi.
+ITEM_MEDKIT_NAME,First aid kit,Kit di pronto soccorso
+ITEM_MEDKIT_SHORT,Medkit,Kit medico
+ITEM_MEDKIT_DESC,Field medical kit.,Kit medico da campo.
+ITEM_PAINKILLERS_NAME,Painkillers,Antidolorifici
+ITEM_PAINKILLERS_SHORT,Painkill.,Antidol.
+ITEM_PAINKILLERS_DESC,A blister of pills.,Un blister di pillole.
+ITEM_PILLS_BOTTLE_NAME,Pill bottle,Flacone di pillole
+ITEM_PILLS_BOTTLE_SHORT,Pills,Pillole
+ITEM_SYRINGE_NAME,Syringe,Siringa
+ITEM_SYRINGE_DESC,Single-dose injector.,Iniettore monodose.
+ITEM_CANNED_FOOD_NAME,Canned food,Cibo in scatola
+ITEM_CANNED_FOOD_SHORT,Can,Scatoletta
+ITEM_DOUGHNUT_NAME,Doughnut,Ciambella
+ITEM_WATER_BOTTLE_NAME,Bottle of water,Bottiglia d’acqua
+ITEM_WATER_BOTTLE_SHORT,Water,Acqua
+ITEM_PICKLES_NAME,Jar of pickles,Barattolo di sottaceti
+ITEM_PICKLES_SHORT,Pickles,Sottaceti
+ITEM_CASH_NAME,Cash,Contanti
+ITEM_CASH_DESC,Banknotes. They stack by the thousands.,Banconote. Si impilano a migliaia.
+ITEM_KEY_NAME,Key,Chiave
+ITEM_KEYCARD_NAME,Keycard,Tessera magnetica
+ITEM_KEYCARD_SHORT,Keycard,Tessera
+ITEM_USB_DRIVE_NAME,USB drive,Chiavetta USB
+ITEM_USB_DRIVE_SHORT,USB,USB
+ITEM_KNIFE_NAME,Knife,Coltello
+ITEM_KNIFE_DESC,A blade for the scabbard slot.,Una lama per lo slot del fodero.
+ITEM_BATON_NAME,Baton,Manganello
+ITEM_FLASHLIGHT_NAME,Flashlight,Torcia
+ITEM_FLASHLIGHT_DESC,A tool for the special slots.,Uno strumento per gli slot speciali.
+ITEM_CELL_PHONE_NAME,Cell phone,Cellulare
+ITEM_CELL_PHONE_SHORT,Phone,Cellulare
+ITEM_CIGARETTES_NAME,Pack of cigarettes,Pacchetto di sigarette
+ITEM_CIGARETTES_SHORT,Cigs,Sigarette
+ITEM_LIGHTER_NAME,Lighter,Accendino
+ITEM_NAILS_NAME,Box of nails,Scatola di chiodi
+ITEM_NAILS_SHORT,Nails,Chiodi
+ITEM_POISON_NAME,Poison,Veleno
+ITEM_VAPE_NAME,Vape,Sigaretta elettronica
+ITEM_VAPE_SHORT,Vape,Svapo

@@ -8,7 +8,7 @@ Questo file è il punto di riferimento permanente per qualunque sessione di Clau
 
 ## 1. Cos'è questo progetto
 
-RPG open world cooperativo, visuale in **prima persona** (full-body: la camera segue la testa del rig, il corpo che si vede è quello animato che vedono gli altri), ambientazione survival/action in stile **S.T.A.L.K.E.R.** (atmosfera, IA nemica, zona ostile) con un sistema di **inventario a griglia in stile Escape from Tarkov** (peso, ingombro, slot dedicati). Il gioco include:
+RPG open world cooperativo, visuale in **prima persona** (viewmodel: braccia e arma dedicate per il giocatore locale; gli altri vedono il corpo intero animato, di cui il locale vede gambe e ombra), ambientazione survival/action in stile **S.T.A.L.K.E.R.** (atmosfera, IA nemica, zona ostile) con un sistema di **inventario a griglia in stile Escape from Tarkov** (peso, ingombro, slot dedicati). Il gioco include:
 
 - Movimento e combattimento in tempo reale (shooting).
 - Inventario a griglia (dimensioni oggetti, peso, container annidati tipo zaino/tasche).
@@ -96,13 +96,13 @@ I nomi delle cartelle in `scenes/` e `scripts/` sono **per sistema di gameplay**
 
 ```
 /
-├── addons/          # GDExtension GodotSteam + binding C# di terze parti
+├── addons/          # GodotSteam + binding C# di terze parti; venice_builder (tooling editor) -> skill `venice-builder`
 ├── autoload/        # Singleton globali (GameManager, NetworkManager, EventBus, SettingsService)
 ├── core/            # Codice condiviso, non specifico di un sistema
 │   ├── Authority/   # Helper per pattern server-authoritative
 │   ├── Motion/      # CharacterMotor: movimento a piedi condiviso player/NPC
 │   └── Utils/       # NetworkConstants, CollisionLayers, InputBindings, Loc
-├── animation/       # Rig, AnimationTree, IK e procedurale       -> skill `character-animation`
+├── animation/       # Corpo in terza persona, viewmodel, IK    -> skill `character-animation`
 ├── player/          # Input locale, camera in prima persona (FirstPersonCamera), trasporto sui veicoli
 ├── combat/          # Armi, tiro, salute, hitbox        -> skill `combat-shooting`
 ├── inventory/       # Griglia, item, equipaggiamento, HUD -> skill `inventory-tarkov`
@@ -122,7 +122,7 @@ I nomi delle cartelle in `scenes/` e `scripts/` sono **per sistema di gameplay**
 - **`resources/` contiene solo dati (`Resource`/`.tres`), mai logica con side-effect.** Un `ItemDefinition` descrive un oggetto, non lo istanzia da solo.
 - **`quests/` e `building/` restano vuote (con un `.gitkeep`) fino a quando i tre prototipi non sono conclusi.** Non generare codice speculativo per sistemi non ancora prototipati: porta a rework inutile. Attenzione: `building/` è riservata alla **costruzione della base** da parte del giocatore; gli edifici del mondo stanno in `world/scenes/Buildings/`.
 - **I collision layer hanno la fonte di verità in `core/Utils/CollisionLayers.cs`.** Ogni numero nuovo va aggiunto lì **e** alla sezione `[layer_names]` di `project.godot`; le scene scrivono i letterali, quindi vanno aggiornate a mano. Non esistono render layer dedicati: la camera disegna tutto.
-- **Prima persona: tre regole trasversali.** (1) Lo sguardo è di `FirstPersonCamera` (`LookYaw`/`LookPitch`), il corpo lo insegue e lo pubblica in `SyncAimYaw`/`SyncAimPitch`. (2) La mira è il centro dello schermo e il colpo parte dagli occhi: l'host li ricostruisce con `CharacterMotor.ResolvedEyePosition`, mai da dati del client. (3) Il mouse è catturato in gioco e **solo `PlayerHud`** lo rilascia (inventario o `GameManager.UiModalOpen`): nessun altro tocca `Input.MouseMode`.
+- **Prima persona: quattro regole trasversali.** (1) Lo sguardo è di `FirstPersonCamera` (`LookYaw`/`LookPitch`), il corpo lo insegue e lo pubblica in `SyncAimYaw`/`SyncAimPitch`. (2) La mira è il centro dello schermo e il colpo parte dagli occhi: l'host li ricostruisce con `CharacterMotor.ResolvedEyePosition`, mai da dati del client, e la camera sta su quello stesso punto nominale. Non c'è reticolo: si mira con le tacche dell'arma. (3) Ogni personaggio ha due rese: il **viewmodel** (solo sul peer proprietario) e il **corpo** in terza persona (su tutti i peer); entrambe leggono solo stato già replicato. (4) Il mouse è catturato in gioco e **solo `PlayerHud`** lo rilascia (inventario o `GameManager.UiModalOpen`): nessun altro tocca `Input.MouseMode`.
 
 ---
 
@@ -166,14 +166,16 @@ La documentazione d'ambito vive in `.claude/skills/<nome>/SKILL.md`. **Carica la
 
 | Skill | Caricala quando tocchi |
 |---|---|
-| `combat-shooting` | `combat/` — armi, danno, HP, hitbox, mira, reticolo, munizioni, ricarica, rinculo, dispersione, collision layer 3D |
+| `combat-shooting` | `combat/` — armi, danno, HP, hitbox, mira, munizioni, ricarica, dispersione e rinculo della visuale, collision layer 3D |
 | `inventory-tarkov` | `inventory/` — griglia, item, equipaggiamento, contenitori annidati, peso, raccolta/drop, casse, drag & drop, hotbar |
 | `ui-hud` | `ui/`, la HUD, menu e popup, scala UI, risoluzione, audio, **o l'assegnazione di un tasto/azione di input** |
 | `steam-networking` | `NetworkManager`, `addons/godotsteam*`, lobby, trasporti, errori di GDExtension Steam |
 | `vehicles-boats` | `vehicles/` — barche, acqua, galleggiamento, timone, passeggeri, ponte calpestabile, piattaforme mobili, coordinate locali a un veicolo (`SyncAnchorId`) |
 | `i18n-localization` | `locales/`, `Loc`, **qualunque testo visibile all'utente**: nuove label, nuovi item, dialoghi, cambio lingua, chiavi grezze a video |
-| `blender-pipeline` | `assets/models/`, `tools/blender/` — pipeline Blender→`.glb`→Godot, `Body_Base`, `Armature_Character`, rig e animazioni Mixamo, scala/unità di un modello importato, dialogo con Blender via MCP |
-| `character-animation` | `animation/` — AnimationTree e BlendSpace, stance armata, layer e filtri, clip e loop, aggancio dell'arma alla mano, IK e modificatori di scheletro, mira e piedi procedurali, T-pose o animazioni ferme |
+| `blender-pipeline` | `assets/models/`, `tools/blender/` — corpo `Mannequin.glb` (Universal Animation Library, BoneMap umanoide), armi del Retro Weapon Pack (`VM_*.glb`, `W_*.glb`), scala/unità/assi di un modello importato, dialogo con Blender via MCP |
+| `character-animation` | `animation/` — viewmodel in prima persona e corpo in terza, alberi di blend da codice, clip e loop, mira (ADS) e allineamento delle tacche, mani sull'arma in IK, modificatori di scheletro, rinculo visivo, T-pose o animazioni ferme, aggiunta di un'arma |
 | `ai-npc` | `ai/` — NPC umani, navigazione, waypoint, autorita' host sui personaggi non giocanti |
+| `venice-building-kit` | `assets/models/buildings/`, `tools/blender/build_venice_kit.py` — kit modulare dei palazzi veneziani: griglia e assi dei moduli, colori di facciata, collisioni, **o un generatore procedurale di edifici** |
+| `venice-builder` | `addons/venice_builder/` — generatore degli edifici dai dati OpenStreetMap: `OsmLayer`, segnaposto, montaggio dei moduli sulle piante reali, materiali condivisi dei kit |
 
 Ambiti ancora senza skill perché non implementati: quest, base building. Quando uno di questi viene prototipato, la sua documentazione va in una skill nuova, non qui.

@@ -1,6 +1,6 @@
 ---
 name: ui-hud
-description: UI, HUD, menu, cursore e comandi. Carica quando tocchi ui/, la HUD, un pannello, un menu, un popup, la scala UI, risoluzione, volumi, fullscreen, VSync, sensibilità del mouse, la cattura del mouse, oppure quando assegni o cambi un tasto/azione di input (PauseMenu, MainMenu, SettingsService, InputBindings, PlayerHud, PlayerInput, FirstPersonCamera, CrosshairOverlay, WeaponHudPanel).
+description: UI, HUD, menu, cursore e comandi. Carica quando tocchi ui/, la HUD, un pannello, un menu, un popup, la scala UI, risoluzione, volumi, fullscreen, VSync, sensibilità del mouse, la cattura del mouse, oppure quando assegni o cambi un tasto/azione di input (PauseMenu, MainMenu, SettingsService, InputBindings, PlayerHud, PlayerInput, FirstPersonCamera, HitMarkerOverlay, WeaponHudPanel).
 ---
 
 # UI, HUD e comandi
@@ -21,7 +21,7 @@ description: UI, HUD, menu, cursore e comandi. Carica quando tocchi ui/, la HUD,
 | Cosa | Dove | Layer |
 |---|---|---|
 | `MainMenu`, `PauseMenu` | `CanvasLayer` `UI` di `Main.tscn` | 20 |
-| HUD (inventario, hotbar, reticolo, pannello arma) | `CanvasLayer` creato da `PlayerHud`, solo avatar locale | 10 |
+| HUD (inventario, barra rapida, conferma di colpo, pannello arma) | `CanvasLayer` creato da `PlayerHud`, solo avatar locale | 10 |
 
 Ogni nuovo elemento di HUD va aggiunto a `PlayerHud._hudRoot` (eredita rect e reattività alla scala).
 
@@ -32,7 +32,9 @@ Ogni nuovo elemento di HUD va aggiunto a `PlayerHud._hudRoot` (eredita rect e re
 - **`PlayerHud` è l'unico proprietario di `Input.MouseMode`**: lo rilascia quando l'inventario è aperto
   o `GameManager.UiModalOpen` è vero, lo ricattura alla chiusura, lo rende visibile in `_ExitTree`.
   Chi apre una UI alza il proprio stato e basta.
-- Il reticolo sta al **centro** dello schermo; sparisce con inventario o modale.
+- **Non c'è reticolo**: si mira con le tacche dell'arma (skill `combat-shooting`). Al centro dello
+  schermo compare solo la conferma di colpo a segno (`HitMarkerOverlay`), che sparisce con inventario
+  o modale.
 - Sensibilità: `SettingsService.MouseSensitivity` (0.1–3.0), sezione `[gameplay]`.
 
 ## 4. Menu di pausa e impostazioni
@@ -63,7 +65,7 @@ Nel codice si usa sempre il **nome dell'azione**; nei testi `Loc.KeyFor("azione"
 | `toggle_inventory` | Tab | `PlayerHud._Input` |
 | `interact` | **F** | `PlayerHud._Input` (oggetto guardato: breve = raccogli/apri, lunga = menu) oppure `VehicleInput._UnhandledInput` (timone) |
 | `quick_drop` | Backspace | `PlayerHud._Input` |
-| `toggle_menu` | Esc | `PauseMenu` — non riassegnabile |
+| `toggle_menu` | Esc | `PauseMenu` — non riassegnabile. A inventario aperto è di `PlayerHud` (chiude l'ultima finestra, poi l'inventario): `PauseMenu` si astiene se `GameManager.InventoryOpen` |
 
 **Tasto conteso fra due sistemi → niente tasto nuovo**: chi ha il contesto più specifico usa `_Input` e
 consuma **solo** quando quel contesto è attivo; il default usa `_UnhandledInput`. R si disambigua con

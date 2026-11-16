@@ -4,15 +4,14 @@ using GDDict = Godot.Collections.Dictionary;
 namespace Lagoon;
 
 /// <summary>
-/// Layer di rete dell'inventario di un giocatore (CLAUDE.md §3). Vive come figlio del Player ma —
-/// a differenza del movimento (Fase 1, client-authoritative) — la sua autorita' e' SEMPRE l'host:
-/// tutte le mutazioni girano sull'host, che poi fa il push dello stato al proprietario.
+/// Layer di rete dell'inventario di un giocatore (CLAUDE.md §3). Vive come figlio del Player ma la
+/// sua autorita' e' SEMPRE l'host: tutte le mutazioni girano sull'host, che poi fa il push dello
+/// stato al solo proprietario.
 ///
-/// Dopo il refactor in stile Tarkov l'API si e' ridotta a poche RPC: quasi ogni interazione
-/// (trascinamento, quick move, equip rapido, scarto, raccolta, saccheggio, voci del menu
-/// contestuale) e' UNO spostamento fra due <see cref="ItemAddress"/>, gestito da
-/// <see cref="ItemTransfer"/>. Cosi' le regole vivono in un solo punto invece di essere ripetute in
-/// una RPC per ogni combinazione.
+/// Ogni RPC porta un INTENTO, mai un risultato: "sposta l'oggetto 12 in quella cella", "rilascialo
+/// sull'oggetto 30", "riponilo dove preferisci". Cosa succede davvero lo decide
+/// <see cref="InventoryOps"/> dal proprio stato. Il client pre-valida con le stesse regole
+/// (<see cref="InventoryRules"/>) solo per colorare l'anteprima.
 /// </summary>
 public partial class PlayerInventory : Node
 {
@@ -20,20 +19,25 @@ public partial class PlayerInventory : Node
     [Signal]
     public delegate void InventoryChangedEventHandler();
 
-    /// Emesso SULL'HOST a ogni push dello stato autoritativo. Serve ai sistemi host-side che
-    /// dipendono dal contenuto dell'inventario — il <see cref="WeaponController"/> lo usa per
-    /// ricalcolare le munizioni di riserva e per rivalidare l'arma impugnata quando questa viene
-    /// spostata o lasciata cadere.
+    /// Emesso SULL'HOST a ogni push dello stato autoritativo: <see cref="WeaponController"/> lo usa
+    /// per riallineare caricatore e riserva e per rivalidare l'arma impugnata.
     [Signal]
     public delegate void HostStateChangedEventHandler();
+
+    /// Emesso sul proprietario quando l'host rifiuta una richiesta (codice <see cref="InvError"/>).
+    [Signal]
+    public delegate void OperationFailedEventHandler(int error);
 
     /// Distanza massima entro cui l'host accetta interazioni col mondo (raccolta, saccheggio).
     public const float PickupRange = 3.5f;
 
-    /// Valore di <c>x</c> che significa "auto-piazza nel primo spazio libero".
+    /// Valore di <c>x</c> che significa "dove c'e' posto in quel contenitore".
     public const int AutoPlace = -1;
 
     public PlayerInventoryModel Model { get; } = new();
+
+    /// Spazi visti da questo giocatore: stessa risoluzione per l'host e per la UI.
+    public InventorySpaces Spaces { get; private set; } = null!;
 
     private ItemDatabase _db = null!;
     private int _ownerPeerId = NetworkConstants.HostPeerId;
@@ -42,201 +46,211 @@ public partial class PlayerInventory : Node
 
     public override void _EnterTree()
     {
-        // Sovrascrive il set per-peer ricorsivo fatto da PlayerController._EnterTree: l'inventario
-        // e' autoritativo lato host, non lato proprietario dell'avatar.
+        // Sovrascrive il set per-peer ricorsivo di PlayerController._EnterTree: l'inventario e'
+        // autoritativo lato host, non lato proprietario dell'avatar.
         SetMultiplayerAuthority(NetworkConstants.HostPeerId);
     }
 
     public override void _Ready()
     {
         _db = GetNode<ItemDatabase>("/root/ItemDatabase");
+        Spaces = new InventorySpaces(GetParent<Node3D>(), Model, PickupRange);
         if (int.TryParse(GetParent().Name, out int peerId))
             _ownerPeerId = peerId;
     }
 
     // ====================================================================================
-    //  API host (chiamate localmente sull'host, es. da GameWorld al momento dello spawn)
+    //  API host
     // ====================================================================================
 
-    /// Kit iniziale: equipaggia rig, zaino e contenitore sicuro, poi aggiunge qualche item.
+    /// Kit iniziale: tasche (fisse), rig con caricatori, zaino, pouch, armi cariche.
     public void HostGiveStartingKit()
     {
         if (!IsMultiplayerAuthority())
             return;
 
-        GiveById("vest", 1);             // slot Rig libero -> auto-equip
-        GiveById("backpack", 1);         // slot Zaino libero -> auto-equip
-        GiveById("secure_container", 1); // slot Contenitore Sicuro
-        GiveById("medkit", 1);
-        // Armi: slot WeaponPrimary/Sidearm liberi -> auto-equip, pronte da impugnare con 1 e 3.
-        GiveById("rifle", 1);
-        GiveById("pistol", 1);
-        GiveById("ammo", 60);
+        InventoryOps.Session? s = OpenSession();
+        if (s == null)
+            return;
+
+        void Give(ItemInstance? item)
+        {
+            if (item != null && InventoryOps.Acquire(s, item, ItemAddress.PlayerSpace) != InvError.Ok)
+                GD.PushWarning($"[Inventory] Kit iniziale: '{item.Definition.ItemId}' non ha trovato posto.");
+        }
+
+        Give(ItemFactory.Create(_db, InventoryConfig.Current.PocketsItemId));
+        Give(ItemFactory.Create(_db, "vest"));
+        Give(ItemFactory.Create(_db, "backpack"));
+        Give(ItemFactory.Create(_db, "secure_container"));
+        Give(ItemFactory.CreateWeapon(_db, "rifle", "mag_545", "ammo_545"));
+        Give(ItemFactory.CreateWeapon(_db, "pistol", "mag_9mm", "ammo_9mm"));
+        Give(ItemFactory.CreateMagazine(_db, "mag_545", "ammo_545", 30));
+        Give(ItemFactory.CreateMagazine(_db, "mag_545", "ammo_545", 30));
+        Give(ItemFactory.CreateMagazine(_db, "mag_9mm", "ammo_9mm", 12));
+        Give(ItemFactory.Create(_db, "medkit"));
+        Give(ItemFactory.Create(_db, "painkillers"));
+        Give(ItemFactory.Create(_db, "ammo_545", 60));
+        Give(ItemFactory.Create(_db, "ammo_9mm", 30));
+
+        s.Commit();
         PushState();
     }
 
-    private void GiveById(string itemId, int stack)
+    /// Per i sistemi host-side che mutano l'inventario dall'esterno (ricarica dell'arma).
+    public void HostPushState() => PushState();
+
+    /// Sessione di operazioni per questo giocatore. Null se il mondo non c'e' (scena in chiusura).
+    public InventoryOps.Session? OpenSession()
     {
-        var def = _db.Get(itemId);
-        if (def != null)
-            Model.TryPickup(def, stack);
+        var world = GetTree().GetFirstNodeInGroup(GameWorld.GroupName) as GameWorld;
+        return world == null ? null : new InventoryOps.Session(Spaces, world, _db);
     }
 
     // ====================================================================================
     //  Submit: chiamate dalla UI del proprietario. Host = locale; client = RpcId(host).
     // ====================================================================================
 
-    /// <summary>
-    /// Sposta un item da un indirizzo a un altro. <paramref name="x"/> = <see cref="AutoPlace"/>
-    /// lascia scegliere all'host la prima cella libera (quick move, equip rapido, raccolta con F).
-    /// </summary>
-    public void SubmitMove(ItemAddress from, int itemId, ItemAddress to, int x, int y, bool rotated)
+    private void Send(StringName method, params Variant[] args)
     {
         if (IsMultiplayerAuthority())
-            RequestMove((int)from.Realm, from.A, from.B, itemId, (int)to.Realm, to.A, to.B, x, y, rotated);
+            Call(method, args);
         else
-            RpcId(NetworkConstants.HostPeerId, MethodName.RequestMove,
-                (int)from.Realm, from.A, from.B, itemId, (int)to.Realm, to.A, to.B, x, y, rotated);
+            RpcId(NetworkConstants.HostPeerId, method, args);
     }
 
-    public void SubmitAssignQuickSlot(int slotIndex, int instanceId)
-    {
-        if (IsMultiplayerAuthority())
-            RequestAssignQuickSlot(slotIndex, instanceId);
-        else
-            RpcId(NetworkConstants.HostPeerId, MethodName.RequestAssignQuickSlot, slotIndex, instanceId);
-    }
+    /// Sposta un item in una cella/slot/a terra. <paramref name="amount"/> &gt; 0 divide lo stack.
+    public void SubmitMove(int srcSpace, int itemId, ItemAddress to, int x, int y, bool rotated, int amount = 0)
+        => Send(MethodName.RequestMove, srcSpace, itemId, to.Space, to.Owner, (int)to.Type, to.Index, x, y, rotated, amount);
 
-    /// Consuma un item utilizzabile (medicinali/cibo). L'effetto sulla salute arrivera' con la Fase 3.
-    public void SubmitUse(int instanceId)
-    {
-        if (IsMultiplayerAuthority())
-            RequestUse(instanceId);
-        else
-            RpcId(NetworkConstants.HostPeerId, MethodName.RequestUse, instanceId);
-    }
+    /// Rilascia un item sopra un altro (unisci, carica munizioni, monta caricatore, inserisci).
+    public void SubmitDropOnItem(int srcSpace, int itemId, int targetSpace, int targetId)
+        => Send(MethodName.RequestDropOnItem, srcSpace, itemId, targetSpace, targetId);
 
-    /// Apre un pacchetto sigillato, sostituendolo col suo contenuto.
-    public void SubmitUnpack(int instanceId)
-    {
-        if (IsMultiplayerAuthority())
-            RequestUnpack(instanceId);
-        else
-            RpcId(NetworkConstants.HostPeerId, MethodName.RequestUnpack, instanceId);
-    }
+    /// Ctrl+click. <paramref name="sideBUid"/> = contenitore aperto a destra (0 = nessuno).
+    public void SubmitQuickMove(int srcSpace, int itemId, int sideBUid)
+        => Send(MethodName.RequestQuickMove, srcSpace, itemId, sideBUid);
 
-    /// Richiede all'host di reinviare lo stato (quando la UI e' pronta, per evitare la corsa
-    /// tra la replica dell'avatar e il primo <see cref="SyncFullState"/>).
-    public void SubmitRequestState()
-    {
-        if (IsMultiplayerAuthority())
-            PushState();
-        else
-            RpcId(NetworkConstants.HostPeerId, MethodName.RequestState);
-    }
+    public void SubmitQuickEquip(int srcSpace, int itemId)
+        => Send(MethodName.RequestQuickEquip, srcSpace, itemId);
+
+    /// Raccoglie con F un oggetto sfuso nel mondo.
+    public void SubmitPickup(int worldUid) => Send(MethodName.RequestPickup, worldUid);
+
+    public void SubmitLoadAmmo(int space, int targetId, string ammoItemId)
+        => Send(MethodName.RequestLoadAmmo, space, targetId, ammoItemId);
+
+    public void SubmitUnloadAmmo(int space, int targetId)
+        => Send(MethodName.RequestUnloadAmmo, space, targetId);
+
+    public void SubmitSort(ItemAddress grid)
+        => Send(MethodName.RequestSort, grid.Space, grid.Owner, grid.Index);
+
+    public void SubmitTag(int space, int itemId, string name, int color)
+        => Send(MethodName.RequestTag, space, itemId, name, color);
+
+    public void SubmitAssignQuickSlot(int slotIndex, int itemId)
+        => Send(MethodName.RequestAssignQuickSlot, slotIndex, itemId);
+
+    public void SubmitUse(int itemId) => Send(MethodName.RequestUse, itemId);
+
+    public void SubmitUnpack(int itemId) => Send(MethodName.RequestUnpack, itemId);
+
+    /// Richiede all'host di reinviare lo stato (UI pronta, apertura dell'inventario).
+    public void SubmitRequestState() => Send(MethodName.RequestState);
 
     // ====================================================================================
-    //  Request: eseguite SOLO sull'host (validate). Mai fidarsi dell'input del client (§3.4).
+    //  Request: eseguite SOLO sull'host, sempre validate (§3.4)
     // ====================================================================================
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     public void RequestMove(
-        int fromRealm, int fromA, int fromB, int itemId,
-        int toRealm, int toA, int toB, int x, int y, bool rotated)
-    {
-        if (!ValidateSender())
-            return;
-
-        GameWorld? world = GetGameWorld();
-        if (world == null)
-            return;
-
-        var ctx = new ItemTransfer.Context
-        {
-            Model = Model,
-            World = world,
-            Resolve = ResolveDefinition,
-            PlayerPosition = GetParent<Node3D>().GlobalPosition,
-            Reach = PickupRange,
-        };
-
-        ItemTransfer.Execute(
-            ctx, ItemAddress.Decode(fromRealm, fromA, fromB), itemId,
-            ItemAddress.Decode(toRealm, toA, toB), x, y, rotated);
-
-        // Push anche quando l'operazione viene rifiutata: il rollback puo' aver comunque ricollocato
-        // l'item (auto-stow), quindi il client deve sempre ripartire dallo stato autoritativo.
-        PushState();
-    }
+        int srcSpace, int itemId, int toSpace, int toOwner, int toType, int toIndex,
+        int x, int y, bool rotated, int amount)
+        => Run(s => InventoryOps.Move(
+            s, srcSpace, itemId, ItemAddress.Decode(toSpace, toOwner, toType, toIndex), x, y, rotated, amount));
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    public void RequestAssignQuickSlot(int slotIndex, int instanceId)
-    {
-        if (!ValidateSender())
-            return;
-        if (Model.AssignQuickSlot(slotIndex, instanceId))
-            PushState();
-    }
+    public void RequestDropOnItem(int srcSpace, int itemId, int targetSpace, int targetId)
+        => Run(s => InventoryOps.DropOnItem(s, srcSpace, itemId, targetSpace, targetId));
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    public void RequestUse(int instanceId)
-    {
-        if (!ValidateSender())
-            return;
-
-        ItemInstance? item = Model.Find(instanceId);
-        if (item == null || item.Definition.Category != ItemCategory.Consumable)
-            return;
-
-        // Consuma una unita'; a zero l'item sparisce. L'effetto (cura, idratazione) e' Fase 3+.
-        item.StackCount--;
-        if (item.StackCount <= 0)
-            Model.Extract(instanceId);
-
-        PushState();
-    }
+    public void RequestQuickMove(int srcSpace, int itemId, int sideBUid)
+        => Run(s => InventoryOps.QuickMove(s, srcSpace, itemId, sideBUid));
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
-    public void RequestUnpack(int instanceId)
-    {
-        if (!ValidateSender())
-            return;
+    public void RequestQuickEquip(int srcSpace, int itemId)
+        => Run(s => InventoryOps.QuickEquip(s, srcSpace, itemId));
 
-        ItemInstance? item = Model.Find(instanceId);
-        ItemDefinition? yields = item != null && !string.IsNullOrEmpty(item.Definition.UnpackYields)
-            ? _db.Get(item.Definition.UnpackYields)
-            : null;
-        if (item == null || yields == null)
-            return;
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    public void RequestPickup(int worldUid)
+        => Run(s => InventoryOps.Pickup(s, worldUid));
 
-        Model.Extract(instanceId);
-        if (!Model.TryPickup(yields, item.Definition.UnpackCount))
-            Model.TryStoreInstance(item); // niente spazio: il pacchetto resta chiuso
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    public void RequestLoadAmmo(int space, int targetId, string ammoItemId)
+        => Run(s => InventoryOps.LoadAmmo(s, space, targetId, ammoItemId));
 
-        PushState();
-    }
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    public void RequestUnloadAmmo(int space, int targetId)
+        => Run(s => InventoryOps.UnloadAmmo(s, space, targetId));
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    public void RequestSort(int space, int owner, int gridIndex)
+        => Run(s => InventoryOps.Sort(s, ItemAddress.GridOf(space, owner, gridIndex)));
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    public void RequestTag(int space, int itemId, string name, int color)
+        => Run(s => InventoryOps.SetTag(s, space, itemId, name, color));
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    public void RequestAssignQuickSlot(int slotIndex, int itemId)
+        => Run(s => InventoryOps.AssignQuickSlot(s, slotIndex, itemId));
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    public void RequestUse(int itemId)
+        => Run(s => InventoryOps.Use(s, itemId));
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    public void RequestUnpack(int itemId)
+        => Run(s => InventoryOps.Unpack(s, itemId));
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     public void RequestState()
     {
+        if (ValidateSender())
+            PushState();
+    }
+
+    /// <summary>
+    /// Scheletro comune di ogni richiesta: mittente, sessione, operazione, commit del mondo, push.
+    /// Il push avviene SEMPRE, anche su rifiuto: il client riparte comunque dallo stato autoritativo.
+    /// </summary>
+    private void Run(System.Func<InventoryOps.Session, InvError> operation)
+    {
         if (!ValidateSender())
             return;
+
+        InventoryOps.Session? session = OpenSession();
+        if (session == null)
+            return;
+
+        InvError result = operation(session);
+        session.Commit();
         PushState();
+
+        if (result != InvError.Ok && result != InvError.NothingToDo)
+            NotifyFailure((int)result);
     }
 
     // ====================================================================================
     //  Push dello stato + replica
     // ====================================================================================
 
-    /// Versione pubblica di <see cref="PushState"/>, per i sistemi host-side che mutano l'inventario
-    /// dall'esterno (es. la ricarica dell'arma, che consuma munizioni dalle griglie).
-    public void HostPushState() => PushState();
-
     private void PushState()
     {
         GDDict data = Model.Serialize();
         if (_ownerPeerId == NetworkConstants.HostPeerId)
-            SyncFullState(data); // il proprietario e' l'host stesso: aggiorna in locale
+            EmitSignal(SignalName.InventoryChanged); // il proprietario e' l'host: il modello e' gia' questo
         else
             RpcId(_ownerPeerId, MethodName.SyncFullState, data);
 
@@ -251,6 +265,60 @@ public partial class PlayerInventory : Node
         EmitSignal(SignalName.InventoryChanged);
     }
 
+    private void NotifyFailure(int error)
+    {
+        if (_ownerPeerId == NetworkConstants.HostPeerId)
+            OperationRejected(error);
+        else
+            RpcId(_ownerPeerId, MethodName.OperationRejected, error);
+    }
+
+    /// Estetica: l'host comunica al proprietario il motivo del rifiuto (toast e suono).
+    [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    public void OperationRejected(int error) => EmitSignal(SignalName.OperationFailed, error);
+
+    // ====================================================================================
+    //  Diagnostica
+    // ====================================================================================
+
+    /// <summary>
+    /// Riepilogo testuale dello stato (uno slot per riga, contenuto annidato rientrato). Serve al
+    /// collaudo automatico (<c>tools/playtest_inventory.gd</c>), che da GDScript non puo' leggere
+    /// il modello C#. Solo console: non e' testo di UI.
+    /// </summary>
+    public string DescribeState()
+    {
+        var text = new System.Text.StringBuilder();
+        foreach (EquipSlotType slot in EquipRules.AllSlots)
+        {
+            ItemInstance? item = Model.Get(slot);
+            if (item != null)
+                Describe(text, item, $"{slot}: ", 0);
+        }
+        text.Append($"peso={Model.TotalWeight():0.00} quick=[{string.Join(",", Model.QuickSlots)}]");
+        return text.ToString();
+    }
+
+    private static void Describe(System.Text.StringBuilder text, ItemInstance item, string prefix, int depth)
+    {
+        text.Append(new string(' ', depth * 2)).Append(prefix)
+            .Append($"{item.Definition.ItemId}#{item.InstanceId}");
+        if (item.StackCount > 1)
+            text.Append($" x{item.StackCount}");
+        if (item.Definition is MagazineDefinition mag)
+            text.Append($" {item.RoundCount}/{mag.Capacity}");
+        if (item.TagName.Length > 0)
+            text.Append($" tag='{item.TagName}'");
+        text.AppendLine();
+
+        for (int g = 0; g < item.Grids.Length; g++)
+            foreach (ItemInstance child in item.Grids[g].Items)
+                Describe(text, child, $"g{g}({child.GridX},{child.GridY}{(child.Rotated ? ",r" : "")}) ", depth + 1);
+        for (int i = 0; i < item.SlotItems.Length; i++)
+            if (item.SlotItems[i] != null)
+                Describe(text, item.SlotItems[i]!, $"slot{i} ", depth + 1);
+    }
+
     // ====================================================================================
     //  Helper
     // ====================================================================================
@@ -263,8 +331,4 @@ public partial class PlayerInventory : Node
         // sender 0 = chiamata locale dell'host; altrimenti deve essere il proprietario dell'inventario.
         return sender == 0 || sender == _ownerPeerId;
     }
-
-    private ItemDefinition? ResolveDefinition(string itemId) => _db.Get(itemId);
-
-    private GameWorld? GetGameWorld() => GetTree().GetFirstNodeInGroup(GameWorld.GroupName) as GameWorld;
 }

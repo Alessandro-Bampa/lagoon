@@ -17,6 +17,9 @@ namespace Lagoon;
 /// Stato replicato a TUTTI i peer (non solo al proprietario, a differenza dell'inventario): serve
 /// agli altri per vedere chi impugna cosa e, per il proprietario, ad avere una HUD coerente.
 ///
+/// Non c'e' reticolo: dal fianco si spara "a sentimento" con un cono largo, in mira (tasto
+/// destro) le tacche dell'arma cadono al centro dello schermo e il cono si stringe.
+///
 /// L'origine del colpo sono gli OCCHI (<see cref="CharacterMotor.ResolvedEyePosition"/>): in prima
 /// persona il colpo parte dal punto di vista, cosi' cio' che sta sotto al reticolo e' cio' che viene
 /// colpito. Passa da <c>ResolvedSyncPosition</c> e non da <c>SyncPosition</c>, che dalla Fase 4 puo'
@@ -50,29 +53,24 @@ public partial class WeaponController : Node
     [Export] public int MagazineAmmo { get; set; }
     [Export] public int ReserveAmmo { get; set; }
 
-    /// <summary>
-    /// Contributo di RINCULO alla dispersione, in gradi, accumulato e riassorbito dall'host.
-    /// Si replica questo e non la dispersione totale perche' il termine di distanza dipende da dove
-    /// punta il cursore del singolo giocatore: il reticolo lo aggiunge in locale passando questo
-    /// valore a <see cref="WeaponDefinition.SpreadDegrees"/>, cioe' alla stessa identica formula che
-    /// usa l'host. Cosi' l'anello disegnato coincide col cono di tiro reale.
-    /// </summary>
-    [Export] public float RecoilSpread { get; set; }
-
     [Export] public bool Reloading { get; set; }
 
     // ====================================================================================
     //  Stato solo-host
     // ====================================================================================
 
-    /// Caricatori per istanza d'arma: cambiando arma il caricatore precedente non si azzera.
-    private readonly Dictionary<int, int> _magazines = new();
     private readonly RandomNumberGenerator _rng = new();
 
     private int _heldInstanceId;
     private ulong _lastShotMsec;
-    private float _recoilSpread;
+
+    /// Dispersione accumulata sparando di fila, in gradi. Non si replica: nessun client la
+    /// disegna (non c'e' reticolo), serve solo al dado dell'host.
+    private float _bloom;
     private float _reloadRemaining;
+
+    /// Tempo residuo dell'estrazione: finche' non scade l'arma non spara ne' ricarica.
+    private float _drawRemaining;
     private int _rejectedShots;
 
     private int _ownerPeerId = NetworkConstants.HostPeerId;
@@ -117,14 +115,12 @@ public partial class WeaponController : Node
         WeaponDefinition? weapon = HeldWeapon;
         if (weapon == null)
         {
-            RecoilSpread = 0f;
+            _bloom = 0f;
             return;
         }
 
-        // Riassorbimento del rinculo.
-        _recoilSpread = Mathf.Max(
-            0f, _recoilSpread - weapon.RecoilRecoveryDegreesPerSecond * (float)delta);
-        RecoilSpread = _recoilSpread;
+        _bloom = Mathf.Max(0f, _bloom - weapon.BloomRecoveryDegreesPerSecond * (float)delta);
+        _drawRemaining = Mathf.Max(0f, _drawRemaining - (float)delta);
 
         if (!Reloading)
             return;
@@ -175,8 +171,7 @@ public partial class WeaponController : Node
             return;
 
         var requested = (EquipSlotType)slot;
-        if (requested is not (EquipSlotType.WeaponPrimary or EquipSlotType.WeaponSecondary
-            or EquipSlotType.Sidearm))
+        if (!EquipRules.IsWeaponSlot(requested))
             return;
 
         // Stesso slot gia' in mano: rinfodera.
@@ -186,24 +181,20 @@ public partial class WeaponController : Node
             return;
         }
 
-        ItemInstance? item = _inventory.Model.Equipment.Get(requested);
+        ItemInstance? item = _inventory.Model.Get(requested);
         if (item?.Definition is not WeaponDefinition weapon)
             return;
 
         HeldItemId = weapon.ItemId;
         HeldSlot = slot;
         _heldInstanceId = item.InstanceId;
-        _recoilSpread = 0f;
+        _bloom = 0f;
         Reloading = false;
         _reloadRemaining = 0f;
+        _drawRemaining = weapon.DrawSeconds;
 
-        // Caricatore memorizzato per quest'istanza; un'arma mai impugnata parte carica.
-        MagazineAmmo = _magazines.TryGetValue(item.InstanceId, out int stored)
-            ? stored
-            : weapon.MagazineSize;
-        _magazines[item.InstanceId] = MagazineAmmo;
-
-        RefreshReserve(weapon);
+        // Il caricatore e' un item montato nell'arma: i colpi sono i suoi.
+        RefreshAmmo(weapon);
     }
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
@@ -216,7 +207,7 @@ public partial class WeaponController : Node
         if (weapon == null || !HoldStillValid())
             return;
 
-        if (Reloading || MagazineAmmo <= 0 || !HandsFree())
+        if (Reloading || _drawRemaining > 0f || MagazineAmmo <= 0 || !HandsFree())
             return;
 
         // Cadenza di fuoco: il 10% di tolleranza assorbe il jitter di rete senza aprire la porta
@@ -253,7 +244,13 @@ public partial class WeaponController : Node
             _rejectedShots++;
         }
 
-        float spread = weapon.SpreadDegrees(aimDistance, _recoilSpread);
+        // Il cono dipende dalla postura del tiratore, letta dallo stato REPLICATO: in mira e'
+        // stretto; dal fianco, in movimento e in aria si allarga. SyncAiming lo pubblica il
+        // client come il resto del suo movimento (client-autoritativo in questa fase): mentire
+        // vale un cono piu' stretto, non un colpo che l'host non avrebbe tracciato.
+        float moveFraction = _player.SyncLocalVelocity.Length() / Mathf.Max(_player.RunSpeed, 0.001f);
+        float spread = weapon.SpreadDegrees(
+            _player.SyncAiming, _player.SyncCrouching, _player.SyncGrounded, moveFraction, _bloom);
         Vector3 shotDir = AimResolver.ApplySpread(direction, spread, _rng);
 
         HitboxComponent? target = AimResolver.TraceShot(
@@ -269,11 +266,12 @@ public partial class WeaponController : Node
             target.ApplyDamage(weapon.Damage * weapon.DamageFactorAt(distance), _ownerPeerId, shotDir);
         }
 
-        MagazineAmmo--;
-        _magazines[_heldInstanceId] = MagazineAmmo;
+        // Il colpo esce dalla cima del caricatore montato (LIFO). Niente push dell'inventario a
+        // ogni colpo: MagazineAmmo e' gia' replicato, la tile si riallinea al prossimo push.
+        HeldInstance()?.MountedMagazine?.PopRound();
+        MagazineAmmo = HeldInstance()?.MountedMagazine?.RoundCount ?? 0;
         _lastShotMsec = now;
-        _recoilSpread = Mathf.Min(
-            _recoilSpread + weapon.RecoilPerShotDegrees, weapon.MaxRecoilSpreadDegrees);
+        _bloom = Mathf.Min(_bloom + weapon.BloomPerShotDegrees, weapon.MaxBloomDegrees);
 
         Rpc(MethodName.BroadcastShot, origin, end, target != null);
     }
@@ -285,11 +283,11 @@ public partial class WeaponController : Node
             return;
 
         WeaponDefinition? weapon = HeldWeapon;
-        if (weapon == null || !HoldStillValid() || Reloading || !HandsFree())
+        if (weapon == null || !HoldStillValid() || Reloading || _drawRemaining > 0f || !HandsFree())
             return;
-        if (MagazineAmmo >= weapon.MagazineSize)
-            return;
-        if (_inventory.Model.CountById(weapon.AmmoItemId) <= 0)
+        // Ricaricare = cambiare caricatore: ne serve uno di scorta, piu' pieno di quello montato.
+        ItemInstance? spare = FindSpareMagazine(weapon);
+        if (spare == null || spare.RoundCount <= MagazineAmmo)
             return;
 
         Reloading = true;
@@ -304,56 +302,113 @@ public partial class WeaponController : Node
         TransferMode = MultiplayerPeer.TransferModeEnum.Unreliable)]
     public void BroadcastShot(Vector3 origin, Vector3 end, bool hit)
     {
-        var mount = _player.GetNodeOrNull<WeaponVisual>("Visual/WeaponMount");
-        if (mount != null)
+        bool isLocalShooter = _player.IsMultiplayerAuthority();
+
+        // Vampa e tracciante partono dalla BOCCA dell'arma che si vede, non dall'origine vera
+        // (gli occhi): dal punto di vista sarebbe un segmento visto di punta. Per chi spara e'
+        // l'arma del viewmodel, per tutti gli altri quella del corpo in terza persona.
+        var viewmodel = _player.GetNodeOrNull<ViewmodelAnimator>("PlayerCamera/Viewmodel");
+        var body = _player.GetNodeOrNull<CharacterAnimator>("Visual/CharacterRig");
+
+        Vector3 muzzle = origin;
+        if (isLocalShooter && viewmodel is { HasWeapon: true, Muzzle: not null })
         {
-            ShotEffects.SpawnMuzzleFlash(mount);
-            mount.PlayKick();
+            muzzle = viewmodel.MuzzlePosition;
+            ShotEffects.SpawnMuzzleFlash(viewmodel.Muzzle);
+        }
+        else if (body is { Hold.HasWeapon: true })
+        {
+            muzzle = body.Hold.MuzzlePosition;
+            ShotEffects.SpawnMuzzleFlash(body.Hold, body.Hold.ToLocal(muzzle));
         }
 
         Node? world = GetTree().GetFirstNodeInGroup(GameWorld.GroupName);
         if (world != null)
         {
-            // Il tracciante si disegna dalla BOCCA dell'arma, non dall'origine vera (gli occhi):
-            // dal punto di vista sarebbe un segmento visto di punta, invisibile a chi spara.
-            Vector3 tracerStart = mount != null
-                ? mount.GlobalTransform * ShotEffects.MuzzleOffset
-                : origin;
-            ShotEffects.SpawnTracer(world, tracerStart, end);
+            ShotEffects.SpawnTracer(world, muzzle, end);
             if (hit)
                 ShotEffects.SpawnImpact(world, end);
         }
 
-        bool isLocalShooter = _player.IsMultiplayerAuthority();
         if (isLocalShooter)
-        {
-            WeaponDefinition? weapon = HeldWeapon;
-            var camera = _player.GetNodeOrNull<FirstPersonCamera>("PlayerCamera");
-            if (camera != null && weapon != null)
-                camera.AddKick(weapon.CameraKick);
-        }
+            ApplyViewRecoil();
 
         EmitSignal(SignalName.ShotResolved, origin, end, hit, isLocalShooter);
+    }
+
+    /// <summary>
+    /// Rinculo della visuale del tiratore locale: la camera sale e scarta, e rientra da sola.
+    /// E' pura resa, ma sposta il centro dello schermo e quindi il punto mirato del colpo dopo:
+    /// e' il rinculo che si compensa col mouse. L'host non ne sa nulla, riceve solo la mira.
+    /// </summary>
+    private void ApplyViewRecoil()
+    {
+        WeaponDefinition? weapon = HeldWeapon;
+        var camera = _player.GetNodeOrNull<FirstPersonCamera>("PlayerCamera");
+        if (camera == null || weapon == null)
+            return;
+
+        float factor = 1f;
+        if (_player.SyncAiming)
+            factor *= weapon.AimRecoilFactor;
+        if (_player.SyncCrouching)
+            factor *= weapon.CrouchRecoilFactor;
+
+        camera.AddRecoil(
+            weapon.RecoilPitchDegrees * factor,
+            (weapon.RecoilYawBiasDegrees + _rng.RandfRange(-weapon.RecoilYawDegrees, weapon.RecoilYawDegrees)) * factor,
+            _rng.RandfRange(-weapon.RecoilRollDegrees, weapon.RecoilRollDegrees) * factor,
+            weapon.RecoilSnappiness,
+            weapon.RecoilReturnSpeed);
     }
 
     // ====================================================================================
     //  Helper host
     // ====================================================================================
 
-    /// Completa la ricarica: consuma le munizioni dalle griglie e rispinge l'inventario al client.
+    /// <summary>
+    /// Completa la ricarica: il caricatore di scorta piu' pieno (da rig o tasche) entra nell'arma e
+    /// quello vecchio prende il suo posto. E' la stessa operazione di un trascinamento del
+    /// caricatore sull'arma, quindi passa da <see cref="InventoryOps"/> e ne eredita le regole.
+    /// </summary>
     private void FinishReload(WeaponDefinition weapon)
     {
         Reloading = false;
         _reloadRemaining = 0f;
 
-        int needed = weapon.MagazineSize - MagazineAmmo;
-        int taken = _inventory.Model.ConsumeById(weapon.AmmoItemId, needed);
-        MagazineAmmo += taken;
-        _magazines[_heldInstanceId] = MagazineAmmo;
+        ItemInstance? held = HeldInstance();
+        ItemInstance? spare = FindSpareMagazine(weapon);
+        InventoryOps.Session? session = _inventory.OpenSession();
+        if (held == null || spare == null || session == null)
+            return;
 
-        // Le griglie sono cambiate: il proprietario deve rivedere lo stack di munizioni calare.
-        // HostPushState emette HostStateChanged, che aggiorna anche ReserveAmmo.
+        InventoryOps.DropOnItem(
+            session, ItemAddress.PlayerSpace, spare.InstanceId, ItemAddress.PlayerSpace, held.InstanceId);
+        session.Commit();
+
+        // HostPushState emette HostStateChanged, che riallinea MagazineAmmo e ReserveAmmo.
         _inventory.HostPushState();
+    }
+
+    /// Istanza dell'arma impugnata, se e' ancora nel suo slot.
+    private ItemInstance? HeldInstance()
+    {
+        ItemInstance? equipped = _inventory.Model.Get((EquipSlotType)HeldSlot);
+        return equipped != null && equipped.InstanceId == _heldInstanceId ? equipped : null;
+    }
+
+    /// Caricatore di scorta compatibile piu' pieno fra quelli a portata di mano (rig e tasche).
+    private ItemInstance? FindSpareMagazine(WeaponDefinition weapon)
+    {
+        ItemInstance? best = null;
+        foreach (ItemInstance item in _inventory.Model.QuickAccessItems())
+        {
+            if (item.Definition is not MagazineDefinition magazine || magazine.Caliber != weapon.Caliber)
+                continue;
+            if (item.RoundCount > 0 && (best == null || item.RoundCount > best.RoundCount))
+                best = item;
+        }
+        return best;
     }
 
     /// <summary>
@@ -362,8 +417,7 @@ public partial class WeaponController : Node
     /// </summary>
     private bool HoldStillValid()
     {
-        ItemInstance? equipped = _inventory.Model.Equipment.Get((EquipSlotType)HeldSlot);
-        if (equipped != null && equipped.InstanceId == _heldInstanceId)
+        if (HeldInstance() != null)
             return true;
 
         Holster();
@@ -372,8 +426,8 @@ public partial class WeaponController : Node
 
     /// <summary>
     /// True se le mani sono libere di usare l'arma. Durante uno scavalcamento o un'arrampicata non
-    /// lo sono: reggono l'ostacolo (e infatti <c>VaultIkRig</c> le porta sul bordo e l'arma sparisce
-    /// dalla vista), quindi sparare e ricaricare vanno rifiutati.
+    /// lo sono: reggono l'ostacolo (e infatti l'arma esce dalla vista), quindi sparare e ricaricare
+    /// vanno rifiutati.
     ///
     /// Si legge <see cref="CharacterMotor.SyncVaulting"/>, cioe' lo stato REPLICATO, e non
     /// <c>Vaulting</c>: il movimento e' client-autoritativo, quindi per un tiratore remoto l'host non
@@ -395,10 +449,10 @@ public partial class WeaponController : Node
         _heldInstanceId = 0;
         MagazineAmmo = 0;
         ReserveAmmo = 0;
-        RecoilSpread = 0f;
-        _recoilSpread = 0f;
+        _bloom = 0f;
         Reloading = false;
         _reloadRemaining = 0f;
+        _drawRemaining = 0f;
     }
 
     /// L'inventario autoritativo e' cambiato: rivalida l'impugnatura e riallinea la riserva.
@@ -408,11 +462,24 @@ public partial class WeaponController : Node
         if (weapon == null || !HoldStillValid())
             return;
 
-        RefreshReserve(weapon);
+        RefreshAmmo(weapon);
     }
 
-    private void RefreshReserve(WeaponDefinition weapon)
-        => ReserveAmmo = _inventory.Model.CountById(weapon.AmmoItemId);
+    /// <summary>
+    /// Riallinea i due contatori replicati allo stato dell'inventario: i colpi nel caricatore
+    /// montato e la riserva, cioe' i colpi nei caricatori di scorta a portata di mano. Le cartucce
+    /// sfuse non contano: prima vanno caricate in un caricatore.
+    /// </summary>
+    private void RefreshAmmo(WeaponDefinition weapon)
+    {
+        MagazineAmmo = HeldInstance()?.MountedMagazine?.RoundCount ?? 0;
+
+        int reserve = 0;
+        foreach (ItemInstance item in _inventory.Model.QuickAccessItems())
+            if (item.Definition is MagazineDefinition magazine && magazine.Caliber == weapon.Caliber)
+                reserve += item.RoundCount;
+        ReserveAmmo = reserve;
+    }
 
     private bool ValidateSender()
     {

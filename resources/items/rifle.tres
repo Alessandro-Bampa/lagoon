@@ -1,22 +1,34 @@
 [gd_resource type="Resource" script_class="WeaponDefinition" format=3 uid="uid://bao5bkonffcml"]
 
 [ext_resource type="Script" uid="uid://bpww8vmfix0e5" path="res://combat/scripts/WeaponDefinition.cs" id="1"]
-[ext_resource type="Resource" path="res://animation/resources/two_handed.tres" id="2"]
-[ext_resource type="PackedScene" uid="uid://obje8q52ee5q" path="res://assets/models/weapons/W_Rifle.glb" id="3"]
+[ext_resource type="Resource" path="res://animation/resources/rifle_view.tres" id="2"]
+[ext_resource type="Script" path="res://inventory/scripts/data/ItemSlotDef.cs" id="slotdef"]
+
+[sub_resource type="Resource" id="slot_magazine"]
+script = ExtResource("slotdef")
+SlotId = "magazine"
+Kind = 1
 
 [resource]
 script = ExtResource("1")
 MinDamageFactor = 0.4
 Caliber = "5.45x39"
-BaseSpreadDegrees = 0.6
-RecoilPerShotDegrees = 0.7
-CameraKick = 0.5
-ReloadSeconds = 2.2
+HipSpreadDegrees = 2.2
+AimSpreadDegrees = 0.2
+MoveSpreadDegrees = 1.8
+BloomPerShotDegrees = 0.35
+BloomRecoveryDegreesPerSecond = 5.0
+MaxBloomDegrees = 3.0
+RecoilPitchDegrees = 1.1
+RecoilYawDegrees = 0.45
+RecoilYawBiasDegrees = 0.12
+RecoilRollDegrees = 0.5
+ReloadSeconds = 3.4
+DrawSeconds = 0.6
 AnimationSet = ExtResource("2")
-VisualScene = ExtResource("3")
 ItemId = "rifle"
 Width = 5
 Height = 2
 Weight = 3.5
-Category = 3
-EquipSlot = 7
+Category = 6
+Slots = Array[ExtResource("slotdef")]([SubResource("slot_magazine")])

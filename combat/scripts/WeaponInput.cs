@@ -27,10 +27,6 @@ public partial class WeaponInput : Node
     /// Punto del mondo al centro dello schermo, ricalcolato ogni frame: e' l'intento di tiro.
     public Vector3 AimPoint { get; private set; }
 
-    /// Distanza dagli occhi al punto di mira, in metri. La legge il reticolo: la dispersione
-    /// dipende da quanto lontano si sta puntando.
-    public float AimDistance { get; private set; }
-
     private ulong _lastFireMsec;
 
     public override void _Ready()
@@ -55,7 +51,6 @@ public partial class WeaponInput : Node
     {
         // Si mira al centro dello schermo: cio' che sta sotto al reticolo.
         AimPoint = AimResolver.ResolveAimPoint(_camera, _ownHitbox?.GetRid() ?? default);
-        AimDistance = _camera.GlobalPosition.DistanceTo(AimPoint);
 
         // Il punto di mira e' resa locale e si aggiorna sempre; le AZIONI invece si sopprimono.
         if (Suppressed)
@@ -82,19 +77,19 @@ public partial class WeaponInput : Node
 
         if (@event.IsActionPressed("weapon_slot_1"))
         {
-            _weapon.SubmitHold(EquipSlotType.WeaponPrimary);
+            _weapon.SubmitHold(EquipSlotType.OnSling);
             GetViewport().SetInputAsHandled();
             return;
         }
         if (@event.IsActionPressed("weapon_slot_2"))
         {
-            _weapon.SubmitHold(EquipSlotType.WeaponSecondary);
+            _weapon.SubmitHold(EquipSlotType.OnBack);
             GetViewport().SetInputAsHandled();
             return;
         }
         if (@event.IsActionPressed("weapon_slot_3"))
         {
-            _weapon.SubmitHold(EquipSlotType.Sidearm);
+            _weapon.SubmitHold(EquipSlotType.Holster);
             GetViewport().SetInputAsHandled();
             return;
         }

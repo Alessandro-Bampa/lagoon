@@ -1,88 +1,112 @@
 ---
 name: inventory-tarkov
-description: Inventario a griglia stile Tarkov. Carica quando tocchi inventory/, oppure si parla di inventario, griglia, tasche, zaino, rig, equipaggiamento, slot, item, peso e ingombro, contenitori annidati, raccogliere o lasciare oggetti, casse, loot, drag & drop, hotbar (PlayerInventory, PlayerInventoryModel, ItemAddress, ItemTransfer, InventoryGrid, ItemDefinition, ItemInstance, ItemDatabase, ItemPickup, InventoryScreen, GridPanelView, PlayerHud).
+description: Inventario a griglia stile Tarkov. Carica quando tocchi inventory/, oppure si parla di inventario, griglia, tasche, zaino, rig, pouch, equipaggiamento, slot, blocchi fra slot, item, categorie, filtri, peso e ingombro, contenitori annidati, stack, caricatori e munizioni, raccogliere o lasciare oggetti, casse, loot, trascinamento, barra rapida, icone degli oggetti (PlayerInventory, PlayerInventoryModel, InventoryOps, InventoryRules, EquipRules, ItemAddress, ItemCodec, InventoryGrid, ItemDefinition, MagazineDefinition, ItemInstance, ItemDatabase, ItemPickup, InventoryScreen, GridView, SlotView, QuickBar, PlayerHud).
 ---
 
 # Inventario a griglia
 
-`inventory/`. Modello C# puro host-autoritativo, strato di rete sottile, UI locale che **non muta mai
-nulla**. Sulla rete viaggia solo l'`ItemId`; i `.tres` non contengono testo (nomi in `locales/items.csv`,
-skill `i18n-localization`).
+`inventory/scripts/`. Modello C# puro host-autoritativo, strato di rete sottile, UI locale che **non
+muta mai nulla**. Sulla rete viaggia solo l'`ItemId`; i `.tres` non contengono testo.
+
+> **Stato (15/11/2026):** riscrittura appena conclusa. Compila e il collaudo headless copre kit
+> iniziale, raccolta e apertura di una cassa. **Mai verificati a video**: layout, trascinamento,
+> scambi, finestre, ricarica, client ENet. `tools/playtest_inventory.gd` e' il copione da finire.
 
 | Strato | File | Dove gira |
 |---|---|---|
-| Tipi | `ItemDefinition` (+ sottoclassi), `ItemDatabase` | ovunque |
-| Istanze | `ItemInstance`, `InventoryGrid`, `EquipmentSet`, `PlayerInventoryModel` | host; i client una copia in sola lettura |
-| Regole | `ItemTransfer`, `ItemTree` | **solo host** |
+| Dati | `ItemDefinition` (+ `data/`: `MagazineDefinition`, `AmmoDefinition`, `ItemGridDef`, `ItemSlotDef`, `ItemFilter`, `InventoryConfig`), `ItemCategory`, `ItemDatabase` | ovunque |
+| Istanze | `ItemInstance`, `InventoryGrid`, `PlayerInventoryModel`, `core/ItemCodec` | host; i client una copia in sola lettura |
+| Regole | `core/InventoryRules`, `core/EquipRules` — **senza effetti**, condivise host/UI | ovunque |
+| Operazioni | `core/InventoryOps`, `core/ItemFactory` | **solo host** |
 | Rete | `PlayerInventory` | host, push al **solo proprietario** |
 | Mondo | `ItemPickup`, `GameWorld` | spawn host, nodi visivi ovunque |
-| UI | `InventoryScreen` e view, `PlayerHud` | solo peer locale |
+| UI | `ui/` (`InventoryScreen`, `GridView`, `SlotView`, finestre, `QuickBar`), `PlayerHud` | solo peer locale |
 
-## 1. `ItemAddress` (3 int: `Realm`, `A`, `B`)
+Scelte prese contro la specifica originale, per CLAUDE.md: nessuna libreria `Inventory.Core`
+separata, nessun test automatico, categorie come enum ad albero invece che risorse.
 
-| Realm | A | B |
-|---|---|---|
-| `PlayerGrid` | `-1` = tasche; positivo = `ContainerGrid` dell'item con quell'`InstanceId` | — |
-| `PlayerEquip` | `(int)EquipSlotType` | — |
-| `WorldContainer` | `Uid` dell'oggetto nel mondo | `InstanceId` del container nel payload; `0` = radice |
-| `WorldLoose` | **destinazione: `0` = a terra ai propri piedi. Sorgente: `Uid` dell'oggetto.** | — |
+## 1. Modello: tutto e' un albero di `ItemInstance`
 
-## 2. `ItemTransfer.Execute` — l'unico collo di bottiglia
+- Il giocatore ha **solo slot di equipaggiamento** (`EquipSlotType`, i 15 di Tarkov). Anche le tasche
+  sono un item (categoria `Pockets`, 4 griglie 1x1) indossato nel proprio slot e **non movibile**.
+- Un'istanza puo' avere `Grids` (sotto-griglie da `ItemDefinition.GridSpecs`), `SlotItems` (oggi solo
+  il pozzetto del caricatore di un'arma) e `Rounds` (pila LIFO di un caricatore: l'ultimo elemento e'
+  il prossimo colpo).
+- Ogni istanza sa dove si trova: `Parent`, `ParentGrid`, `ParentSlot`, `EquippedIn`. Li scrivono
+  **solo** `InventoryGrid.Place/Remove`, `ItemInstance.SetSlot` e `PlayerInventoryModel.SetEquip`.
+- **Gli `InstanceId` sono unici in tutta la sessione** (`ItemDatabase.AllocateInstanceId`, solo host):
+  un item passa dall'inventario al mondo senza cambiare id. Non esiste piu' il "rehoming".
+- Gli slot ammessi derivano dalla **categoria** (`EquipRules.Accepts`), non da un campo del `.tres`.
+- Sottoclassi `[GlobalClass]` per le categorie con attributi propri; mai campi opzionali sulla base.
 
-Ogni interazione (drag, quick move, equip, scarto, raccolta, saccheggio) è **uno** spostamento fra due
-`ItemAddress`. Fasi: **Extract** (con rollback) → **Rehome** (nuovi id se cambia spazio) → **Insert**.
+## 2. Indirizzi e spazi
 
-- Extract: `WorldLoose` entro `Reach` e **non `Anchored`**; `WorldContainer` entro `Reach`, mai la radice.
-- Insert: `PlayerGrid` peso → griglia → anti-ciclo → piazza (`x < 0` = auto); `PlayerEquip` peso → slot
-  del tipo giusto **e vuoto** (nessuno swap); `WorldContainer` senza limite di peso; `WorldLoose` sempre ok.
-- **Il rollback è un auto-stow, non un ripristino in cella**: una mossa rifiutata può aver spostato
-  l'item. Per questo `RequestMove` chiama `PushState()` **anche quando `Execute` ritorna false**.
-- `SpaceKey`: `"player"`, `"world:{uid}"`, `"loose"`. Stesso spazio = stessa `ItemInstance`; altrimenti
-  serializza e ricostruisce con id freschi. **Gli id di un payload nel mondo sono unici solo lì dentro.**
-- **Il mondo si muta solo in `WorldSession.Commit()`**: è ciò che rende sicuro il rollback nullo di
-  `WorldLoose`.
+- **Spazio**: `0` = il proprio inventario; `> 0` = `Uid` di un `ItemPickup`.
+- **Sorgente** di un'operazione = `(spazio, InstanceId)`. **Destinazione** = `ItemAddress`
+  (`Space`, `Owner`, `Type`: `Grid`/`Slot`/`Ground`, `Index`). `Slot` con `Owner = 0` e' uno slot del
+  personaggio e `Index` e' un `EquipSlotType`.
+- `InventorySpaces` risolve gli spazi per un giocatore: un pickup fuori portata non si risolve. La
+  usano sia l'host sia la UI.
 
-## 3. Invarianti
+## 3. Operazioni: valida, poi muta
 
-- **Nulla tiene un riferimento a griglie o istanze attraverso un sync**: `Deserialize` ricostruisce
-  tutto. `ContainerWindow` ri-risolve dall'`ItemAddress`, `InventoryScreen.Rebuild()` ricrea le view.
-- `ValidateSender()` in ogni `Request*`. `_ownerPeerId` viene da `GetParent().Name`: **il nodo Player si
-  chiama come il peer id**.
-- Ogni mutazione host-side chiama `HostPushState()`: emette `HostStateChanged`, a cui `WeaponController`
-  si aggancia per munizioni e validità dell'arma impugnata.
-- **Enum serializzati** (`EquipSlotType`, `RealmType`, `ItemCategory`): si appende in coda, mai riordinare.
-  Le chiavi del formato (`id`, `item`, `x`, `y`, `rot`, `stack`, `grid`…) servono sync, payload e rehoming.
-- Anti-ciclo: uno zaino non entra in sé stesso o in un discendente. Peso: `MaxLoad = 40 kg`, col
-  contenuto; non vale per mondo e terra.
-- Auto-stow: zaino → gilet → tasche, ma prima auto-**equip** se lo slot è libero.
-- `InventoryGrid`: `Place` fallisce su un item già presente (va rimosso prima); `TryAutoPlace` prova non
-  ruotato poi ruotato; `Contains` non ricorre nei contenitori annidati.
-- `CountById`/`ConsumeById` scorrono solo le griglie (l'arma impugnata non è riserva) e rimuovono gli
-  stack esauriti **dopo** l'iterazione.
+`PlayerInventory.Run` e' lo scheletro di ogni `Request*`: `ValidateSender` → `Session` → operazione →
+`Commit()` → `PushState()` **sempre**, e `OperationRejected` al proprietario se fallisce.
 
-## 4. Oggetti nel mondo
+- `InventoryOps` valida con `InventoryRules` **prima** di toccare qualcosa: un rifiuto non sposta
+  nulla. Eccezioni volute, a piu' passi e sempre in stato valido: unione di stack + ricerca spazio
+  (`Store`), `UnloadAmmo`.
+- **Il mondo si muta solo in `Session.Commit()`** (despawn, `ReplacePickupPayload`, spawn a terra).
+  L'host modifica direttamente `ItemPickup.Root`, poi il nodo viene sostituito.
+- Intenti: `Move` (cella/slot/terra, `amount` = dividi, slot occupato = scambio), `DropOnItem`
+  (priorita': unisci → carica munizioni → monta caricatore → inserisci), `QuickMove`, `QuickEquip`,
+  `Pickup`, `LoadAmmo`, `UnloadAmmo`, `Sort`, `SetTag`, `Unpack`, `Use`, `AssignQuickSlot`.
+- Ordine dei controlli di `CanPlace`: limiti → sovrapposizione → auto-contenimento → filtro →
+  filtro a cascata (`FilterAppliesToDescendants`, il pouch) → annidamento.
+- Priorita' di stivaggio per categoria in `InventoryRules.StoragePriority`; pouch e slot speciali non
+  sono mai destinazioni automatiche.
 
-`ItemPickup` è solo visivo. Identità = `Uid` host-allocato (i nomi dei nodi hanno un seriale): **cerca
-per `Uid` saltando `IsQueuedForDeletion()`**. `Payload` = albero completo, impostato dalla spawn function
-su ogni peer. `Anchored` = cassa: F la apre invece di raccoglierla. `ReplacePickupPayload` = despawn +
-respawn con stesso uid/posizione/`Anchored`: la spawn-data resta l'unica fonte di verità.
+## 4. Invarianti
 
-**Interazione in prima persona** (`PlayerHud`): il bersaglio di F è l'oggetto **guardato** — il più
-allineato all'asse della camera entro ~20° — fra quelli entro `PickupRange` (3.5 m dal corpo). La portata
-è quella che l'host rivalida; lo sguardo sceglie solo *quale*, in locale. Il prompt `Label3D` compare lì.
+- **Nulla tiene un riferimento a un'istanza attraverso un sync**: sul client `Deserialize` ricostruisce
+  tutto. La UI ricorda gli id e ri-risolve (`InventoryScreen.FindAnywhere`, `Revalidate`).
+- **Enum serializzati** (`EquipSlotType`, `ItemCategory`, `InvError`, `ItemSlotKind`,
+  `ItemAddress.Kind`): si appende in coda. I valori 3 e 4 di `EquipSlotType` sono ritirati; 7 e 9 li
+  usa `tools/playtest_fps.gd`.
+- Ogni mutazione host-side finisce in `HostPushState()`, che emette `HostStateChanged`: ci si aggancia
+  `WeaponController` per caricatore, riserva e validita' dell'arma impugnata.
+- **Sparare non fa push dell'inventario**: il conteggio sulla tile si riallinea al push successivo
+  (`PlayerHud` chiede lo stato a ogni apertura).
+- `_ownerPeerId` viene da `GetParent().Name`: il nodo Player si chiama come il peer id.
+- Config in `resources/inventory_config.tres` (`InventoryConfig.Current`): nessun numero nel codice.
 
-## 5. UI e drag & drop
+## 5. Oggetti nel mondo
 
-- Aprire l'inventario (Tab) libera il cursore: lo gestisce `PlayerHud` (skill `ui-hud` §3). Lo sguardo si
-  ferma, WASD no.
-- Il payload del drag lo possiede il viewport (`GuiGetDragData()`), la presentazione `InventoryScreen`.
-  Drop = `SubmitMove(from, id, to, x, y, rotated)`.
-- La cella sotto il cursore è l'**angolo in alto a sinistra** dell'item.
-- **`ItemView` resta `MouseFilter.Ignore`**, o i drop su celle occupate non arrivano alla griglia.
-- La colonna "a terra" si aggiorna ogni 0.4 s, **non durante un drag**.
+`ItemPickup` e' solo visivo; identita' = `Uid` host-allocato (**cerca per `Uid` saltando
+`IsQueuedForDeletion()`**). `Payload` = albero completo; `Root` lo deserializza una volta. `Anchored` =
+cassa: F la apre. Il modello a terra e' `assets/models/items/<ItemId>.glb` se esiste, altrimenti un cubo:
+si mostra alla scala **nativa** del file, per `ItemDefinition.WorldModelScale` (default 1).
 
-## 6. Non implementato di proposito
+## 6. UI
 
-**Merge/split degli stack** (`MaxStack` è esportato ma nessuno lo legge: la lacuna più grande), effetto
-dei quick slot (`RequestUse` decrementa e basta), voci d'arma nel menu contestuale (il caricatore è stato
-di `WeaponController`), moduli/durabilità, swap sull'equip, cadaveri (riuseranno `Anchored`), test automatici.
+- **Niente drag & drop integrato di Godot**: `InventoryScreen` e' il controllore. Le viste si
+  registrano come `IDropTarget`; una finestra copre i bersagli dietro di se'.
+- `GridView` disegna celle e tile in un solo `_Draw` (nessun nodo per tile). La vista "a terra" e' una
+  griglia virtuale impacchettata con **proxy**, mai con le radici vere.
+- L'anteprima verde/rossa chiama le stesse `InventoryRules` dell'host.
+- `InvTheme.Cell` si ricalcola sullo spazio disponibile (massimo `CellPx`): tutte le misure ne derivano.
+- Esc a inventario aperto e' di `PlayerHud` (`GameManager.InventoryOpen` fa astenere `PauseMenu`).
+- Errori: `InvError` → chiave `UI_INV_ERR_<NOME>`. Slot dell'oggetto: `UI_INV_ITEMSLOT_<ID>`.
+
+## 7. Aggiungere un oggetto
+
+`.tres` in `resources/items/` + righe `ITEM_<ID>_NAME` (e `_SHORT`, `_DESC`) in `locales/items.csv` +
+eventuale `.glb` in `assets/models/items/`. Icona: `tools/bake_item_icons.gd` (**non** headless)
+fotografa il modello in `assets/textures/items/<ItemId>.png`; senza icona la tile mostra un segnaposto.
+
+## 8. Non implementato
+
+Modding delle armi (dimensione dinamica, piegatura), perquisizione, esame, Found in Raid, pin/lock,
+azioni a tempo, stash fuori raid, effetto dei consumabili (`Use` decrementa e basta), audio, cadaveri.
+La penalita' di movimento da sovraccarico e' calcolata (`PlayerInventoryModel.SpeedFactorFor`) ma
+**non collegata** a `CharacterMotor`. Non c'e' un limite rigido di peso.

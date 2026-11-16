@@ -2,11 +2,9 @@
 
 [ext_resource type="Script" uid="uid://ddgy3ykg7vn28" path="res://player/scripts/PlayerController.cs" id="1"]
 [ext_resource type="Script" uid="uid://d3tjql8a70ehi" path="res://player/scripts/PlayerInput.cs" id="2"]
-[ext_resource type="Script" uid="uid://qsh7pwaip67f" path="res://player/scripts/PlayerNetworkSync.cs" id="3"]
 [ext_resource type="PackedScene" path="res://player/scenes/PlayerCamera.tscn" id="4"]
 [ext_resource type="Script" uid="uid://dab6c3f7xmogr" path="res://inventory/scripts/PlayerInventory.cs" id="5"]
 [ext_resource type="Script" uid="uid://yk6qvc3e3agr" path="res://inventory/scripts/PlayerHud.cs" id="6"]
-[ext_resource type="Script" uid="uid://bm0gpvl5q1vkc" path="res://combat/scripts/WeaponVisual.cs" id="7"]
 [ext_resource type="Script" uid="uid://drqobdlh21vtg" path="res://combat/scripts/HealthComponent.cs" id="8"]
 [ext_resource type="Script" uid="uid://dhman5hfffs5m" path="res://combat/scripts/HitboxComponent.cs" id="9"]
 [ext_resource type="Script" uid="uid://c8n2dfplxjnx3" path="res://combat/scripts/WeaponController.cs" id="10"]
@@ -77,12 +75,9 @@ properties/2/replication_mode = 1
 properties/3/path = NodePath(".:ReserveAmmo")
 properties/3/spawn = true
 properties/3/replication_mode = 1
-properties/4/path = NodePath(".:RecoilSpread")
+properties/4/path = NodePath(".:Reloading")
 properties/4/spawn = true
 properties/4/replication_mode = 1
-properties/5/path = NodePath(".:Reloading")
-properties/5/spawn = true
-properties/5/replication_mode = 1
 
 [node name="Player" type="CharacterBody3D" unique_id=487784520]
 collision_layer = 2
@@ -103,15 +98,8 @@ collision_mask = 33
 [node name="CharacterRig" parent="Visual" unique_id=1696734293 instance=ExtResource("13")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1, 0)
 
-[node name="WeaponMount" type="Node3D" parent="Visual" unique_id=829403687]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.25, 0.15, 0.45)
-script = ExtResource("7")
-
 [node name="Input" type="Node" parent="." unique_id=228946368]
 script = ExtResource("2")
-
-[node name="NetSync" type="Node" parent="." unique_id=1039920002]
-script = ExtResource("3")
 
 [node name="Synchronizer" type="MultiplayerSynchronizer" parent="." unique_id=971525579]
 replication_config = SubResource("Repl_1")

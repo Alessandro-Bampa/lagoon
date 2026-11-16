@@ -20,10 +20,6 @@ public static class ShotEffects
     private static readonly Color TracerColor = new(1f, 0.85f, 0.35f);
     private static readonly Color ImpactColor = new(1f, 0.4f, 0.2f);
 
-    /// Bocca dell'arma nello spazio del punto di presa (canna lungo +Z): da qui partono vampa e
-    /// tracciante.
-    public static readonly Vector3 MuzzleOffset = new(0f, 0f, 0.5f);
-
     /// Segmento luminoso fra la bocca dell'arma e il punto d'arrivo del colpo.
     public static void SpawnTracer(Node parent, Vector3 from, Vector3 to)
     {
@@ -48,15 +44,18 @@ public static class ShotEffects
         FreeAfter(tracer, TracerSeconds);
     }
 
-    /// Lampo alla bocca dell'arma, sul supporto che la regge.
-    public static void SpawnMuzzleFlash(Node3D mount)
+    /// <summary>
+    /// Lampo alla bocca dell'arma. E' figlio di <paramref name="mount"/> (il marcatore della
+    /// bocca, o l'arma con <paramref name="localPosition"/>), cosi' segue il rinculo.
+    /// </summary>
+    public static void SpawnMuzzleFlash(Node3D mount, Vector3 localPosition = default)
     {
         var flash = new MeshInstance3D
         {
-            Mesh = new SphereMesh { Radius = 0.09f, Height = 0.18f, RadialSegments = 6, Rings = 3 },
+            Mesh = new SphereMesh { Radius = 0.045f, Height = 0.09f, RadialSegments = 6, Rings = 3 },
             MaterialOverride = Unshaded(TracerColor),
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            Position = MuzzleOffset,
+            Position = localPosition,
         };
         mount.AddChild(flash);
 

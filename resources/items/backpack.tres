@@ -1,17 +1,31 @@
-[gd_resource type="Resource" script_class="ItemDefinition" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="ItemDefinition" load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://inventory/scripts/ItemDefinition.cs" id="1"]
+[ext_resource type="Script" path="res://inventory/scripts/data/ItemGridDef.cs" id="2"]
+
+[sub_resource type="Resource" id="grid_0"]
+script = ExtResource("2")
+Columns = 5
+Rows = 4
+Offset = Vector2(0, 0)
+
+[sub_resource type="Resource" id="grid_1"]
+script = ExtResource("2")
+Columns = 3
+Rows = 1
+Offset = Vector2(0, 4.15)
+
+[sub_resource type="Resource" id="grid_2"]
+script = ExtResource("2")
+Columns = 2
+Rows = 1
+Offset = Vector2(3.12, 4.15)
 
 [resource]
 script = ExtResource("1")
 ItemId = "backpack"
-Width = 2
-Height = 3
-Weight = 2.0
-Category = 2
-EquipSlot = 6
-IsContainer = true
-ContainerColumns = 5
-ContainerRows = 5
-MaxStack = 1
-QuickUsable = false
+Width = 4
+Height = 5
+Weight = 1.8
+Category = 21
+Grids = Array[ExtResource("2")]([SubResource("grid_0"), SubResource("grid_1"), SubResource("grid_2")])

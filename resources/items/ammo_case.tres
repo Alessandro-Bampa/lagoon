@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ItemDefinition" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://inventory/scripts/ItemDefinition.cs" id="1"]
+[ext_resource type="Script" path="res://inventory/scripts/data/ItemFilter.cs" id="3"]
+
+[sub_resource type="Resource" id="filter"]
+script = ExtResource("3")
+IncludeCategories = Array[int]([11, 10])
+
+[resource]
+script = ExtResource("1")
+ItemId = "ammo_case"
+Width = 2
+Height = 2
+Weight = 0.8
+Category = 2
+ContentFilter = SubResource("filter")
+ContainerColumns = 4
+ContainerRows = 4

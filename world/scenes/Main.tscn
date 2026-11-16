@@ -1,9 +1,11 @@
 [gd_scene format=3 uid="uid://tklpe0tmv0uw"]
 
 [ext_resource type="Script" uid="uid://brk5xv2pe5ser" path="res://world/scripts/GameWorld.cs" id="1"]
-[ext_resource type="PackedScene" path="res://world/scenes/Levels/TestLevel.tscn" id="2"]
+[ext_resource type="PackedScene" uid="uid://cg24b0t5fxthg" path="res://world/scenes/Levels/TestLevel.tscn" id="2"]
 [ext_resource type="PackedScene" path="res://ui/scenes/MainMenu.tscn" id="3"]
 [ext_resource type="PackedScene" path="res://ui/scenes/PauseMenu.tscn" id="4"]
+[ext_resource type="PackedScene" uid="uid://cmiyor7ri6rak" path="res://assets/models/items/supply_crate.glb" id="5_ymvc0"]
+[ext_resource type="PackedScene" uid="uid://dbdnlkqoglfgy" path="res://assets/models/items/pickles.glb" id="6_wba6j"]
 
 [node name="Main" type="Node3D" unique_id=1611200653]
 script = ExtResource("1")
@@ -13,7 +15,7 @@ script = ExtResource("1")
 [node name="Players" type="Node3D" parent="." unique_id=565105804]
 
 [node name="PlayerSpawner" type="MultiplayerSpawner" parent="." unique_id=1369130927]
-_spawnable_scenes = PackedStringArray("res://player/scenes/Player.tscn")
+_spawnable_scenes = PackedStringArray("uid://d03rgeyyiw3d6")
 spawn_path = NodePath("../Players")
 
 [node name="WorldItems" type="Node3D" parent="." unique_id=2032505717]
@@ -27,3 +29,9 @@ layer = 20
 [node name="MainMenu" parent="UI" unique_id=1687971568 instance=ExtResource("3")]
 
 [node name="PauseMenu" parent="UI" unique_id=1020478585 instance=ExtResource("4")]
+
+[node name="supply_crate" parent="." unique_id=457066120 instance=ExtResource("5_ymvc0")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.739107, 6.0321725e-09, 0.31715333)
+
+[node name="pickles" parent="." unique_id=693811283 instance=ExtResource("6_wba6j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.6887584, 4.489666e-07, 0.45823073)

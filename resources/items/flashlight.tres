@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ItemDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://inventory/scripts/ItemDefinition.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+ItemId = "flashlight"
+Width = 1
+Height = 1
+Weight = 0.15
+Category = 30

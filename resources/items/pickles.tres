@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ItemDefinition" format=3 uid="uid://hu316dgvbceh"]
+
+[ext_resource type="Script" uid="uid://u03j0a4uswqt" path="res://inventory/scripts/ItemDefinition.cs" id="1"]
+[ext_resource type="Script" uid="uid://dnq0ffgkqxu4s" path="res://inventory/scripts/data/ItemGridDef.cs" id="1_t8t0v"]
+[ext_resource type="Script" uid="uid://bbbwf32ok28ix" path="res://inventory/scripts/data/ItemSlotDef.cs" id="2_kx2uo"]
+
+[resource]
+script = ExtResource("1")
+ItemId = "pickles"
+Height = 2
+Weight = 0.7
+Category = 25
+QuickUsable = true

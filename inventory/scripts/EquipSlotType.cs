@@ -1,26 +1,32 @@
 namespace Lagoon;
 
 /// <summary>
-/// Slot di equipaggiamento del giocatore. Gli slot arma (Fase 3, shooting) sono definiti qui ma
-/// restano riservati e non funzionali in Fase 2: esistono solo come destinazioni di equip valide.
+/// I 15 slot di equipaggiamento in stile Tarkov (i tre "special" contano come uno nell'elenco
+/// canonico). Quali categorie accetta ogni slot e' deciso da <see cref="EquipRules"/>.
 ///
-/// ATTENZIONE: i valori interi sono serializzati sulla rete (chiavi equipment / RPC di equip).
-/// Non riordinare gli enum senza aggiornare eventuali risorse .tres che ne salvano il valore int.
+/// ATTENZIONE: i valori interi viaggiano in rete (indirizzi, <c>WeaponController.HeldSlot</c>) e
+/// sono usati da <c>tools/playtest_fps.gd</c>. Si appende in coda, non si riordina. I valori 3 e 4
+/// (gambe/piedi del vecchio POC) sono ritirati e non vanno riusati.
 /// </summary>
 public enum EquipSlotType
 {
     None = 0,
-    Head = 1,
-    Torso = 2,
-    Legs = 3,
-    Feet = 4,
-    Vest = 5,
+    Headwear = 1,
+    BodyArmor = 2,
+    // 3, 4: ritirati.
+    TacticalRig = 5,
     Backpack = 6,
-    WeaponPrimary = 7,
-    WeaponSecondary = 8,
-    Sidearm = 9,
-
-    /// Contenitore sicuro (stile Tarkov): piccola griglia sempre indossata.
-    /// Aggiunto in coda proprio perche' i valori sono serializzati.
+    OnSling = 7,
+    OnBack = 8,
+    Holster = 9,
     SecureContainer = 10,
+    Earpiece = 11,
+    FaceCover = 12,
+    Armband = 13,
+    Eyewear = 14,
+    Scabbard = 15,
+    Pockets = 16,
+    Special1 = 17,
+    Special2 = 18,
+    Special3 = 19,
 }

@@ -15,10 +15,22 @@ public partial class ItemDatabase : Node
 {
     private const string ItemsFolder = "res://resources/items";
 
+    private const string ConfigPath = "res://resources/inventory_config.tres";
+
     private readonly Dictionary<string, ItemDefinition> _byId = new();
+
+    // Contatore degli InstanceId: avanza SOLO sull'host, unico a creare istanze. Gli id sono
+    // unici nella sessione, cosi' un oggetto passa dall'inventario al mondo senza cambiarlo.
+    private int _nextInstanceId = 1;
+
+    /// Nuovo InstanceId. Va chiamato solo dall'host (i client ricevono gli id dalla replica).
+    public int AllocateInstanceId() => _nextInstanceId++;
 
     public override void _Ready()
     {
+        if (ResourceLoader.Exists(ConfigPath) && ResourceLoader.Load<Resource>(ConfigPath) is InventoryConfig config)
+            InventoryConfig.Current = config;
+
         LoadAll();
         GD.Print($"[ItemDatabase] Caricate {_byId.Count} definizioni item da {ItemsFolder}.");
         // Le traduzioni sono gia' registrate all'avvio degli autoload: la verifica puo' girare qui.

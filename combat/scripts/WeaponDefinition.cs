@@ -11,6 +11,11 @@ namespace Lagoon;
 /// <c>ResourceLoader.Load&lt;ItemDefinition&gt;</c>, che restituisce gia' l'istanza derivata; i
 /// consumatori fanno <c>def as WeaponDefinition</c>.
 ///
+/// Il rinculo e' quello di uno sparatutto in prima persona, in tre parti indipendenti: la
+/// DISPERSIONE (il cono in cui l'host devia il colpo: stretta in mira, larga dal fianco, in
+/// movimento e sparando di fila), il rinculo della VISUALE (locale: la camera sale e scarta, ed e'
+/// cio' che si compensa col mouse) e quello VISIVO dell'arma (in <see cref="WeaponAnimationSet"/>).
+///
 /// Fase 3 = hitscan puro: <see cref="ProjectileSpeed"/>, <see cref="Penetration"/> e
 /// <see cref="Caliber"/> sono dichiarati ma non ancora letti da nessuno — servono a fissare la
 /// superficie degli attributi ora, cosi' i <c>.tres</c> non vanno rifatti quando arriveranno i
@@ -42,41 +47,68 @@ public partial class WeaponDefinition : ItemDefinition
     //  Portata
     // ====================================================================================
 
-    /// Distanza di riferimento per la precisione: mirando piu' lontano la dispersione cresce.
-    [Export] public float EffectiveRangeMeters { get; set; } = 30f;
-
     /// Distanza massima del raggio: oltre, il colpo non esiste.
     [Export] public float MaxRangeMeters { get; set; } = 60f;
 
     // ====================================================================================
-    //  Precisione
+    //  Dispersione: il cono entro cui l'HOST devia il colpo (semiangolo, in gradi)
     // ====================================================================================
 
-    /// Dispersione minima, sempre presente anche a bruciapelo e ad arma ferma.
-    [Export] public float BaseSpreadDegrees { get; set; } = 0.6f;
+    /// Cono sparando dal fianco, da fermi.
+    [Export] public float HipSpreadDegrees { get; set; } = 2.2f;
 
-    /// Dispersione aggiuntiva a piena <see cref="EffectiveRangeMeters"/>: e' il "piu' miri distante,
-    /// piu' l'arma e' imprecisa" — il colpo puo' deviare dal centro del reticolo.
-    [Export] public float SpreadPerRangeDegrees { get; set; } = 2.5f;
+    /// Cono in mira (tasto destro), da fermi: il primo colpo va dove puntano le tacche.
+    [Export] public float AimSpreadDegrees { get; set; } = 0.2f;
 
-    /// Tetto assoluto della dispersione, distanza e rinculo inclusi.
-    [Export] public float MaxSpreadDegrees { get; set; } = 8f;
+    /// Cono aggiunto dal movimento, a piena velocita' di corsa; in proporzione sotto.
+    [Export] public float MoveSpreadDegrees { get; set; } = 1.8f;
+
+    /// Cono aggiunto mentre si e' in aria.
+    [Export] public float AirSpreadDegrees { get; set; } = 3.0f;
+
+    /// Quanto del cono resta da accovacciati.
+    [Export] public float CrouchSpreadFactor { get; set; } = 0.75f;
+
+    /// Cono che si accumula a ogni colpo sparando di fila ("bloom").
+    [Export] public float BloomPerShotDegrees { get; set; } = 0.35f;
+
+    /// Velocita' con cui il bloom si riassorbe, in gradi al secondo.
+    [Export] public float BloomRecoveryDegreesPerSecond { get; set; } = 5f;
+
+    /// Tetto del solo bloom.
+    [Export] public float MaxBloomDegrees { get; set; } = 3f;
+
+    /// Quanto del bloom resta in mira.
+    [Export] public float AimBloomFactor { get; set; } = 0.35f;
 
     // ====================================================================================
-    //  Rinculo
+    //  Rinculo della VISUALE: locale al tiratore, e' cio' che si compensa col mouse
     // ====================================================================================
 
-    /// Dispersione accumulata a ogni colpo (il reticolo "fiorisce" sparando in automatico).
-    [Export] public float RecoilPerShotDegrees { get; set; } = 0.7f;
+    /// Di quanto sale la visuale a ogni colpo, in gradi.
+    [Export] public float RecoilPitchDegrees { get; set; } = 1.1f;
 
-    /// Velocita' di riassorbimento del rinculo, in gradi al secondo.
-    [Export] public float RecoilRecoveryDegreesPerSecond { get; set; } = 4f;
+    /// Scarto laterale casuale a ogni colpo, in gradi (+/-).
+    [Export] public float RecoilYawDegrees { get; set; } = 0.45f;
 
-    /// Tetto del solo contributo di rinculo.
-    [Export] public float MaxRecoilSpreadDegrees { get; set; } = 5f;
+    /// Deriva laterale costante a ogni colpo, in gradi (positiva = verso sinistra): da' alla
+    /// raffica una direzione riconoscibile invece di un tremolio simmetrico.
+    [Export] public float RecoilYawBiasDegrees { get; set; } = 0.12f;
 
-    /// Calcio della visuale a ogni colpo, in gradi: la camera sale e poi rientra. Solo locale.
-    [Export] public float CameraKick { get; set; } = 0.6f;
+    /// Rollio casuale della visuale a ogni colpo, in gradi (+/-).
+    [Export] public float RecoilRollDegrees { get; set; } = 0.5f;
+
+    /// Quanto del rinculo resta in mira (arma appoggiata alla spalla).
+    [Export] public float AimRecoilFactor { get; set; } = 0.7f;
+
+    /// Quanto del rinculo resta da accovacciati.
+    [Export] public float CrouchRecoilFactor { get; set; } = 0.8f;
+
+    /// Prontezza con cui la visuale raggiunge il rinculo, in 1/s: piu' alta = piu' secco.
+    [Export] public float RecoilSnappiness { get; set; } = 30f;
+
+    /// Velocita' con cui la visuale rientra dopo il colpo, in 1/s.
+    [Export] public float RecoilReturnSpeed { get; set; } = 7f;
 
     // ====================================================================================
     //  Cadenza e munizioni
@@ -87,12 +119,11 @@ public partial class WeaponDefinition : ItemDefinition
     /// True = fuoco continuo tenendo premuto; false = un colpo per pressione.
     [Export] public bool Automatic { get; set; } = true;
 
-    [Export] public int MagazineSize { get; set; } = 30;
-
+    /// Durata della ricarica: va tenuta uguale alla clip <c>reload</c> del viewmodel.
     [Export] public float ReloadSeconds { get; set; } = 2.2f;
 
-    /// <see cref="ItemDefinition.ItemId"/> della munizione consumata dalla ricarica.
-    [Export] public string AmmoItemId { get; set; } = "ammo";
+    /// Tempo dopo l'estrazione in cui l'arma non spara ne' ricarica (clip <c>draw</c>).
+    [Export] public float DrawSeconds { get; set; } = 0.5f;
 
     /// RISERVATO (non ancora usato): velocita' del proiettile in m/s, per quando il tiro passera' da
     /// hitscan a proiettile simulato.
@@ -103,22 +134,13 @@ public partial class WeaponDefinition : ItemDefinition
     // ====================================================================================
 
     /// <summary>
-    /// Come l'arma va impugnata e animata. E' un riferimento a una <c>Resource</c> condivisa e non un
-    /// blocco di campi qui, perche' tutte le armi a due mani impugnano allo stesso modo: un solo
-    /// <c>.tres</c> serve l'intera categoria.
+    /// Come l'arma si vede e si anima: viewmodel in prima persona, modello in terza, tempi di
+    /// mira, rinculo visivo. Tutto cio' che e' RESA sta li'; qui resta cio' che calcola l'host.
     ///
-    /// Puo' essere null: un'arma senza set usa la posa disarmata, cioe' la sola locomozione. Il layer
-    /// di animazione non deve mai assumere che ci sia.
+    /// Puo' essere null: un'arma senza set funziona ma non si vede. Il layer di animazione non
+    /// deve mai assumere che ci sia.
     /// </summary>
     [Export] public WeaponAnimationSet? AnimationSet { get; set; }
-
-    /// <summary>
-    /// Modello 3D dell'arma (una scena, tipicamente un <c>.glb</c> di
-    /// <c>assets/models/weapons/</c>), costruito nel FRAME DELLA PRESA: origine
-    /// sull'impugnatura, canna lungo +Z. Null = placeholder geometrico di
-    /// <see cref="WeaponVisual"/>, cosi' un'arma nuova compare comunque.
-    /// </summary>
-    [Export] public PackedScene? VisualScene { get; set; }
 
     // ====================================================================================
     //  Formule condivise
@@ -128,19 +150,24 @@ public partial class WeaponDefinition : ItemDefinition
     public float ShotIntervalMsec => RoundsPerMinute <= 0f ? 0f : 60000f / RoundsPerMinute;
 
     /// <summary>
-    /// Dispersione totale (semiangolo del cono di tiro, in gradi) per una data distanza di mira e un
-    /// dato rinculo accumulato. UNICA fonte di verita' della formula: la usa l'host per tirare il
-    /// dado e il reticolo per disegnare l'anello, cosi' quello che il giocatore vede corrisponde a
-    /// quello che l'host calcola.
+    /// Dispersione totale (semiangolo del cono di tiro, in gradi). UNICA formula: la usa l'host
+    /// per tirare il dado, a partire dal solo stato replicato del tiratore.
     /// </summary>
-    public float SpreadDegrees(float aimDistance, float recoilDegrees)
+    /// <param name="aiming">Arma all'occhio.</param>
+    /// <param name="crouching">Accovacciato.</param>
+    /// <param name="grounded">A terra.</param>
+    /// <param name="moveFraction">Velocita' orizzontale come frazione di quella di corsa (0..1).</param>
+    /// <param name="bloom">Bloom accumulato dai colpi precedenti, in gradi.</param>
+    public float SpreadDegrees(bool aiming, bool crouching, bool grounded, float moveFraction, float bloom)
     {
-        float t = EffectiveRangeMeters <= 0f
-            ? 0f
-            : Mathf.Clamp(aimDistance / EffectiveRangeMeters, 0f, 1f);
+        float spread = aiming ? AimSpreadDegrees : HipSpreadDegrees;
+        spread += MoveSpreadDegrees * Mathf.Clamp(moveFraction, 0f, 1f);
+        if (!grounded)
+            spread += AirSpreadDegrees;
+        if (crouching)
+            spread *= CrouchSpreadFactor;
 
-        float spread = BaseSpreadDegrees + SpreadPerRangeDegrees * t + recoilDegrees;
-        return Mathf.Min(spread, MaxSpreadDegrees);
+        return spread + bloom * (aiming ? AimBloomFactor : 1f);
     }
 
     /// Fattore di danno (0..1) alla distanza data: pieno fino a <see cref="FalloffStartMeters"/>,

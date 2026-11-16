@@ -1,17 +1,49 @@
-[gd_resource type="Resource" script_class="ItemDefinition" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="ItemDefinition" load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://inventory/scripts/ItemDefinition.cs" id="1"]
+[ext_resource type="Script" path="res://inventory/scripts/data/ItemGridDef.cs" id="2"]
+
+[sub_resource type="Resource" id="grid_0"]
+script = ExtResource("2")
+Columns = 1
+Rows = 2
+Offset = Vector2(0, 0)
+
+[sub_resource type="Resource" id="grid_1"]
+script = ExtResource("2")
+Columns = 1
+Rows = 2
+Offset = Vector2(1.12, 0)
+
+[sub_resource type="Resource" id="grid_2"]
+script = ExtResource("2")
+Columns = 1
+Rows = 2
+Offset = Vector2(2.24, 0)
+
+[sub_resource type="Resource" id="grid_3"]
+script = ExtResource("2")
+Columns = 1
+Rows = 2
+Offset = Vector2(3.36, 0)
+
+[sub_resource type="Resource" id="grid_4"]
+script = ExtResource("2")
+Columns = 2
+Rows = 2
+Offset = Vector2(0, 2.15)
+
+[sub_resource type="Resource" id="grid_5"]
+script = ExtResource("2")
+Columns = 2
+Rows = 2
+Offset = Vector2(2.24, 2.15)
 
 [resource]
 script = ExtResource("1")
 ItemId = "vest"
-Width = 2
-Height = 2
-Weight = 1.5
-Category = 2
-EquipSlot = 5
-IsContainer = true
-ContainerColumns = 4
-ContainerRows = 3
-MaxStack = 1
-QuickUsable = false
+Width = 3
+Height = 3
+Weight = 1.7
+Category = 19
+Grids = Array[ExtResource("2")]([SubResource("grid_0"), SubResource("grid_1"), SubResource("grid_2"), SubResource("grid_3"), SubResource("grid_4"), SubResource("grid_5")])

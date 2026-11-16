@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="WeaponAnimationSet" format=3 uid="uid://dcxb8e8dj1754"]
+
+[ext_resource type="Script" uid="uid://b8e3gdnsstvfl" path="res://animation/scripts/WeaponAnimationSet.cs" id="1"]
+[ext_resource type="PackedScene" uid="uid://b67xx5jimcwqn" path="res://assets/models/weapons/VM_Pistol.glb" id="2"]
+[ext_resource type="PackedScene" uid="uid://xgyp134d8n7p" path="res://assets/models/weapons/W_Pistol.glb" id="3"]
+
+[resource]
+script = ExtResource("1")
+ViewmodelScene = ExtResource("2")
+WorldScene = ExtResource("3")
+AimFovDegrees = 62.0
+AimSeconds = 0.14
+AimPitchDegrees = 0.64
+KickBack = 0.025
+KickPitchDegrees = 4.0
+AimKickFactor = 0.6

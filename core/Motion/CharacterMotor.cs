@@ -29,15 +29,15 @@ public partial class CharacterMotor : CharacterBody3D
 
     /// <summary>
     /// Velocita' con cui il corpo ruota verso la direzione voluta. Per il giocatore la direzione e'
-    /// lo sguardo: lo smorzamento assorbe gli scatti del mouse, e in mira lo scarto residuo lo
-    /// chiude il busto (SpineAimModifier).
+    /// lo sguardo: lo smorzamento assorbe gli scatti del mouse, e lo scarto residuo lo chiude il
+    /// busto (BodyAimModifier).
     /// </summary>
     [Export] public float TurnSpeed { get; set; } = 14.0f;
 
     /// <summary>
-    /// Quota degli occhi sopra i piedi, in piedi e accovacciati. E' il punto di vista NOMINALE:
-    /// la camera del giocatore segue la testa animata e gli sta a pochi centimetri, ma l'host ha
-    /// bisogno di un punto ricostruibile dal solo stato replicato (<see cref="ResolvedEyePosition"/>).
+    /// Quota degli occhi sopra i piedi, in piedi e accovacciati. E' il punto di vista NOMINALE,
+    /// ricostruibile dal solo stato replicato (<see cref="ResolvedEyePosition"/>): ci stanno la
+    /// camera del giocatore, l'origine dei colpi lato host e l'arma del corpo in terza persona.
     /// </summary>
     [Export] public float EyeHeight { get; set; } = 1.62f;
 
@@ -53,19 +53,11 @@ public partial class CharacterMotor : CharacterBody3D
     /// Per quanto tempo il movimento resta bloccato dopo un atterraggio DURO, in secondi.
     ///
     /// E' il tempo in cui il personaggio si rialza: sopra <see cref="HardLandingSpeed"/> parte la
-    /// clip <c>land_hard</c>, che dura 2,03 s, e finche' quella e' in corso l'input di locomozione
-    /// non produce movimento — altrimenti si vedrebbe il corpo scivolare via mentre e' ancora a
-    /// terra. DEVE combaciare con la durata della clip, per lo stesso motivo di
-    /// <see cref="VaultDuration"/>: e' l'unico punto in cui movimento e posa si accordano.
-    /// Zero disattiva del tutto il blocco.
+    /// clip <c>Jump_Land</c> (1,27 s), e finche' il grosso del gesto e' in corso l'input di
+    /// locomozione non produce movimento — altrimenti si vedrebbe il corpo scivolare via mentre
+    /// e' ancora piegato a terra. Zero disattiva del tutto il blocco.
     /// </summary>
-    [Export] public float HardLandingLockSeconds { get; set; } = 2.03f;
-
-    /// <summary>
-    /// Per quanto l'arma resta alzata dopo un colpo sparato con l'arma abbassata (in corsa): quel
-    /// tanto che serve a far leggere il colpo, senza vietare nulla.
-    /// </summary>
-    [Export] public float HipFireAimSeconds { get; set; } = 0.6f;
+    [Export] public float HardLandingLockSeconds { get; set; } = 0.9f;
 
     /// <summary>
     /// Reattivita' con cui si raggiunge la velocita' voluta, in frazione al secondo.
@@ -257,8 +249,8 @@ public partial class CharacterMotor : CharacterBody3D
     [Export] public float SyncAimYaw { get; set; }
 
     /// <summary>
-    /// Arma alzata e puntata sullo sguardo (contro porto rilassato). Per il giocatore: armato e
-    /// non in corsa. Decide la posa sugli avatar remoti.
+    /// Arma all'occhio (mira col tasto destro). Decide la posa sugli avatar remoti e, lato host,
+    /// quale cono di dispersione vale per i colpi (<c>WeaponDefinition.SpreadDegrees</c>).
     /// </summary>
     [Export] public bool SyncAiming { get; set; }
 
@@ -757,8 +749,8 @@ public partial class CharacterMotor : CharacterBody3D
     ///
     /// La componente X del frame ruotato va NEGATA: il Visual guarda +Z e la sua sinistra e' +X,
     /// quindi <c>local.X &gt; 0</c> significa "verso la propria sinistra". Senza la negazione lo
-    /// strafe risulta specchiato in tutti i BlendSpace2D e il lean si inclina dal lato sbagliato
-    /// (bug storico, coperto da verifica in tools/verify_animation_runtime.gd).
+    /// bacino del corpo in terza persona gira dalla parte sbagliata quando si cammina di lato
+    /// (bug storico: si vede subito in tools/playtest_fps.gd, modalita' tp).
     /// </summary>
     public Vector2 WorldToLocalVelocity(Vector3 planar, float yaw)
     {

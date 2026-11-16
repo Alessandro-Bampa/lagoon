@@ -33,13 +33,10 @@ I componenti host-authoritative sotto `Player` impostano l'autorità in `_EnterT
 
 Non modificare direttamente questi output:
 
-- `animation/resources/CharacterBlendTree.tres` → `tools/build_animation_tree.gd`
-- `animation/resources/WeaponHoldPoses.tres` → `tools/build_weapon_poses.gd`
-- `animation/resources/AdditiveClips.tres` → `tools/build_additive_clips.gd`
-- `animation/resources/CrouchClips.tres` → `tools/build_crouch_clips.gd`
-- asset personaggio/animazioni Blender → script in `tools/blender/`
+- `assets/models/weapons/VM_*.glb`, `W_*.glb` → `tools/blender/build_weapon_viewmodels.py` (sorgente: Retro Weapon Pack, fuori dal repo)
+- `assets/models/characters/Mannequin.glb` → copia del `.glb` della Universal Animation Library; la `BoneMap` umanoide sta nel suo `.import`
 
-Modifica la sorgente e rigenera. Non sovrascrivere un `.glb` di animazioni se il log del builder riporta clip `lost`.
+Gli alberi di animazione NON sono file generati: li costruiscono da codice `CharacterAnimator` e `ViewmodelAnimator`.
 
 ## Verifica
 
@@ -48,8 +45,7 @@ Scegli i controlli proporzionati all'ambito:
 ```powershell
 dotnet build Lagoon.csproj
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\check-i18n.ps1
-Godot --path . --headless --script tools/verify_godot_import.gd
-Godot --path . --headless --script tools/verify_animation_runtime.gd
+Godot --path . --resolution 1280x720 --script tools/playtest_fps.gd -- <cartella_screenshot> all
 ```
 
 Il binario Godot può avere un nome/path diverso: individua prima l'eseguibile 4.7.x Mono disponibile. Per modifiche multiplayer, verifica anche due istanze con `LocalEnet`; non introdurre una CI o un framework di test generale senza richiesta.
@@ -59,7 +55,9 @@ Il binario Godot può avere un nome/path diverso: individua prima l'eseguibile 4
 Le skill sono in `.agents/skills/` e vanno caricate solo per l'ambito pertinente:
 
 - `character-animation`: rig, clip, AnimationTree, IK, parkour e refactor del sistema animazioni.
-- `blender-pipeline`: modelli, rig, import/export glTF/Mixamo e Blender MCP.
+- `blender-pipeline`: corpo UAL, armi del Retro Weapon Pack, import glTF e Blender MCP.
+- `venice-building-kit`: kit modulare dei palazzi veneziani (`assets/models/buildings/`), griglia, materiali, generatori di edifici.
+- `venice-builder`: addon `addons/venice_builder/`, generatore degli edifici dai dati OpenStreetMap (`OsmLayer`, segnaposto, montaggio sulle piante reali).
 - `combat-shooting`, `inventory-tarkov`, `vehicles-boats`, `ai-npc`: rispettivi sistemi gameplay.
 - `vision-fog`, `building-cutaway`: visibilità, shader, camera e render layer.
 - `ui-hud`, `i18n-localization`: UI, input e testi visibili.

@@ -129,52 +129,46 @@ public partial class GameWorld : Node3D
     }
 
     /// <summary>
-    /// Spawna un item "nudo" (senza contenuto): comodita' per il popolamento di test.
-    /// Il payload passa comunque da <see cref="PlayerInventoryModel.SerializeItem"/>, cosi' ha la
-    /// stessa forma di quelli prodotti da un drop (inclusa la griglia se l'item e' un contenitore).
+    /// Spawna a terra un'istanza gia' costruita (col suo contenuto). Solo host.
     /// </summary>
+    public void SpawnPickup(ItemInstance? item, Vector3 position)
+    {
+        if (item != null)
+            SpawnPickupFromPayload(ItemCodec.Serialize(item), position);
+    }
+
+    /// Spawna un item "nudo" (senza contenuto): comodita' per il popolamento di test.
     public void SpawnPickup(string itemId, int stackCount, Vector3 position)
     {
-        ItemDefinition? def = GetNodeOrNull<ItemDatabase>("/root/ItemDatabase")?.Get(itemId);
-        if (def == null)
-        {
-            GD.PrintErr($"[GameWorld] ItemId sconosciuto: '{itemId}'");
-            return;
-        }
-
-        var item = new ItemInstance(1, def) { StackCount = stackCount };
-        SpawnPickupFromPayload(PlayerInventoryModel.SerializeItem(item), position);
+        var db = GetNode<ItemDatabase>("/root/ItemDatabase");
+        SpawnPickup(ItemFactory.Create(db, itemId, stackCount), position);
     }
 
     /// <summary>
     /// Spawna un contenitore FISSO (cassa, baule): con F si apre invece di essere raccolto.
-    /// <paramref name="contents"/> = item da metterci dentro come coppie (itemId, quantita').
-    /// I cadaveri della Fase 3 useranno lo stesso meccanismo.
+    /// <paramref name="contents"/> = istanze da metterci dentro (quelle che non entrano si scartano).
+    /// I cadaveri useranno lo stesso meccanismo.
     /// </summary>
-    public void SpawnWorldContainer(string itemId, Vector3 position, params (string Id, int Stack)[] contents)
+    public void SpawnWorldContainer(string itemId, Vector3 position, params ItemInstance?[] contents)
     {
-        var db = GetNodeOrNull<ItemDatabase>("/root/ItemDatabase");
-        ItemDefinition? def = db?.Get(itemId);
-        if (def == null || !def.IsContainer)
+        var db = GetNode<ItemDatabase>("/root/ItemDatabase");
+        ItemInstance? root = ItemFactory.Create(db, itemId);
+        if (root == null || !root.IsContainer)
         {
             GD.PrintErr($"[GameWorld] '{itemId}' non e' un contenitore valido.");
             return;
         }
 
-        // Costruisce l'albero con il modello, poi lo serializza come payload: stessa
-        // rappresentazione degli zaini droppati, quindi tutta la macchina esistente lo gestisce.
-        var root = new ItemInstance(1, def);
-        int nextId = 1;
-        foreach (var (contentId, stack) in contents)
+        foreach (ItemInstance? item in contents)
         {
-            ItemDefinition? contentDef = db?.Get(contentId);
-            if (contentDef == null || root.ContainerGrid == null)
+            if (item == null)
                 continue;
-            var item = new ItemInstance(++nextId, contentDef) { StackCount = stack };
-            root.ContainerGrid.TryAutoPlace(item);
+            if (!InventoryRules.TryFindSpot(root, item, out int g, out int x, out int y, out bool rotated)
+                || !root.Grids[g].Place(item, x, y, rotated))
+                GD.PrintErr($"[GameWorld] '{item.Definition.ItemId}' non entra in '{itemId}'.");
         }
 
-        SpawnPickupFromPayload(PlayerInventoryModel.SerializeItem(root), position, anchored: true);
+        SpawnPickupFromPayload(ItemCodec.Serialize(root), position, anchored: true);
     }
 
     /// <summary>
@@ -241,23 +235,44 @@ public partial class GameWorld : Node3D
             return;
         _worldPopulated = true;
 
-        // Item di test davanti allo spawn. Il secondo "backpack" serve a provare l'annidamento e la
-        // guardia anti-ciclo (uno zaino dentro un altro, ma non dentro se stesso).
-        SpawnPickup("helmet", 1, new Vector3(-3.0f, 0f, 3.0f));
+        var db = GetNode<ItemDatabase>("/root/ItemDatabase");
+        ItemInstance? Item(string id, int stack = 1) => ItemFactory.Create(db, id, stack);
+
+        // Oggetti di prova davanti allo spawn: coprono slot, blocchi, stack, caricatori e filtri.
+        SpawnPickup("helmet", 1, new Vector3(-4.5f, 0f, 3.0f));
+        SpawnPickup("headset", 1, new Vector3(-3.0f, 0f, 3.0f));
         SpawnPickup("body_armor", 1, new Vector3(-1.5f, 0f, 3.0f));
         SpawnPickup("backpack", 1, new Vector3(0.0f, 0f, 3.0f));
-        SpawnPickup("ammo", 45, new Vector3(1.5f, 0f, 3.0f));
+        SpawnPickup("ammo_545", 45, new Vector3(1.5f, 0f, 3.0f));
         SpawnPickup("medkit", 1, new Vector3(3.0f, 0f, 3.0f));
-        SpawnPickup("pants", 1, new Vector3(-3.0f, 0f, 5.0f));
-        SpawnPickup("boots", 1, new Vector3(-1.5f, 0f, 5.0f));
-        SpawnPickup("rifle", 1, new Vector3(1.0f, 0f, 5.0f));
-        SpawnPickup("pistol", 1, new Vector3(3.0f, 0f, 5.0f));
-        SpawnPickup("ammo_pack", 1, new Vector3(4.5f, 0f, 3.0f));
+        SpawnPickup("ammo_545_box", 1, new Vector3(4.5f, 0f, 3.0f));
+
+        SpawnPickup("armored_rig", 1, new Vector3(-4.5f, 0f, 5.0f));
+        SpawnPickup("knife", 1, new Vector3(-3.0f, 0f, 5.0f));
+        SpawnPickup("flashlight", 1, new Vector3(-1.5f, 0f, 5.0f));
+        SpawnPickup(ItemFactory.CreateWeapon(db, "rifle", "mag_545", "ammo_545"), new Vector3(0.5f, 0f, 5.0f));
+        SpawnPickup(ItemFactory.CreateWeapon(db, "pistol", "mag_9mm", "ammo_9mm"), new Vector3(2.5f, 0f, 5.0f));
+        SpawnPickup("ammo_case", 1, new Vector3(4.0f, 0f, 5.0f));
+        SpawnPickup("cash", 1500, new Vector3(-1.5f, 0f, 6.5f));
+        SpawnPickup("canned_food", 1, new Vector3(0.0f, 0f, 6.5f));
+        SpawnPickup("water_bottle", 1, new Vector3(1.5f, 0f, 6.5f));
+        SpawnPickup("baton", 1, new Vector3(3.0f, 0f, 6.5f));
 
         // Contenitori fissi: con F si aprono nel pannello destro (schermata di saccheggio).
-        SpawnWorldContainer("ammo_crate", new Vector3(-5.0f, 0f, 4.0f),
-            ("ammo", 60), ("ammo_pack", 1), ("medkit", 1));
-        SpawnWorldContainer("stash_box", new Vector3(5.5f, 0f, 4.5f),
-            ("helmet", 1), ("ammo", 30));
+        SpawnWorldContainer("supply_crate", new Vector3(-6.0f, 0f, 4.0f),
+            Item("ammo_545", 60), Item("ammo_9mm", 50), Item("ammo_545_box"),
+            ItemFactory.CreateMagazine(db, "mag_545", "ammo_545", 30),
+            ItemFactory.CreateMagazine(db, "mag_545", "ammo_545", 12),
+            ItemFactory.CreateMagazine(db, "mag_9mm", "ammo_9mm", 12),
+            Item("medkit"), Item("painkillers"), Item("syringe"));
+
+        SpawnWorldContainer("stash_box", new Vector3(6.5f, 0f, 4.5f),
+            Item("helmet"), Item("cash", 5000), Item("cash", 800), Item("key"), Item("keycard"),
+            Item("usb_drive"), Item("cell_phone"), Item("cigarettes"), Item("lighter"), Item("vape"),
+            Item("nails"), Item("poison"), Item("pills_bottle"), Item("doughnut"), Item("pickles"),
+            Item("canned_food"), Item("water_bottle"), Item("knife"), Item("flashlight"));
+
+        SpawnWorldContainer("cardboard_box", new Vector3(6.5f, 0f, 7.0f),
+            Item("canned_food"), Item("doughnut"), Item("cigarettes"), Item("lighter"));
     }
 }

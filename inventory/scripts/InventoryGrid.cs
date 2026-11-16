@@ -3,26 +3,36 @@ using System.Collections.Generic;
 namespace Lagoon;
 
 /// <summary>
-/// Griglia di inventario stile Tarkov (core Fase 2): una matrice Columns x Rows in cui gli item
-/// occupano un rettangolo di celle in base alla loro dimensione (ed eventuale rotazione). C# puro,
-/// nessuna dipendenza da nodi Godot.
+/// Griglia di inventario: una matrice Columns x Rows in cui gli item occupano un rettangolo di
+/// celle in base a ingombro e rotazione. C# puro.
 ///
 /// La mappa di occupazione (<see cref="_cells"/>) memorizza in ogni cella l'InstanceId dell'item
-/// che la occupa (0 = libera), cosi' le collisioni si verificano in O(area) senza test rettangolo-
-/// rettangolo tra tutti gli item.
+/// che la occupa (0 = libera): le collisioni si verificano in O(area). E' una cache derivata
+/// dall'elenco <see cref="Items"/>, sempre ricostruibile.
+///
+/// Appartiene sempre a un item (<see cref="Owner"/>): piazzare e rimuovere aggiornano la
+/// collocazione dell'istanza, cosi' ogni item sa dove si trova senza ricerche.
 /// </summary>
 public sealed class InventoryGrid
 {
     public int Columns { get; }
     public int Rows { get; }
 
+    /// Item contenitore proprietario della griglia (null solo per le griglie virtuali della UI).
+    public ItemInstance? Owner { get; }
+
+    /// Indice della griglia fra quelle del proprietario.
+    public int Index { get; }
+
     private readonly List<ItemInstance> _items = new();
     private readonly int[] _cells;
 
-    public InventoryGrid(int columns, int rows)
+    public InventoryGrid(int columns, int rows, ItemInstance? owner = null, int index = 0)
     {
         Columns = columns;
         Rows = rows;
+        Owner = owner;
+        Index = index;
         _cells = new int[columns * rows];
     }
 
@@ -30,27 +40,11 @@ public sealed class InventoryGrid
 
     private int CellIndex(int x, int y) => y * Columns + x;
 
-    /// <summary>
-    /// Verifica se <paramref name="item"/> puo' essere piazzato con angolo in alto-sinistra in
-    /// (<paramref name="x"/>, <paramref name="y"/>) con la rotazione data. <paramref name="ignoreInstanceId"/>
-    /// consente di ignorare le celle gia' occupate dall'item stesso (utile per un riposizionamento
-    /// in-place senza rimuoverlo prima).
-    /// </summary>
-    public bool CanPlace(ItemInstance item, int x, int y, bool rotated, int ignoreInstanceId = 0)
+    /// True se il rettangolo sta nella griglia ed e' libero, ignorando fino a due istanze (la
+    /// sorgente di uno spostamento in-place e, negli scambi, l'oggetto che le fa posto).
+    public bool CanPlaceSize(int width, int height, int x, int y, int ignoreId = 0, int ignoreId2 = 0)
     {
-        int w = rotated ? item.Definition.Height : item.Definition.Width;
-        int h = rotated ? item.Definition.Width : item.Definition.Height;
-        return CanPlaceSize(w, h, x, y, ignoreInstanceId);
-    }
-
-    /// <summary>
-    /// Variante per dimensioni gia' calcolate (celle occupate), senza bisogno di un
-    /// <see cref="ItemInstance"/>: la UI la usa per validare il drop di item che non appartengono a
-    /// questo modello (es. loot da un pickup a terra).
-    /// </summary>
-    public bool CanPlaceSize(int width, int height, int x, int y, int ignoreInstanceId = 0)
-    {
-        if (x < 0 || y < 0 || x + width > Columns || y + height > Rows)
+        if (!InBounds(width, height, x, y))
             return false;
 
         for (int yy = y; yy < y + height; yy++)
@@ -58,25 +52,32 @@ public sealed class InventoryGrid
             for (int xx = x; xx < x + width; xx++)
             {
                 int occupant = _cells[CellIndex(xx, yy)];
-                if (occupant != 0 && occupant != ignoreInstanceId)
+                if (occupant != 0 && occupant != ignoreId && occupant != ignoreId2)
                     return false;
             }
         }
         return true;
     }
 
-    /// Piazza l'item (aggiornandone posizione/rotazione). Ritorna false se non c'e' spazio.
+    public bool InBounds(int width, int height, int x, int y)
+        => x >= 0 && y >= 0 && x + width <= Columns && y + height <= Rows;
+
+    /// Piazza l'item (aggiornandone posizione, rotazione e collocazione). False se non c'e' spazio.
     public bool Place(ItemInstance item, int x, int y, bool rotated)
     {
-        if (!CanPlace(item, x, y, rotated))
+        int w = rotated ? item.Height : item.Width;
+        int h = rotated ? item.Width : item.Height;
+        if (!CanPlaceSize(w, h, x, y))
             return false;
 
         item.GridX = x;
         item.GridY = y;
         item.Rotated = rotated;
+        item.Parent = Owner;
+        item.ParentGrid = Index;
+        item.ParentSlot = -1;
+        item.EquippedIn = EquipSlotType.None;
 
-        int w = item.OccupiedWidth;
-        int h = item.OccupiedHeight;
         for (int yy = y; yy < y + h; yy++)
             for (int xx = x; xx < x + w; xx++)
                 _cells[CellIndex(xx, yy)] = item.InstanceId;
@@ -85,61 +86,77 @@ public sealed class InventoryGrid
         return true;
     }
 
-    /// Rimuove l'item con l'id dato liberando le sue celle. Ritorna false se non presente.
-    public bool Remove(int instanceId)
+    /// Rimuove l'item liberando le sue celle. False se non presente.
+    public bool Remove(ItemInstance item)
     {
-        int index = _items.FindIndex(i => i.InstanceId == instanceId);
-        if (index < 0)
+        if (!_items.Remove(item))
             return false;
 
         for (int i = 0; i < _cells.Length; i++)
-            if (_cells[i] == instanceId)
+            if (_cells[i] == item.InstanceId)
                 _cells[i] = 0;
 
-        _items.RemoveAt(index);
+        item.Parent = null;
+        item.ParentGrid = -1;
         return true;
     }
 
-    public bool Contains(int instanceId) => _items.Exists(i => i.InstanceId == instanceId);
-
-    /// Item che occupa la cella (x, y), o null se libera / fuori griglia. Usato dalla UI per capire
-    /// quale item si sta iniziando a trascinare.
+    /// Item che occupa la cella (x, y), o null se libera / fuori griglia.
     public ItemInstance? ItemAt(int x, int y)
     {
         if (x < 0 || y < 0 || x >= Columns || y >= Rows)
             return null;
         int id = _cells[CellIndex(x, y)];
-        return id == 0 ? null : _items.Find(i => i.InstanceId == id);
+        if (id == 0)
+            return null;
+        foreach (ItemInstance item in _items)
+            if (item.InstanceId == id)
+                return item;
+        return null;
     }
 
     /// <summary>
-    /// Cerca il primo spazio libero (prima senza rotazione, poi ruotato) e vi piazza l'item.
-    /// Ritorna true se riuscito. Usato per l'auto-stow di pickup e unequip.
+    /// Primo spazio libero per un ingombro <paramref name="width"/> x <paramref name="height"/>.
+    /// Scansione deterministica per righe, dall'alto a sinistra; per ogni cella prova prima
+    /// l'orientamento base e poi quello ruotato.
     /// </summary>
-    public bool TryAutoPlace(ItemInstance item)
+    public bool TryFindFreeSpot(
+        int width, int height, out int x, out int y, out bool rotated, int ignoreId = 0, int ignoreId2 = 0)
     {
-        bool squared = item.Definition.Width == item.Definition.Height;
-        for (int rot = 0; rot < 2; rot++)
+        int orientations = width != height ? 2 : 1;
+        for (int yy = 0; yy < Rows; yy++)
         {
-            bool rotated = rot == 1;
-            if (rotated && squared)
-                break; // ruotare un quadrato non aggiunge posizioni
-
-            int w = rotated ? item.Definition.Height : item.Definition.Width;
-            int h = rotated ? item.Definition.Width : item.Definition.Height;
-            for (int y = 0; y + h <= Rows; y++)
-                for (int x = 0; x + w <= Columns; x++)
-                    if (CanPlace(item, x, y, rotated))
-                        return Place(item, x, y, rotated);
+            for (int xx = 0; xx < Columns; xx++)
+            {
+                for (int i = 0; i < orientations; i++)
+                {
+                    bool rot = i == 1;
+                    int w = rot ? height : width;
+                    int h = rot ? width : height;
+                    if (CanPlaceSize(w, h, xx, yy, ignoreId, ignoreId2))
+                    {
+                        x = xx;
+                        y = yy;
+                        rotated = rot;
+                        return true;
+                    }
+                }
+            }
         }
+        x = y = 0;
+        rotated = false;
         return false;
     }
 
-    /// Peso totale ricorsivo di tutti gli item contenuti (inclusi i container annidati).
+    /// Cerca il primo spazio libero e vi piazza l'item.
+    public bool TryAutoPlace(ItemInstance item)
+        => TryFindFreeSpot(item.Width, item.Height, out int x, out int y, out bool rotated)
+           && Place(item, x, y, rotated);
+
     public float TotalWeight()
     {
         float weight = 0f;
-        foreach (var item in _items)
+        foreach (ItemInstance item in _items)
             weight += item.TotalWeight();
         return weight;
     }

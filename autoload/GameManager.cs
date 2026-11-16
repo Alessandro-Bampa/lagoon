@@ -22,6 +22,10 @@ public partial class GameManager : Node
     /// dagli altri (CLAUDE.md §3). Il mondo continua a girare, viene bloccato solo l'input di gameplay.
     public bool UiModalOpen { get; set; }
 
+    /// True mentre la schermata inventario del giocatore locale e' aperta. Lo scrive solo
+    /// <c>PlayerHud</c>; serve al menu di pausa per lasciare Esc all'inventario.
+    public bool InventoryOpen { get; set; }
+
     public void SetPhase(GamePhase phase)
     {
         CurrentPhase = phase;

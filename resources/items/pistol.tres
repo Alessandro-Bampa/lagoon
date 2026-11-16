@@ -1,8 +1,13 @@
-[gd_resource type="Resource" script_class="WeaponDefinition" load_steps=4 format=3]
+[gd_resource type="Resource" script_class="WeaponDefinition" format=3]
 
 [ext_resource type="Script" path="res://combat/scripts/WeaponDefinition.cs" id="1"]
-[ext_resource type="Resource" path="res://animation/resources/one_handed.tres" id="2"]
-[ext_resource type="PackedScene" path="res://assets/models/weapons/W_Pistol.glb" id="3"]
+[ext_resource type="Resource" path="res://animation/resources/pistol_view.tres" id="2"]
+[ext_resource type="Script" path="res://inventory/scripts/data/ItemSlotDef.cs" id="slotdef"]
+
+[sub_resource type="Resource" id="slot_magazine"]
+script = ExtResource("slotdef")
+SlotId = "magazine"
+Kind = 1
 
 [resource]
 script = ExtResource("1")
@@ -10,11 +15,6 @@ ItemId = "pistol"
 Width = 2
 Height = 1
 Weight = 1.0
-Category = 3
-EquipSlot = 9
-IsContainer = false
-ContainerColumns = 0
-ContainerRows = 0
 MaxStack = 1
 QuickUsable = false
 Damage = 18
@@ -22,20 +22,25 @@ FalloffStartMeters = 10.0
 MinDamageFactor = 0.35
 Penetration = 0
 Caliber = "9x19"
-EffectiveRangeMeters = 18.0
 MaxRangeMeters = 35.0
-BaseSpreadDegrees = 1.2
-SpreadPerRangeDegrees = 4.0
-MaxSpreadDegrees = 10.0
-RecoilPerShotDegrees = 1.0
-RecoilRecoveryDegreesPerSecond = 6.0
-MaxRecoilSpreadDegrees = 4.0
-CameraKick = 0.8
+HipSpreadDegrees = 2.6
+AimSpreadDegrees = 0.5
+MoveSpreadDegrees = 1.2
+BloomPerShotDegrees = 0.6
+BloomRecoveryDegreesPerSecond = 7.0
+MaxBloomDegrees = 3.0
+RecoilPitchDegrees = 1.9
+RecoilYawDegrees = 0.6
+RecoilYawBiasDegrees = 0.0
+RecoilRollDegrees = 0.8
+AimRecoilFactor = 0.8
+RecoilSnappiness = 34.0
+RecoilReturnSpeed = 9.0
 RoundsPerMinute = 380.0
 Automatic = false
-MagazineSize = 12
-ReloadSeconds = 1.6
-AmmoItemId = "ammo"
+ReloadSeconds = 1.5
+DrawSeconds = 0.4
 ProjectileSpeed = 340.0
 AnimationSet = ExtResource("2")
-VisualScene = ExtResource("3")
+Category = 5
+Slots = Array[ExtResource("slotdef")]([SubResource("slot_magazine")])

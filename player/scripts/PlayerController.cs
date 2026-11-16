@@ -57,6 +57,9 @@ public partial class PlayerController : CharacterMotor
     /// guarderebbe attraverso le spalle.
     [Export] public float HelmLookLimitDegrees { get; set; } = 110.0f;
 
+    /// Frazione della velocita' di camminata a cui ci si muove con l'arma all'occhio.
+    [Export] public float AimMoveFactor { get; set; } = 0.6f;
+
     /// <summary>
     /// La camera locale: e' la fonte di verita' dello sguardo. WASD si muove rispetto al suo
     /// <see cref="FirstPersonCamera.LookYaw"/>, il corpo lo insegue, e imbardata e inclinazione
@@ -73,9 +76,6 @@ public partial class PlayerController : CharacterMotor
     private BoatController? _anchor;
     private Transform3D _lastAnchorFrame;
     private bool _hasAnchorFrame;
-
-    /// Tempo residuo dell'arma alzata dopo un colpo sparato in corsa (CharacterMotor.HipFireAimSeconds).
-    private float _hipFireTimer;
 
     /// Prua al tick precedente, per far girare lo sguardo insieme alla barca che si pilota.
     private float _lastHelmHeading;
@@ -140,12 +140,6 @@ public partial class PlayerController : CharacterMotor
         // Opzionali: un avatar puo' esistere senza armi, il movimento non deve dipenderne.
         _weapon = GetNodeOrNull<WeaponController>("Weapon");
 
-        // Un colpo sparato con l'arma abbassata (in corsa) la alza comunque per un attimo, cosi'
-        // il gesto si legge. Ci si aggancia allo sparo gia' risolto invece di rileggere l'input
-        // di fuoco: un solo punto di verita' su "ho sparato davvero".
-        if (_weapon != null)
-            _weapon.ShotResolved += OnShotResolved;
-
         // Evita che gli avatar remoti "saltino" dall'origine al primo update.
         SyncAnchorId = 0;
     }
@@ -207,6 +201,8 @@ public partial class PlayerController : CharacterMotor
         bool sighting = armed && _input.ReadAim();
         bool sprinting = !SyncCrouching && !sighting && _input.ReadSprint();
         float speed = SyncCrouching ? CrouchSpeed : (sprinting ? RunSpeed : WalkSpeed);
+        if (sighting && !SyncCrouching)
+            speed *= AimMoveFactor;
 
         // Accelerazione, pendenza, gradini, salto, gravita' e atterraggio: tutto nel motore condiviso.
         StepMotion(worldDir, speed, _input.ReadJumpPressed(), _input.ReadCrouch(), delta);
@@ -216,36 +212,28 @@ public partial class PlayerController : CharacterMotor
 
         // Pubblica lo stato che verra' replicato agli altri peer.
         PublishState();
-        UpdateView(armed, sighting, sprinting && worldDir.LengthSquared() > 0.001f, delta);
+        UpdateView(sighting, delta);
         PublishLocomotionState();
     }
 
-    /// Parte solo sul peer proprietario, che e' l'unico a leggere l'input.
-    private void OnShotResolved(Vector3 origin, Vector3 end, bool hit, bool isLocalShooter)
-    {
-        if (isLocalShooter)
-            _hipFireTimer = HipFireAimSeconds;
-    }
-
     /// <summary>
-    /// Sguardo, orientamento del corpo e stance dell'arma.
+    /// Sguardo, orientamento del corpo e mira.
     ///
     /// Lo sguardo si pubblica SEMPRE (<c>SyncAimYaw</c>/<c>SyncAimPitch</c>): e' cio' che punta
     /// busto e arma sugli altri peer. Il corpo lo insegue smorzato — in prima persona si cammina
-    /// in strafe, mai "verso dove si va" — e lo scarto residuo lo chiude SpineAimModifier.
+    /// in strafe, mai "verso dove si va" — e lo scarto residuo lo chiude BodyAimModifier.
     ///
-    /// <c>SyncAiming</c> = arma alzata sullo sguardo: da armati sempre, tranne in corsa (porto
-    /// rilassato), con un breve latch se si spara correndo. Il tasto <c>aim</c> stringe il campo
-    /// visivo ed e' solo locale: non cambia nulla che l'host debba conoscere.
+    /// <c>SyncAiming</c> = arma all'occhio (tasto <c>aim</c> con un'arma in mano). Si replica
+    /// perche' serve a due cose che il solo proprietario non puo' fare: mostrare la posa di mira
+    /// sugli altri peer, e dire all'host che il cono di tiro e' quello stretto.
     ///
     /// Durante il parkour il corpo NON segue lo sguardo: TryStartParkour lo ha raddrizzato sulla
     /// normale della parete, e girarlo farebbe entrare la manovra di sbieco nel muro. Lo sguardo
     /// resta libero; l'arma non si vede e non spara (WeaponController.HandsFree).
     /// </summary>
-    private void UpdateView(bool armed, bool sighting, bool sprinting, double delta)
+    private void UpdateView(bool sighting, double delta)
     {
-        if (_hipFireTimer > 0f)
-            _hipFireTimer -= (float)delta;
+        _camera.AimFovDegrees = _weapon?.HeldWeapon?.AnimationSet?.AimFovDegrees ?? _camera.FovDegrees;
 
         SyncAimYaw = _camera.LookYaw;
         SyncAimPitch = _camera.LookPitch;
@@ -258,7 +246,7 @@ public partial class PlayerController : CharacterMotor
             return;
         }
 
-        SyncAiming = armed && (!sprinting || _hipFireTimer > 0f);
+        SyncAiming = sighting;
         _camera.Zoomed = sighting;
         UpdateFacing(_camera.LookYaw, delta);
     }

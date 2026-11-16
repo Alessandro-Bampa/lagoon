@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://inventory/scripts/ItemDefinition.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+ItemId = "supply_crate"
+Width = 4
+Height = 3
+Weight = 20.0
+Category = 2
+ContainerColumns = 8
+ContainerRows = 6
+WorldAnchored = true

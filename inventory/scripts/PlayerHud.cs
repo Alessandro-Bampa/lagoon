@@ -4,8 +4,8 @@ namespace Lagoon;
 
 /// <summary>
 /// HUD dell'inventario, istanziato SOLO per l'avatar locale (stesso criterio della camera in
-/// <see cref="PlayerNetworkSync"/>). Crea il proprio <c>CanvasLayer</c> con la schermata inventario
-/// e la hotbar, e traduce l'input in richieste. Nessuna logica di inventario qui.
+/// <see cref="FirstPersonCamera"/>). Crea il proprio <c>CanvasLayer</c> con la schermata inventario
+/// e la barra rapida, e traduce l'input in richieste. Nessuna logica di inventario qui.
 ///
 /// E' anche il PROPRIETARIO DEL CURSORE: in gioco il mouse e' catturato dallo sguardo, e solo qui
 /// si decide quando restituirlo alla UI (inventario aperto, modale aperta). Chi apre una UI non
@@ -14,7 +14,7 @@ namespace Lagoon;
 /// Interazione col mondo in stile Tarkov:
 ///  - GUARDANDO un oggetto a portata compare il prompt "Nome [F]" (bianco semitrasparente);
 ///  - <b>F</b> breve raccoglie l'oggetto, oppure APRE il contenitore se e' una cassa;
-///  - <b>F</b> tenuto premuto apre il menu contestuale a terra (Raccogli / Esamina).
+///  - <b>F</b> tenuto premuto apre il menu contestuale a terra (Raccogli / Apri / Ispeziona).
 /// </summary>
 public partial class PlayerHud : Node
 {
@@ -24,7 +24,7 @@ public partial class PlayerHud : Node
     /// Coseno dell'angolo massimo fra lo sguardo e un oggetto perche' lo si stia "guardando" (20°).
     private const float LookAtCosine = 0.94f;
 
-    /// Altezza del centro di un oggetto a terra: si punta al cubo, non alla sua base.
+    /// Altezza del centro di un oggetto a terra: si punta al corpo dell'oggetto, non alla base.
     private const float PickupCenterHeight = 0.25f;
 
     private PlayerInventory _inventory = null!;
@@ -32,7 +32,7 @@ public partial class PlayerHud : Node
     private GameManager _game = null!;
     private SettingsService? _settings;
     private InventoryScreen? _screen;
-    private Hotbar? _hotbar;
+    private QuickBar? _quickBar;
     private Control? _hudRoot;
     private bool _isLocal;
 
@@ -54,9 +54,8 @@ public partial class PlayerHud : Node
 
     /// <summary>
     /// True se la schermata inventario e' aperta. Serve al sistema di tiro: a inventario aperto il
-    /// cursore appartiene al drag &amp; drop, quindi reticolo e input di combattimento tacciono, ed e'
-    /// anche il discriminante che disambigua il tasto R (rotazione vs ricarica) — vedi
-    /// <see cref="WeaponInput"/>.
+    /// cursore appartiene alla UI, quindi l'input di combattimento tace, ed e' anche il discriminante
+    /// che disambigua il tasto R (rotazione vs ricarica) — vedi <see cref="WeaponInput"/>.
     /// </summary>
     public bool InventoryOpen => _screen is { Visible: true };
 
@@ -81,16 +80,15 @@ public partial class PlayerHud : Node
 
         // I Control "top-level" sotto CanvasLayer non seguono in modo affidabile l'area visibile:
         // _hudRoot sincronizza a mano il proprio rect col viewport. GetVisibleRect() e' gia' in
-        // coordinate LOGICHE, quindi il rect si adatta da solo anche quando cambia la scala UI
-        // (ContentScaleFactor) -- vedi SettingsService.
+        // coordinate LOGICHE, quindi il rect si adatta da solo anche quando cambia la scala UI.
         _hudRoot = new Control { TopLevel = true, MouseFilter = Control.MouseFilterEnum.Ignore };
         layer.AddChild(_hudRoot);
 
         _screen = new InventoryScreen(_inventory) { Visible = false };
         _hudRoot.AddChild(_screen);
 
-        _hotbar = new Hotbar(_inventory);
-        _hudRoot.AddChild(_hotbar);
+        _quickBar = new QuickBar(_inventory, _screen);
+        _hudRoot.AddChild(_quickBar);
 
         AddCombatHud();
 
@@ -114,7 +112,9 @@ public partial class PlayerHud : Node
         GetTree().Root.SizeChanged -= SyncHudRect;
         if (_settings != null)
             _settings.UiScaleChanged -= OnUiScaleChanged;
+        _inventory.InventoryChanged -= OnInventoryChanged;
 
+        _game.InventoryOpen = false;
         // Senza avatar locale non c'e' piu' nessuno sguardo da pilotare: il cursore torna alla UI.
         Input.MouseMode = Input.MouseModeEnum.Visible;
     }
@@ -130,17 +130,12 @@ public partial class PlayerHud : Node
             Input.MouseMode = wanted;
     }
 
-    /// <summary>
-    /// Aggiunge reticolo e pannello arma/salute (Fase 3). Vivono qui e non in una scena propria
-    /// perche' condividono il <c>_hudRoot</c> gia' sincronizzato col viewport, ed esistono solo per
-    /// l'avatar locale come tutto il resto della HUD.
-    /// </summary>
+    /// Pannello arma/salute e conferma di colpo: condividono il <c>_hudRoot</c> gia' sincronizzato
+    /// col viewport, ed esistono solo per l'avatar locale come tutto il resto della HUD.
     private void AddCombatHud()
     {
         Node parent = GetParent();
         var weapon = parent.GetNodeOrNull<WeaponController>("Weapon");
-        var weaponInput = parent.GetNodeOrNull<WeaponInput>("WeaponInput");
-        var camera = parent.GetNodeOrNull<FirstPersonCamera>("PlayerCamera");
         var health = parent.GetNodeOrNull<HealthComponent>("Health");
 
         if (weapon == null || health == null || _hudRoot == null)
@@ -148,8 +143,8 @@ public partial class PlayerHud : Node
 
         _hudRoot.AddChild(new WeaponHudPanel(weapon, health));
 
-        if (weaponInput != null && camera != null)
-            _hudRoot.AddChild(new CrosshairOverlay(weapon, weaponInput, camera, _game, this));
+        // Nessun reticolo: solo la conferma del colpo a segno.
+        _hudRoot.AddChild(new HitMarkerOverlay(weapon, _game, this));
     }
 
     private void OnUiScaleChanged(float scale) => SyncHudRect();
@@ -166,7 +161,22 @@ public partial class PlayerHud : Node
     private void OnInventoryChanged()
     {
         _screen?.Rebuild();
-        _hotbar?.Refresh();
+        _quickBar?.Refresh();
+    }
+
+    /// Apre/chiude la schermata. All'apertura chiede lo stato all'host: i contatori dei caricatori
+    /// cambiano sparando senza un push per ogni colpo, quindi qui ci si riallinea.
+    private void SetInventoryOpen(bool open)
+    {
+        if (_screen == null || _screen.Visible == open)
+            return;
+
+        _screen.Visible = open;
+        _game.InventoryOpen = open;
+        if (open)
+            _inventory.SubmitRequestState();
+        else
+            _screen.OnClosed();
     }
 
     // ====================================================================================
@@ -196,14 +206,14 @@ public partial class PlayerHud : Node
 
         // Pressione lunga: menu contestuale sull'oggetto a terra.
         _holdConsumed = true;
-        if (_heldTarget != null)
+        if (_heldTarget != null && GodotObject.IsInstanceValid(_heldTarget))
             ShowGroundMenu(_heldTarget);
     }
 
     /// Mostra il prompt solo sull'oggetto che si sta guardando, e solo a chi gioca qui.
     private void UpdateWorldPrompt()
     {
-        ItemPickup? nearest = FindTargetPickup();
+        ItemPickup? nearest = InventoryOpen ? null : FindTargetPickup();
         if (ReferenceEquals(nearest, _prompted))
             return;
 
@@ -216,54 +226,59 @@ public partial class PlayerHud : Node
 
     private void ShowGroundMenu(ItemPickup pickup)
     {
-        var db = GetNodeOrNull<ItemDatabase>("/root/ItemDatabase");
-        ItemDefinition? def = db?.Get(pickup.ItemId);
-        if (def == null || _hudRoot == null)
+        ItemInstance? root = pickup.Root;
+        if (root == null || _hudRoot == null)
             return;
 
         var menu = new PopupMenu();
         // Un PopupMenu costruito in codice non passa dall'auto-translate: le voci si traducono qui.
-        menu.AddItem(Loc.T(pickup.Anchored ? "UI_HUD_GROUND_OPEN" : "UI_HUD_GROUND_PICKUP"), 0);
-        menu.AddItem(Loc.T("UI_HUD_GROUND_EXAMINE"), 1);
+        if (!pickup.Anchored)
+            menu.AddItem(Loc.T("UI_HUD_GROUND_PICKUP"), 0);
+        if (pickup.IsContainer)
+            menu.AddItem(Loc.T("UI_HUD_GROUND_OPEN"), 1);
+        menu.AddItem(Loc.T("UI_HUD_GROUND_EXAMINE"), 2);
         _hudRoot.AddChild(menu);
         SettingsService.ApplyToPopup(menu);
 
         int uid = pickup.Uid;
-        bool anchored = pickup.Anchored;
         menu.IdPressed += id =>
         {
-            if (id == 0)
-                Interact(uid, anchored);
-            else
-                _screen?.OpenInspectWindow(new ItemInstance(uid, def) { StackCount = pickup.StackCount });
-            menu.QueueFree();
+            switch (id)
+            {
+                case 0:
+                    _inventory.SubmitPickup(uid);
+                    break;
+                case 1:
+                    OpenLoot(uid);
+                    break;
+                default:
+                    SetInventoryOpen(true);
+                    _screen?.OpenInspectWindow(root);
+                    break;
+            }
         };
+        menu.PopupHide += () => menu.CallDeferred(Node.MethodName.QueueFree);
 
-        // Il mouse era catturato dallo sguardo: il menu si apre al centro, dove c'e' il reticolo.
+        // Il mouse era catturato dallo sguardo: il menu si apre al centro dello schermo. Serve il
+        // cursore per sceglierne una voce, quindi la schermata si apre insieme al menu.
+        SetInventoryOpen(true);
         menu.Position = (Vector2I)(GetViewport().GetVisibleRect().Size * 0.5f);
         menu.Popup();
-
-        // Il menu e' un'azione da inventario: assicura che la schermata sia visibile per usarlo.
-        if (_screen != null)
-            _screen.Visible = true;
     }
 
-    /// F breve: le casse si aprono nel pannello destro, gli oggetti sfusi si raccolgono.
-    private void Interact(int uid, bool anchored)
+    /// F breve: le casse si aprono nella colonna destra, gli oggetti sfusi si raccolgono.
+    private void Interact(ItemPickup pickup)
     {
-        if (anchored)
-        {
-            if (_screen != null)
-            {
-                _screen.Visible = true;
-                _screen.OpenWorldContainer(uid);
-            }
-            return;
-        }
+        if (pickup.Anchored)
+            OpenLoot(pickup.Uid);
+        else
+            _inventory.SubmitPickup(pickup.Uid);
+    }
 
-        _inventory.SubmitMove(
-            new ItemAddress(ItemAddress.RealmType.WorldLoose, uid), 0,
-            ItemAddress.Pockets(), PlayerInventory.AutoPlace, 0, false);
+    private void OpenLoot(int uid)
+    {
+        SetInventoryOpen(true);
+        _screen?.OpenWorldContainer(uid);
     }
 
     // ====================================================================================
@@ -275,40 +290,77 @@ public partial class PlayerHud : Node
     public override void _Input(InputEvent @event)
     {
         // A menu di pausa aperto l'input di gioco non deve passare sotto la UI modale.
-        if (!_isLocal || _game.UiModalOpen)
+        if (!_isLocal || _game.UiModalOpen || _screen == null)
             return;
 
         if (@event.IsActionPressed("toggle_inventory"))
         {
-            if (_screen != null)
-                _screen.Visible = !_screen.Visible;
+            SetInventoryOpen(!InventoryOpen);
             GetViewport().SetInputAsHandled();
             return;
         }
 
-        // R e' legato a DUE azioni: "rotate_item" qui e "reload" in WeaponInput. La disambiguazione
-        // e' la visibilita' dell'inventario: consumiamo l'evento solo a schermata aperta, cosi' a
-        // inventario chiuso resta unhandled e raggiunge _UnhandledInput di WeaponInput.
-        if (InventoryOpen && @event.IsActionPressed("rotate_item"))
+        if (InventoryOpen)
         {
-            _screen?.ToggleRotation();
+            HandleInventoryInput(@event);
+            return;
+        }
+
+        HandleWorldInput(@event);
+    }
+
+    /// Tasti validi solo a schermata aperta. Chi scrive in un campo di testo (tag, quantita')
+    /// tiene per se' i tasti: le scorciatoie tacciono.
+    private void HandleInventoryInput(InputEvent @event)
+    {
+        // Esc: ultima finestra aperta, poi l'inventario (il menu di pausa a inventario aperto si astiene).
+        if (@event.IsActionPressed("toggle_menu"))
+        {
+            if (!_screen!.HandleEscape())
+                SetInventoryOpen(false);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
+        if (GetViewport().GuiGetFocusOwner() is LineEdit)
+            return;
+
+        // R e' legato a DUE azioni: "rotate_item" qui e "reload" in WeaponInput. La disambiguazione
+        // e' la visibilita' dell'inventario: a schermata chiusa l'evento resta unhandled e
+        // raggiunge _UnhandledInput di WeaponInput.
+        if (@event.IsActionPressed("rotate_item"))
+        {
+            _screen!.ToggleRotation();
             GetViewport().SetInputAsHandled();
             return;
         }
 
         if (@event.IsActionPressed("quick_drop"))
         {
-            _screen?.QuickDropHovered();
+            _screen!.DiscardFocused();
             GetViewport().SetInputAsHandled();
             return;
         }
 
+        // Tasti rapidi col cursore su una tile: collegano l'oggetto allo slot.
+        for (int i = 0; i < PlayerInventoryModel.QuickSlotCount; i++)
+        {
+            if (!@event.IsActionPressed($"quick_slot_{PlayerInventoryModel.QuickSlotLabels[i]}"))
+                continue;
+            _screen!.BindFocusedToQuickSlot(i);
+            _quickBar?.Flash(i);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+    }
+
+    private void HandleWorldInput(InputEvent @event)
+    {
         // F: distinzione pressione breve / prolungata.
         //
         // F e' condiviso col sistema veicoli (prendi/lascia il timone). Stesso meccanismo di R (skill
-        // ui-hud §4): decidiamo QUI se il contesto piu' specifico e' il nostro e consumiamo l'evento
+        // ui-hud §5): decidiamo QUI se il contesto piu' specifico e' il nostro e consumiamo l'evento
         // solo in quel caso; altrimenti resta unhandled e raggiunge VehicleInput._UnhandledInput.
-        // Effetto collaterale desiderabile: F a vuoto non viene piu' ingoiato.
         if (@event.IsActionPressed("interact"))
         {
             ItemPickup? target = FindTargetPickup(out float pickupDistance);
@@ -333,21 +385,25 @@ public partial class PlayerHud : Node
             _interactClaimed = false;
             _holdingInteract = false;
             if (!_holdConsumed && _heldTarget != null && GodotObject.IsInstanceValid(_heldTarget))
-                Interact(_heldTarget.Uid, _heldTarget.Anchored);
+                Interact(_heldTarget);
             _heldTarget = null;
             return;
         }
 
+        // Tasti rapidi in gioco: usano l'oggetto collegato, se e' a portata di mano (rig, tasche,
+        // slot speciali). Oggi "usare" consuma un consumabile; l'effetto arrivera' con la salute.
         for (int i = 0; i < PlayerInventoryModel.QuickSlotCount; i++)
         {
-            if (@event.IsActionPressed($"quick_slot_{PlayerInventoryModel.QuickSlotLabels[i]}"))
-            {
-                // Col cursore su un item lo si assegna; altrimenti si seleziona lo slot.
-                _screen?.AssignHoveredToQuickSlot(i);
-                _hotbar?.SelectSlot(i);
-                GetViewport().SetInputAsHandled();
-                return;
-            }
+            if (!@event.IsActionPressed($"quick_slot_{PlayerInventoryModel.QuickSlotLabels[i]}"))
+                continue;
+
+            ItemInstance? bound = _inventory.Model.Find(_inventory.Model.QuickSlots[i]);
+            if (bound != null && _inventory.Model.IsInQuickAccessArea(bound)
+                && ItemCategories.IsA(bound.Definition.Category, ItemCategory.Consumable))
+                _inventory.SubmitUse(bound.InstanceId);
+            _quickBar?.Flash(i);
+            GetViewport().SetInputAsHandled();
+            return;
         }
     }
 

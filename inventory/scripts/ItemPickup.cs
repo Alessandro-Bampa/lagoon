@@ -4,81 +4,138 @@ using GDDict = Godot.Collections.Dictionary;
 namespace Lagoon;
 
 /// <summary>
-/// Item a terra nel mondo. Rappresentazione puramente visiva: nessuna logica di stato. Viene creato
-/// dall'host tramite la spawn-function del <c>MultiplayerSpawner</c> in <see cref="GameWorld"/> e
-/// ricostruito identico sui client dagli stessi dati di spawn.
+/// Oggetto nel mondo (sfuso a terra, zaino lasciato cadere, cassa). E' uno "spazio" di inventario
+/// a se': il suo <see cref="Uid"/> e' il numero di spazio usato negli indirizzi.
 ///
-/// Porta un <see cref="Payload"/>: l'item serializzato COMPLETO del suo contenuto annidato (stesso
-/// formato di <see cref="PlayerInventoryModel.SerializeItem"/>). E' cio' che permette a uno zaino
-/// droppato di conservare gli oggetti dentro, e alla colonna "a terra" di mostrarne il contenuto
-/// senza RPC aggiuntive (il payload viaggia nei dati di spawn, quindi e' gia' replicato a tutti).
+/// Rappresentazione puramente visiva: nessuna logica di stato. Lo crea l'host tramite la
+/// spawn-function del <c>MultiplayerSpawner</c> in <see cref="GameWorld"/>, e ogni peer lo
+/// ricostruisce identico dagli stessi dati di spawn. Il <see cref="Payload"/> e' l'albero
+/// serializzato COMPLETO (<see cref="ItemCodec"/>): uno zaino a terra conserva il contenuto e
+/// chiunque puo' mostrarlo senza RPC aggiuntive.
 ///
-/// L'interazione (pickup/loot) e' guidata dal giocatore locale, che invia una richiesta all'host:
-/// qui non si decide nulla, si mostra soltanto.
+/// Il payload non cambia mai sul posto: quando il contenuto cambia l'host sostituisce il nodo
+/// (<see cref="GameWorld.ReplacePickupPayload"/>). Per questo <see cref="Root"/> si puo'
+/// deserializzare una volta sola.
 /// </summary>
 public partial class ItemPickup : Node3D
 {
     /// Gruppo per la scansione di prossimita' da parte del giocatore locale.
     public const string GroupName = "world_item";
 
-    /// Id stabile assegnato dall'host e replicato nei dati di spawn: identita' cross-peer del pickup
-    /// (piu' robusto del nome del nodo per find/despawn/loot tra host e client).
+    /// Id stabile assegnato dall'host e replicato nei dati di spawn: identita' cross-peer.
     [Export] public int Uid { get; set; }
 
-    /// Item serializzato (con contenuto). Impostato dalla spawn-function su OGNI peer.
+    /// Albero serializzato (con contenuto). Impostato dalla spawn-function su OGNI peer.
     public GDDict Payload { get; set; } = new();
 
-    /// <summary>
-    /// Contenitore fisso nel mondo (cassa, baule): con F si APRE invece di essere raccolto, e non
-    /// puo' essere spostato nell'inventario. I cadaveri, in Fase 3, useranno lo stesso meccanismo.
-    /// </summary>
+    /// Contenitore fisso (cassa, baule): con F si APRE invece di essere raccolto.
     [Export] public bool Anchored { get; set; }
 
-    /// <summary>
-    /// True se l'oggetto e' un contenitore (quindi apribile/saccheggiabile). Si basa sulla
-    /// DEFINIZIONE, non sulla presenza della chiave "grid" nel payload: un contenitore vuoto
-    /// appena spawnato e' comunque un contenitore.
-    /// </summary>
-    public bool IsContainer
-        => GetNodeOrNull<ItemDatabase>("/root/ItemDatabase")?.Get(ItemId)?.IsContainer ?? false;
-
-    /// ItemId dell'item di primo livello (chiave dell'ItemDatabase).
-    public string ItemId => Payload.TryGetValue("item", out Variant v) ? v.AsString() : "";
-
-    /// Numero di unita' nello stack di primo livello.
-    public int StackCount => Payload.TryGetValue("stack", out Variant v) ? v.AsInt32() : 1;
-
+    private ItemInstance? _root;
+    private bool _rootParsed;
     private Label3D? _label;
+
+    /// <summary>
+    /// Albero dell'oggetto, deserializzato alla prima richiesta. Sull'host e' l'istanza che
+    /// <see cref="InventoryOps"/> modifica prima di riscrivere il payload; sui client e' sola lettura.
+    /// </summary>
+    public ItemInstance? Root
+    {
+        get
+        {
+            if (_rootParsed)
+                return _root;
+            _rootParsed = true;
+
+            var db = GetNodeOrNull<ItemDatabase>("/root/ItemDatabase");
+            if (db != null && Payload.ContainsKey("item"))
+                _root = ItemCodec.Deserialize(Payload, id => db.Get(id));
+            return _root;
+        }
+    }
+
+    public ItemDefinition? Definition => Root?.Definition;
+
+    /// True se si puo' aprire (contenitore): dipende dalla DEFINIZIONE, anche se e' vuoto.
+    public bool IsContainer => Definition?.IsContainer ?? false;
 
     public override void _Ready()
     {
         AddToGroup(GroupName);
 
-        var db = GetNodeOrNull<ItemDatabase>("/root/ItemDatabase");
-        ItemDefinition? def = db?.Get(ItemId);
+        ItemDefinition? def = Definition;
+        BuildVisual(def);
 
         _label = GetNodeOrNull<Label3D>("Label");
         if (_label != null)
         {
             _label.Text = BuildLabel(def);
-            // Prompt poco invadente: bianco semitrasparente, mostrato solo in prossimita'.
+            // Prompt poco invadente: bianco semitrasparente, mostrato solo guardando l'oggetto.
             _label.Modulate = new Color(1f, 1f, 1f, 0.72f);
             _label.OutlineModulate = new Color(0f, 0f, 0f, 0.5f);
             _label.Visible = false;
         }
-
-        if (def != null)
-        {
-            var mesh = GetNodeOrNull<MeshInstance3D>("Mesh");
-            if (mesh != null)
-                mesh.MaterialOverride = new StandardMaterial3D { AlbedoColor = InventoryColors.ForCategory(def.Category) };
-        }
     }
 
-    /// <summary>
-    /// Mostra/nasconde il prompt. Lo pilota il giocatore LOCALE (<see cref="PlayerHud"/>) in base
-    /// alla distanza: e' pura presentazione, non stato replicato.
-    /// </summary>
+    /// Il modello dell'oggetto se esiste, altrimenti il cubo colorato per categoria.
+    private void BuildVisual(ItemDefinition? def)
+    {
+        var box = GetNodeOrNull<MeshInstance3D>("Mesh");
+        if (def == null)
+            return;
+
+        PackedScene? scene = def.ResolveWorldModel();
+        if (scene?.Instantiate() is Node3D model)
+        {
+            AddChild(model);
+            FitModel(model, def.WorldModelScale);
+            if (box != null)
+                box.Visible = false;
+            return;
+        }
+
+        if (box != null)
+            box.MaterialOverride = new StandardMaterial3D { AlbedoColor = InventoryColors.ForCategory(def.Category) };
+    }
+
+    /// Appoggia il modello a terra, centrato, alla sua scala NATIVA (la stessa che ha trascinando
+    /// il .glb in una scena) moltiplicata per la correzione dichiarata dall'item.
+    private static void FitModel(Node3D model, float scale)
+    {
+        Aabb bounds = default;
+        bool any = false;
+        foreach (Node node in model.FindChildren("*", "MeshInstance3D", true, false))
+        {
+            var mesh = (MeshInstance3D)node;
+            Aabb local = RelativeTransform(mesh, model) * mesh.GetAabb();
+            bounds = any ? bounds.Merge(local) : local;
+            any = true;
+        }
+        if (model is MeshInstance3D self)
+        {
+            bounds = any ? bounds.Merge(self.GetAabb()) : self.GetAabb();
+            any = true;
+        }
+        if (!any)
+            return;
+
+        if (scale <= 0f)
+            scale = 1f;
+        model.Scale = Vector3.One * scale;
+        Vector3 center = bounds.GetCenter();
+        model.Position = new Vector3(-center.X, -bounds.Position.Y, -center.Z) * scale;
+    }
+
+    private static Transform3D RelativeTransform(Node3D node, Node3D ancestor)
+    {
+        Transform3D transform = Transform3D.Identity;
+        for (Node? current = node; current != null && current != ancestor; current = current.GetParent())
+            if (current is Node3D spatial)
+                transform = spatial.Transform * transform;
+        return transform;
+    }
+
+    /// Mostra/nasconde il prompt. Lo pilota il giocatore LOCALE (<see cref="PlayerHud"/>).
     public void SetPromptVisible(bool visible)
     {
         if (_label != null)
@@ -87,17 +144,20 @@ public partial class ItemPickup : Node3D
 
     private string BuildLabel(ItemDefinition? def)
     {
-        string display = def?.DisplayName ?? ItemId;
-        if (StackCount > 1)
-            display = Loc.T("UI_HUD_ITEM_STACK", display, StackCount);
+        ItemInstance? root = Root;
+        string display = def?.DisplayName ?? "";
+        if (root != null && root.StackCount > 1)
+            display = Loc.T("UI_HUD_ITEM_STACK", display, root.StackCount);
 
         // Segnala a colpo d'occhio che il contenitore a terra non e' vuoto.
-        int contained = CountContained();
+        int contained = 0;
+        if (root != null)
+            foreach (InventoryGrid grid in root.Grids)
+                contained += grid.Items.Count;
         if (contained > 0)
             display = Loc.T("UI_HUD_ITEM_CONTAINS", display, contained);
 
-        // Il tasto arriva dall'InputMap, non e' scritto nel testo (skill ui-hud §4): se "interact"
-        // viene rimappato, il prompt segue senza toccare le traduzioni.
+        // Il tasto arriva dall'InputMap, non e' scritto nel testo (skill ui-hud §5).
         string key = Loc.KeyFor("interact");
         return Loc.T(Anchored ? "UI_HUD_PROMPT_OPEN" : "UI_HUD_PROMPT_PICKUP", display, key);
     }
@@ -105,18 +165,7 @@ public partial class ItemPickup : Node3D
     /// Il prompt e' testo composto: al cambio lingua va ricostruito a mano.
     public override void _Notification(int what)
     {
-        if (what != NotificationTranslationChanged || _label == null)
-            return;
-
-        _label.Text = BuildLabel(GetNodeOrNull<ItemDatabase>("/root/ItemDatabase")?.Get(ItemId));
-    }
-
-    /// Numero di oggetti contenuti al primo livello del payload (0 se non e' un container).
-    private int CountContained()
-    {
-        if (!Payload.TryGetValue("grid", out Variant gridVar))
-            return 0;
-        GDDict grid = gridVar.AsGodotDictionary();
-        return grid.TryGetValue("items", out Variant items) ? items.AsGodotArray().Count : 0;
+        if (what == NotificationTranslationChanged && _label != null)
+            _label.Text = BuildLabel(Definition);
     }
 }

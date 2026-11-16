@@ -36,14 +36,15 @@ con dove si è. `TestLevel` non ha ancora un `NavigationRegion3D`.
 ## Animazione
 
 `NpcAnimationBridge` è il gemello di `PlayerAnimationBridge` e legge solo stato replicato. Le velocità
-(`WalkSpeed`…) vanno **prese dal controller**, non ridichiarate: definiscono i blend space e se divergono
-si finisce in T-pose senza errori. Per armare un NPC: `WeaponPose` nel bridge + `SyncAimYaw`,
-`SyncAimPitch`, `SyncAiming` dal controller.
+(`WalkSpeed`…) vanno **prese dal controller**, non ridichiarate: sono i punti degli spazi di blend e se
+divergono i piedi scivolano. Per armare un NPC: `Weapon` (un `WeaponAnimationSet`) nel bridge +
+`SyncAimYaw`, `SyncAimPitch`, `SyncAiming` dal controller; mani sull'arma e posa arrivano da sole.
+Un NPC morto (`HealthComponent.IsDead`) riproduce la clip di morte.
 
 ## Verifica
 
-`tools/verify_animation_runtime.gd` (NPC sullo stesso rig, rampa senza navmesh). A mano: `NpcWalker` nel
-`TestLevel` deve muoversi identico su host e client.
+`tools/playtest_fps.gd` in modalità `tp` (skill `character-animation` §8) mostra lo stesso rig pilotato a
+mano. A mano: `NpcWalker` nel `TestLevel` deve muoversi identico su host e client.
 
 ## IA futura
 

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="InventoryConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://inventory/scripts/data/InventoryConfig.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+CellPx = 64
+MinCellPx = 36
+DragThresholdPx = 6.0
+DragSourceAlpha = 0.35
+ErrorToastSeconds = 2.0
+TagMaxLength = 16
+OverweightStartKg = 26.0
+OverweightCriticalKg = 61.0
+OverweightMaxKg = 70.0
+CriticalSpeedFactor = 0.6
+MaxSpeedFactor = 0.15
+AllowPistolInPrimarySlots = true
+NestedBagsMustBeEmpty = true
+PocketsItemId = "pockets"
+GroundColumns = 10

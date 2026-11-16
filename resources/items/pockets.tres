@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="ItemDefinition" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://inventory/scripts/ItemDefinition.cs" id="1"]
+[ext_resource type="Script" path="res://inventory/scripts/data/ItemGridDef.cs" id="2"]
+
+[sub_resource type="Resource" id="grid_0"]
+script = ExtResource("2")
+Columns = 1
+Rows = 1
+Offset = Vector2(0, 0)
+
+[sub_resource type="Resource" id="grid_1"]
+script = ExtResource("2")
+Columns = 1
+Rows = 1
+Offset = Vector2(1.12, 0)
+
+[sub_resource type="Resource" id="grid_2"]
+script = ExtResource("2")
+Columns = 1
+Rows = 1
+Offset = Vector2(2.24, 0)
+
+[sub_resource type="Resource" id="grid_3"]
+script = ExtResource("2")
+Columns = 1
+Rows = 1
+Offset = Vector2(3.36, 0)
+
+[resource]
+script = ExtResource("1")
+ItemId = "pockets"
+Width = 1
+Height = 1
+Weight = 0.0
+Category = 23
+Grids = Array[ExtResource("2")]([SubResource("grid_0"), SubResource("grid_1"), SubResource("grid_2"), SubResource("grid_3")])

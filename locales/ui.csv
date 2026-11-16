@@ -67,71 +67,26 @@ UI_ACTION_QUICK_SLOT_8,Quick slot 8,Slot rapido 8
 UI_ACTION_QUICK_SLOT_9,Quick slot 9,Slot rapido 9
 UI_ACTION_QUICK_SLOT_0,Quick slot 0,Slot rapido 0
 UI_WINDOW_CLOSE_TOOLTIP,Close,Chiudi
-UI_INV_COL_GEAR,GEAR,EQUIPAGGIAMENTO
-UI_INV_COL_STORAGE,POCKETS AND CONTAINERS,TASCHE E CONTENITORI
-UI_INV_COL_SOURCE,ON THE GROUND,A TERRA
-UI_INV_WEIGHT,Weight: {0} / {1} kg,Peso: {0} / {1} kg
-UI_INV_ROTATION,Rotation ({0}): {1},Rotazione ({0}): {1}
-UI_INV_ROTATION_ON,ON,ON
-UI_INV_ROTATION_OFF,OFF,OFF
-UI_INV_POCKETS,Pockets,Tasche
-UI_INV_BACK_TO_GROUND,< Ground,< A terra
-UI_INV_CONTENTS,Contents,Contenuto
-UI_INV_GROUND_EMPTY,No items nearby.,Nessun oggetto nelle vicinanze.
-UI_INV_CTX_USE,Use,Usa
-UI_INV_CTX_INSPECT,Inspect,Ispeziona
-UI_INV_CTX_EXAMINE,Examine,Esamina
-UI_INV_CTX_EQUIP,Equip,Equipaggia
-UI_INV_CTX_UNPACK,Open pack,Apri pacchetto
-UI_INV_CTX_DISCARD,Drop on the ground,Getta a terra
-UI_INV_CTX_UNLOAD_MAGAZINE,Unload magazine,Scarica caricatore
-UI_INV_CTX_UNLOAD_AMMO,Empty ammo,Svuota munizioni
-UI_INV_CTX_FOLD_STOCK,Fold stock,Piega calcio
-UI_INV_CTX_WEAPON_LOCKED,Available with the weapon system (Phase 3).,Disponibile con il sistema armi (Fase 3).
-UI_INSPECT_TITLE,Inspect — {0},Ispeziona — {0}
-UI_INSPECT_CATEGORY,Category: {0},Categoria: {0}
-UI_INSPECT_SIZE,Size: {0}x{1} cells,Ingombro: {0}x{1} celle
-UI_INSPECT_WEIGHT,Weight: {0} kg,Peso: {0} kg
-UI_INSPECT_QUANTITY,Quantity: {0},Quantità: {0}
-UI_INSPECT_CAPACITY,Capacity: {0}x{1},Capacità: {0}x{1}
-UI_INSPECT_MODS_TITLE,Mods and durability,Moduli e durabilità
-UI_INSPECT_MODS_LOCKED,Available with the weapon system (Phase 3).,Disponibili con il sistema armi (Fase 3).
 UI_HUD_PROMPT_PICKUP,{0}   [{1}],{0}   [{1}]
 UI_HUD_PROMPT_OPEN,{0}   [{1}] Open,{0}   [{1}] Apri
 UI_HUD_ITEM_STACK,{0} x{1},{0} x{1}
 UI_HUD_ITEM_CONTAINS,{0} ({1}),{0} ({1})
 UI_HUD_GROUND_OPEN,Open,Apri
 UI_HUD_GROUND_PICKUP,Pick up,Raccogli
-UI_HUD_GROUND_EXAMINE,Examine,Esamina
+UI_HUD_GROUND_EXAMINE,Inspect,Ispeziona
 UI_HUD_RELOADING,RELOADING…,RICARICA…
 UI_HUD_AMMO,{0} / {1},{0} / {1}
 UI_MOUSE_LEFT,LMB,TSX
 UI_MOUSE_RIGHT,RMB,TDX
 UI_MOUSE_MIDDLE,MMB,TCE
-SLOT_NONE,—,—
-SLOT_HEAD,Head,Testa
-SLOT_TORSO,Torso,Torso
-SLOT_LEGS,Legs,Gambe
-SLOT_FEET,Feet,Piedi
-SLOT_VEST,Rig,Rig
-SLOT_BACKPACK,Backpack,Zaino
-SLOT_WEAPONPRIMARY,Weapon 1,Arma 1
-SLOT_WEAPONSECONDARY,Weapon 2,Arma 2
-SLOT_SIDEARM,Sidearm,Pistola
-SLOT_SECURECONTAINER,Secure,Sicuro
-CATEGORY_GENERIC,Generic,Generico
-CATEGORY_EQUIPMENT,Equipment,Equipaggiamento
-CATEGORY_CONTAINER,Container,Contenitore
-CATEGORY_WEAPON,Weapon,Arma
-CATEGORY_CONSUMABLE,Consumable,Consumabile
-NET_ERR_ENET_SERVER,"ENet: cannot create the server (port {0}): {1}","ENet: impossibile creare il server (porta {0}): {1}"
-NET_ERR_ENET_CLIENT,"ENet: cannot connect to {0}:{1}: {2}","ENet: impossibile connettersi a {0}:{1}: {2}"
-NET_ERR_STEAM_CREATE_LOBBY,"Steam: createLobby failed (check the addon version): {0}","Steam: createLobby fallita (verifica la versione dell'addon): {0}"
+NET_ERR_ENET_SERVER,ENet: cannot create the server (port {0}): {1},ENet: impossibile creare il server (porta {0}): {1}
+NET_ERR_ENET_CLIENT,ENet: cannot connect to {0}:{1}: {2},ENet: impossibile connettersi a {0}:{1}: {2}
+NET_ERR_STEAM_CREATE_LOBBY,Steam: createLobby failed (check the addon version): {0},Steam: createLobby fallita (verifica la versione dell'addon): {0}
 NET_ERR_STEAM_LOBBY_ID,Steam: invalid lobby id: '{0}',Steam: id lobby non valido: '{0}'
 NET_ERR_STEAM_JOIN_LOBBY,Steam: joinLobby failed: {0},Steam: joinLobby fallita: {0}
 NET_ERR_STEAM_MISSING,GodotSteam is not installed: the 'Steam' singleton is missing. Install the GDExtension (addons/godotsteam) or use the local ENet transport.,GodotSteam non installato: manca il singleton 'Steam'. Installa la GDExtension (addons/godotsteam) o usa il trasporto locale ENet.
-NET_ERR_STEAM_INIT,"Steam init failed: {0} (status={1}). Is Steam running and logged in? steam_appid.txt = 480?","Steam init fallita: {0} (status={1}). Steam è avviato e loggato? steam_appid.txt = 480?"
-NET_ERR_STEAM_INIT_EXCEPTION,"Steam: initialization failed (is Steam running? appid 480?): {0}","Steam: inizializzazione fallita (Steam in esecuzione? appid 480?): {0}"
+NET_ERR_STEAM_INIT,Steam init failed: {0} (status={1}). Is Steam running and logged in? steam_appid.txt = 480?,Steam init fallita: {0} (status={1}). Steam è avviato e loggato? steam_appid.txt = 480?
+NET_ERR_STEAM_INIT_EXCEPTION,Steam: initialization failed (is Steam running? appid 480?): {0},Steam: inizializzazione fallita (Steam in esecuzione? appid 480?): {0}
 NET_ERR_STEAM_LOBBY_RESULT,Steam: lobby creation failed (EResult={0}).,Steam: creazione lobby fallita (EResult={0}).
 NET_ERR_STEAM_CREATE_HOST,Steam: create_host failed: {0},Steam: create_host fallita: {0}
 NET_ERR_STEAM_LOBBY_OWNER,Steam: getLobbyOwner failed: {0},Steam: getLobbyOwner fallita: {0}
@@ -140,3 +95,115 @@ NET_ERR_STEAM_PEER_CLASS,Steam: class '{0}' not found. Is the GDExtension instal
 NET_ERR_STEAM_PEER_INSTANCE,Steam: cannot create a {0}.,Steam: impossibile creare un {0}.
 NET_ERR_CONNECTION_FAILED,Connection to the host failed.,Connessione all'host fallita.
 NET_ERR_HOST_CLOSED,The host has closed the session.,L'host ha chiuso la sessione.
+UI_INV_TITLE,Inventory,Inventario
+UI_INV_HINTS,{0}: rotate while dragging  ·  Ctrl+click: quick move  ·  Alt+click: equip  ·  Ctrl on release: split  ·  {1}: drop,{0}: ruota durante il trascinamento  ·  Ctrl+click: sposta  ·  Alt+click: equipaggia  ·  Ctrl al rilascio: dividi  ·  {1}: getta
+UI_INV_COL_GEAR,Gear,Equipaggiamento
+UI_INV_COL_STORAGE,Worn containers,Contenitori indossati
+UI_INV_COL_GROUND,On the ground,A terra
+UI_INV_WEIGHT,{0} kg,{0} kg
+UI_INV_SPECIAL_SLOTS,Special slots,Slot speciali
+UI_INV_SORT,Sort,Ordina
+UI_INV_SORT_TOOLTIP,Sort the contents automatically,Ordina automaticamente il contenuto
+UI_INV_BACK_TO_GROUND,Close,Chiudi
+UI_INV_WINDOW_TAGGED,{0} — {1},{0} — {1}
+UI_INV_SLOT_BLOCKED_BY,Slot blocked by: {0},Slot bloccato da: {0}
+UI_INV_TOOLTIP,{0} — {1} kg — {2}x{3},{0} — {1} kg — {2}x{3}
+UI_INV_SPLIT_TITLE,Split — {0},Dividi — {0}
+UI_INV_CANCEL,Cancel,Annulla
+UI_INV_CONFIRM,Confirm,Conferma
+UI_INV_TAG_TITLE,Tag — {0},Tag — {0}
+UI_INV_TAG_PLACEHOLDER,Tag name,Nome del tag
+UI_INV_ITEMSLOT_MAGAZINE,Magazine,Caricatore
+UI_INV_CTX_INSPECT,Inspect,Ispeziona
+UI_INV_CTX_OPEN,Open,Apri
+UI_INV_CTX_UNPACK,Open pack,Apri confezione
+UI_INV_CTX_USE,Use,Usa
+UI_INV_CTX_EQUIP,Equip,Equipaggia
+UI_INV_CTX_UNEQUIP,Take off,Togli
+UI_INV_CTX_LOAD_AMMO,Load ammo,Carica munizioni
+UI_INV_CTX_LOAD_AMMO_LINE,{0} ({1}),{0} ({1})
+UI_INV_CTX_UNLOAD_AMMO,Unload ammo,Scarica munizioni
+UI_INV_CTX_BIND,Bind to quick slot,Collega a slot rapido
+UI_INV_CTX_BIND_SLOT,Key {0},Tasto {0}
+UI_INV_CTX_TAG,Tag…,Tag…
+UI_INV_CTX_TAG_REMOVE,Remove tag,Rimuovi tag
+UI_INV_CTX_DISCARD,Drop on the ground,Getta a terra
+UI_INV_CTX_WHY_NOT_MINE,Pick it up first,Prima raccoglilo
+UI_INV_CTX_WHY_NO_AMMO,No compatible rounds in your inventory,Nessuna cartuccia compatibile nell’inventario
+UI_INV_CTX_WHY_EMPTY,The magazine is empty,Il caricatore è vuoto
+UI_INV_ERR_OUTOFBOUNDS,Not enough space,Spazio insufficiente
+UI_INV_ERR_NOSPACE,Not enough space,Spazio insufficiente
+UI_INV_ERR_SELFCONTAINMENT,A container cannot go inside itself,Impossibile inserire un contenitore in sé stesso
+UI_INV_ERR_FILTER,This container does not accept this item,Questo contenitore non accetta questo oggetto
+UI_INV_ERR_FILTERNESTED,The contents of the item are not allowed here,Il contenuto dell’oggetto non è ammesso qui
+UI_INV_ERR_NESTING,Empty the item before putting it in,Svuota l’oggetto prima di inserirlo
+UI_INV_ERR_NOACCESS,Out of reach,Non accessibile
+UI_INV_ERR_SLOTBLOCKED,The slot is blocked by another item,Lo slot è bloccato da un altro oggetto
+UI_INV_ERR_INCOMPATIBLE,Incompatible item,Oggetto incompatibile
+UI_INV_ERR_CALIBER,Wrong caliber,Calibro non compatibile
+UI_INV_ERR_MAGFULL,Magazine full,Caricatore pieno
+UI_INV_ERR_SWAPIMPOSSIBLE,Cannot swap,Impossibile scambiare
+UI_INV_ERR_CANNOTEQUIP,Cannot equip,Impossibile equipaggiare
+UI_INV_ERR_NOTFOUND,The item is no longer there,L’oggetto non c’è più
+UI_INV_ERR_FIXED,This item cannot be moved,Questo oggetto non si può spostare
+UI_INSPECT_TITLE,Inspect — {0},Ispeziona — {0}
+UI_INSPECT_CATEGORY,Category: {0},Categoria: {0}
+UI_INSPECT_SIZE,Size: {0}x{1} cells,Ingombro: {0}x{1} celle
+UI_INSPECT_WEIGHT,Weight: {0} kg,Peso: {0} kg
+UI_INSPECT_QUANTITY,Quantity: {0},Quantità: {0}
+UI_INSPECT_CAPACITY,Capacity: {0} cells,Capienza: {0} celle
+UI_INSPECT_CALIBER,Caliber: {0},Calibro: {0}
+UI_INSPECT_ROUNDS,Rounds: {0}/{1},Colpi: {0}/{1}
+UI_INSPECT_MAG_CONTENTS,"Magazine, next round first","Caricatore, dal prossimo colpo"
+UI_INSPECT_MAG_LINE,{0} × {1},{0} × {1}
+UI_INSPECT_ACCEPTS,Accepts: {0},Accetta: {0}
+UI_INSPECT_REJECTS,Does not accept: {0},Non accetta: {0}
+SLOT_NONE,—,—
+SLOT_EARPIECE,Earpiece,Cuffie
+SLOT_HEADWEAR,Headwear,Copricapo
+SLOT_FACECOVER,Face cover,Maschera
+SLOT_ARMBAND,Armband,Fascia
+SLOT_BODYARMOR,Body armor,Corpetto
+SLOT_EYEWEAR,Eyewear,Occhiali
+SLOT_ONSLING,On sling,A tracolla
+SLOT_ONBACK,On back,Sulla schiena
+SLOT_HOLSTER,Holster,Fondina
+SLOT_SCABBARD,Scabbard,Fodero
+SLOT_TACTICALRIG,Tactical rig,Rig tattico
+SLOT_POCKETS,Pockets,Tasche
+SLOT_SPECIAL1,Special 1,Speciale 1
+SLOT_SPECIAL2,Special 2,Speciale 2
+SLOT_SPECIAL3,Special 3,Speciale 3
+SLOT_BACKPACK,Backpack,Zaino
+SLOT_SECURECONTAINER,Pouch,Pouch
+CATEGORY_GENERIC,Generic,Generico
+CATEGORY_EQUIPMENT,Equipment,Equipaggiamento
+CATEGORY_CONTAINER,Container,Contenitore
+CATEGORY_WEAPON,Weapon,Arma
+CATEGORY_CONSUMABLE,Consumable,Consumabile
+CATEGORY_PISTOL,Pistol,Pistola
+CATEGORY_RIFLE,Long weapon,Arma lunga
+CATEGORY_MELEE,Melee weapon,Arma bianca
+CATEGORY_THROWABLE,Throwable,Arma da lancio
+CATEGORY_WEAPONMOD,Weapon part,Parte d’arma
+CATEGORY_MAGAZINE,Magazine,Caricatore
+CATEGORY_AMMO,Ammunition,Munizioni
+CATEGORY_AMMOBOX,Ammo box,Scatola di munizioni
+CATEGORY_HEADWEAR,Headwear,Copricapo
+CATEGORY_EARPIECE,Earpiece,Cuffie
+CATEGORY_FACECOVER,Face cover,Maschera
+CATEGORY_EYEWEAR,Eyewear,Occhiali
+CATEGORY_ARMBAND,Armband,Fascia
+CATEGORY_BODYARMOR,Body armor,Corpetto
+CATEGORY_CHESTRIG,Chest rig,Rig
+CATEGORY_ARMOREDRIG,Armored rig,Rig corazzato
+CATEGORY_BACKPACK,Backpack,Zaino
+CATEGORY_SECURECONTAINER,Secure container,Contenitore sicuro
+CATEGORY_POCKETS,Pockets,Tasche
+CATEGORY_MEDS,Medical,Medicinale
+CATEGORY_FOOD,Food and drink,Cibo e bevande
+CATEGORY_KEY,Key,Chiave
+CATEGORY_MONEY,Money,Denaro
+CATEGORY_BARTER,Barter item,Oggetto di scambio
+CATEGORY_INFO,Information,Informazioni
+CATEGORY_SPECIALITEM,Special tool,Strumento speciale

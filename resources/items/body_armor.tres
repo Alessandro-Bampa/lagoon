@@ -5,13 +5,7 @@
 [resource]
 script = ExtResource("1")
 ItemId = "body_armor"
-Width = 2
+Width = 3
 Height = 3
-Weight = 3.0
-Category = 1
-EquipSlot = 2
-IsContainer = false
-ContainerColumns = 0
-ContainerRows = 0
-MaxStack = 1
-QuickUsable = false
+Weight = 5.0
+Category = 18

@@ -8,7 +8,7 @@ namespace Lagoon;
 /// Segue le regole di layout della skill ui-hud: dimensioni in pixel fisse e ancoraggio, mai
 /// coordinate assolute. Si posiziona in basso a destra sopra la fascia della hotbar, prendendo
 /// l'altezza di quest'ultima da
-/// <see cref="HotbarSlotView.SlotSize"/> invece di duplicare un numero magico.
+/// <see cref="QuickBar.SlotSize"/> invece di duplicare un numero magico.
 ///
 /// Nessuno stato proprio: legge le proprieta' replicate di <see cref="WeaponController"/> e
 /// <see cref="HealthComponent"/>. Anche il conteggio dei colpi arriva dall'host — se la HUD e il
@@ -68,8 +68,8 @@ public partial class WeaponHudPanel : Control
         _panel.SetAnchorsPreset(LayoutPreset.BottomRight);
         _panel.OffsetLeft = -(PanelWidth + Margin);
         _panel.OffsetRight = -Margin;
-        _panel.OffsetTop = -(PanelHeight + HotbarSlotView.SlotSize + 24);
-        _panel.OffsetBottom = -(HotbarSlotView.SlotSize + 24);
+        _panel.OffsetTop = -(PanelHeight + QuickBar.SlotSize + 24);
+        _panel.OffsetBottom = -(QuickBar.SlotSize + 24);
 
         var column = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
         column.AddThemeConstantOverride("separation", 4);

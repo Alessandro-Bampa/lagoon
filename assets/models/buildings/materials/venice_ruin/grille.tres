@@ -1,0 +1,13 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[ext_resource type="Texture2D" path="res://assets/models/buildings/venice_ruin/textures/grille.png" id="1_fladr"]
+
+[resource]
+resource_name = "grille"
+transparency = 2
+alpha_scissor_threshold = 0.5
+alpha_antialiasing_mode = 0
+albedo_texture = ExtResource("1_fladr")
+metallic_specular = 0.0
+texture_filter = 2
+metadata/_gltf_primary_texture_coord = 0

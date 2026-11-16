@@ -4,18 +4,22 @@ namespace Lagoon;
 
 /// <summary>
 /// Camera in prima persona dell'avatar LOCALE. Possiede lo sguardo (imbardata e inclinazione, dal
-/// mouse) e si colloca sugli occhi del rig seguendo l'osso della testa: il corpo che si vede
-/// guardando in basso e' quello vero, animato, lo stesso che vedono gli altri.
+/// mouse), il rinculo della visuale e il viewmodel (<see cref="ViewmodelAnimator"/>, suo figlio).
 ///
 /// E' la fonte di verita' della direzione di vista: <c>PlayerController</c> ne legge
 /// <see cref="LookYaw"/>/<see cref="LookPitch"/> per muoversi, orientare il corpo e pubblicare
 /// <c>SyncAimYaw</c>/<c>SyncAimPitch</c>; la mira e' il centro dello schermo (<c>AimResolver</c>).
 ///
+/// Sta sul punto di vista NOMINALE del personaggio (<c>CharacterMotor.EyeHeight</c> /
+/// <c>CrouchEyeHeight</c> sopra i piedi), non sulla testa animata: e' esattamente il punto da cui
+/// l'host fa partire i colpi (<c>ResolvedEyePosition</c>), quindi cio' che sta al centro dello
+/// schermo e' cio' che viene colpito. Il dondolio del passo lo danno le clip del viewmodel.
+///
 /// Lo sguardo si applica solo a mouse CATTURATO. Chi cattura e chi rilascia e' <c>PlayerHud</c>:
 /// qui non si decide mai se il cursore appartiene alla UI.
 ///
 /// Pura resa locale (CLAUDE.md §3): nessuna RPC, nessuno stato di gioco. Sugli avatar remoti il
-/// nodo esiste ma resta spento.
+/// nodo esiste ma resta spento, e il viewmodel non viene mai creato.
 /// </summary>
 public partial class FirstPersonCamera : Camera3D
 {
@@ -23,33 +27,23 @@ public partial class FirstPersonCamera : Camera3D
     private const float RadiansPerPixel = 0.0022f;
 
     [Export] public float FovDegrees { get; set; } = 75.0f;
-
-    /// Campo visivo mentre si mira (azione <c>aim</c> con un'arma in mano).
-    [Export] public float AimFovDegrees { get; set; } = 55.0f;
-
-    [Export] public float FovBlendSpeed { get; set; } = 12.0f;
+    [Export] public float FovBlendSpeed { get; set; } = 14.0f;
     [Export] public float MaxPitchDegrees { get; set; } = 85.0f;
 
-    [Export] public string HeadBone { get; set; } = "Head";
+    /// Velocita' con cui il punto di vista scende e risale accovacciandosi, in frazione al secondo.
+    [Export] public float CrouchBlendSpeed { get; set; } = 10.0f;
 
-    /// <summary>
-    /// Dagli occhi all'origine dell'osso della testa (la base del cranio), nel riferimento dello
-    /// SGUARDO: Y in alto, Z in avanti. Ruota con l'imbardata, non con l'osso, cosi' il dondolio
-    /// della testa nelle clip sposta la camera ma non la inclina.
-    /// </summary>
-    [Export] public Vector3 EyeOffset { get; set; } = new(0f, 0.08f, 0.1f);
+    /// Abbassamento massimo della visuale a un atterraggio duro, in metri.
+    [Export] public float LandingDip { get; set; } = 0.14f;
 
-    /// Quota degli occhi sopra l'origine del corpo quando il rig non ha scheletro.
-    [Export] public float FallbackEyeHeight { get; set; } = 0.64f;
+    /// Durante scavalcamento e arrampicata: abbassamento (m), inclinazione in avanti e rollio (gradi).
+    [Export] public float VaultDip { get; set; } = 0.22f;
 
-    /// <summary>
-    /// Reattivita' con cui la camera insegue la testa, in frazione al secondo. E' un passa-basso sul
-    /// dondolio delle clip di locomozione: piu' basso = visuale piu' stabile ma piu' "galleggiante".
-    /// </summary>
-    [Export] public float HeadFollowSpeed { get; set; } = 30.0f;
+    [Export] public float VaultPitchDegrees { get; set; } = 12.0f;
+    [Export] public float VaultRollDegrees { get; set; } = 4.0f;
 
-    /// Velocita' con cui il calcio da rinculo si riassorbe, in frazione al secondo.
-    [Export] public float KickRecoverySpeed { get; set; } = 10.0f;
+    /// Di quanto arretrano le proprie gambe viste in prima persona, in metri (vedi FirstPersonBodyView).
+    [Export] public float BodyBackOffset { get; set; } = 0.12f;
 
     /// <summary>
     /// Imbardata dello sguardo in radianti, coordinate mondo, stessa convenzione di
@@ -60,65 +54,65 @@ public partial class FirstPersonCamera : Camera3D
     /// Inclinazione dello sguardo in radianti: positiva verso l'alto, zero all'orizzonte.
     public float LookPitch { get; private set; }
 
-    /// Mira attiva: stringe il campo visivo. La scrive <c>PlayerController</c>.
+    /// Mira attiva: stringe il campo visivo su <see cref="AimFovDegrees"/>. La scrive <c>PlayerController</c>.
     public bool Zoomed { get; set; }
 
+    /// Campo visivo in mira, dichiarato dall'arma impugnata.
+    public float AimFovDegrees { get; set; } = 55.0f;
+
+    /// Il viewmodel, o null sugli avatar remoti.
+    public ViewmodelAnimator? Viewmodel { get; private set; }
+
     private SettingsService _settings = null!;
-    private Node3D _body = null!;
-    private Skeleton3D? _skeleton;
-    private int _headBone = -1;
+    private CharacterMotor _body = null!;
 
-    private Vector3 _eyeLocal;
-    private bool _hasEye;
+    private float _crouch;
+    private float _dip;
 
-    /// Calcio da rinculo: X = imbardata, Y = inclinazione, in radianti.
-    private Vector2 _kick;
-    private readonly RandomNumberGenerator _rng = new();
+    /// Quanto si e' dentro uno scavalcamento, da 0 a 1: la visuale si protende e si abbassa.
+    private float _vault;
+
+    // Rinculo della visuale: x = inclinazione, y = imbardata, z = rollio, in radianti. Lo sparo
+    // sposta il BERSAGLIO; la visuale lo insegue di scatto e il bersaglio rientra piu' piano.
+    private Vector3 _recoilTarget;
+    private Vector3 _recoil;
+    private float _recoilSnap = 30f;
+    private float _recoilReturn = 7f;
 
     public override void _Ready()
     {
+        Viewmodel = GetNodeOrNull<ViewmodelAnimator>("Viewmodel");
+
         // Stesso criterio di tutta la presentazione locale: l'autorita' della root, gia' impostata
         // nel suo _EnterTree. Decide QUI chi e' la camera attiva, senza dipendere da altri nodi.
         bool isLocal = GetParent().IsMultiplayerAuthority();
         Current = isLocal;
         if (!isLocal)
         {
+            Viewmodel?.QueueFree();
+            Viewmodel = null;
             SetProcess(false);
             SetProcessInput(false);
             return;
         }
 
         _settings = GetNode<SettingsService>("/root/SettingsService");
-        _body = GetParent<Node3D>();
-        _rng.Randomize();
+        _body = GetParent<CharacterMotor>();
 
         Fov = FovDegrees;
-        Position = Vector3.Up * FallbackEyeHeight;
+        Position = Vector3.Up * EyeLocalHeight();
 
-        _skeleton = SkeletonLocator.Find(GetNode("../Visual/CharacterRig"));
-        _headBone = _skeleton?.FindBone(HeadBone) ?? -1;
-        if (_skeleton == null || _headBone < 0)
-        {
-            GD.PushWarning($"[FirstPersonCamera] osso '{HeadBone}' non trovato: la camera resta a quota fissa.");
-            return;
-        }
-
-        // La posa FINALE (dopo IK e modificatori) e' leggibile solo dentro questo segnale: Godot
-        // ripristina le pose sorgente subito dopo.
-        _skeleton.SkeletonUpdated += OnSkeletonUpdated;
-
-        // Differito: la copia visibile eredita il materiale della mesh, che PlayerNetworkSync
-        // assegna nel proprio _Ready, e l'ordine fra i due _Ready non e' un appiglio.
-        CallDeferred(MethodName.HideOwnHead);
+        // Differito: lo scheletro del rig viene risolto nel suo _Ready, e l'ordine fra i due
+        // _Ready non e' un appiglio.
+        CallDeferred(MethodName.BuildBodyView);
     }
 
-    /// <summary>
-    /// Nasconde la propria testa, solo su questo peer e solo alla vista: l'ombra resta intera
-    /// (<see cref="FirstPersonBodyView"/>). Senza, guardando in basso si vedrebbero mento e collo
-    /// dall'interno.
-    /// </summary>
-    private void HideOwnHead()
-        => FirstPersonBodyView.HideBone(GetNode("../Visual/CharacterRig"), _skeleton!, _headBone);
+    private void BuildBodyView()
+    {
+        var rig = GetNodeOrNull<CharacterAnimator>("../Visual/CharacterRig");
+        if (rig?.Skeleton != null)
+            FirstPersonBodyView.Build(rig, rig.Skeleton, BodyBackOffset);
+    }
 
     /// _Input e non _UnhandledInput: a mouse catturato non c'e' UI che debba vedere il movimento.
     public override void _Input(InputEvent @event)
@@ -133,8 +127,11 @@ public partial class FirstPersonCamera : Camera3D
         float scale = RadiansPerPixel * _settings.MouseSensitivity * (Fov / FovDegrees);
         float maxPitch = Mathf.DegToRad(MaxPitchDegrees);
 
-        LookYaw = Mathf.Wrap(LookYaw - motion.ScreenRelative.X * scale, -Mathf.Pi, Mathf.Pi);
-        LookPitch = Mathf.Clamp(LookPitch - motion.ScreenRelative.Y * scale, -maxPitch, maxPitch);
+        var delta = new Vector2(-motion.ScreenRelative.X * scale, -motion.ScreenRelative.Y * scale);
+        LookYaw = Mathf.Wrap(LookYaw + delta.X, -Mathf.Pi, Mathf.Pi);
+        LookPitch = Mathf.Clamp(LookPitch + delta.Y, -maxPitch, maxPitch);
+
+        Viewmodel?.AddLookDelta(delta);
     }
 
     public override void _Process(double delta)
@@ -142,25 +139,37 @@ public partial class FirstPersonCamera : Camera3D
         float dt = (float)delta;
 
         Fov = Mathf.Lerp(Fov, Zoomed ? AimFovDegrees : FovDegrees, Damp(FovBlendSpeed, dt));
-        _kick = _kick.Lerp(Vector2.Zero, Damp(KickRecoverySpeed, dt));
+
+        _crouch = Mathf.Lerp(_crouch, _body.SyncCrouching ? 1f : 0f, Damp(CrouchBlendSpeed, dt));
+        _dip = Mathf.Lerp(_dip, 0f, Damp(7f, dt));
+
+        // Scavalcando ci si raccoglie e ci si protende sopra l'ostacolo: senza viewmodel (l'arma e'
+        // fuori vista) e' il movimento della visuale a far sentire il gesto.
+        _vault = Mathf.Lerp(_vault, _body.Vaulting ? 1f : 0f, Damp(7f, dt));
+        Position = Vector3.Up * (EyeLocalHeight() - _dip - VaultDip * _vault);
+
+        _recoilTarget = _recoilTarget.Lerp(Vector3.Zero, Damp(_recoilReturn, dt));
+        _recoil = _recoil.Lerp(_recoilTarget, Damp(_recoilSnap, dt));
 
         // Camera3D guarda lungo -Z, lo sguardo a imbardata zero guarda +Z: da qui il mezzo giro.
-        GlobalRotation = new Vector3(LookPitch + _kick.Y, LookYaw + Mathf.Pi + _kick.X, 0f);
+        float limit = Mathf.DegToRad(89f);
+        var basis = Basis.FromEuler(new Vector3(
+            Mathf.Clamp(LookPitch + _recoil.X - Mathf.DegToRad(VaultPitchDegrees) * _vault, -limit, limit),
+            LookYaw + Mathf.Pi + _recoil.Y,
+            _recoil.Z + Mathf.DegToRad(VaultRollDegrees) * _vault));
+
+        // Scossone autoriale del viewmodel (ricarica, estrazione): gia' nel riferimento della camera.
+        if (Viewmodel != null)
+            basis *= new Basis(Viewmodel.CameraShake);
+
+        GlobalBasis = basis;
     }
 
-    private void OnSkeletonUpdated()
+    /// Quota degli occhi rispetto all'origine del corpo, che sta a meta' capsula.
+    private float EyeLocalHeight()
     {
-        Vector3 head = _skeleton!.GlobalTransform * _skeleton.GetBoneGlobalPose(_headBone).Origin;
-        Vector3 target = head + new Basis(Vector3.Up, LookYaw) * EyeOffset - _body.GlobalPosition;
-
-        // Si smorza la posizione RELATIVA al corpo, non quella in mondo: cosi' il movimento
-        // dell'avatar non accumula ritardo e si filtra solo il dondolio dell'animazione.
-        _eyeLocal = _hasEye
-            ? _eyeLocal.Lerp(target, Damp(HeadFollowSpeed, (float)GetProcessDeltaTime()))
-            : target;
-        _hasEye = true;
-
-        Position = _eyeLocal;
+        float height = Mathf.Lerp(_body.EyeHeight, _body.CrouchEyeHeight, _crouch);
+        return height - _body.StandHeight * 0.5f;
     }
 
     /// Ruota lo sguardo di un angolo: lo usa chi trasporta l'avatar (ponte di una barca in virata).
@@ -175,17 +184,28 @@ public partial class FirstPersonCamera : Camera3D
     }
 
     /// <summary>
-    /// Calcio da rinculo, in gradi: la visuale sale e scarta di lato, poi rientra. Solo locale.
-    /// Sposta davvero il centro dello schermo, quindi anche il punto mirato finche' non rientra:
-    /// e' il rinculo che il giocatore deve compensare, mentre la dispersione resta dell'host.
+    /// Rinculo di un colpo, in gradi: la visuale sale (<paramref name="pitch"/>), scarta di lato
+    /// (<paramref name="yaw"/>) e si inclina (<paramref name="roll"/>), poi rientra da sola.
+    ///
+    /// Sposta davvero il centro dello schermo, cioe' il punto mirato del colpo successivo: e' il
+    /// rinculo che il giocatore compensa trascinando il mouse. Sparando a raffica i colpi si
+    /// sommano piu' in fretta di quanto rientrino, e la visuale sale. Resta locale: l'host riceve
+    /// solo il punto mirato, e la dispersione la tira lui.
     /// </summary>
-    public void AddKick(float degrees)
+    /// <param name="snappiness">Prontezza con cui la visuale raggiunge il rinculo, in 1/s.</param>
+    /// <param name="returnSpeed">Velocita' di rientro, in 1/s.</param>
+    public void AddRecoil(float pitch, float yaw, float roll, float snappiness, float returnSpeed)
     {
-        if (degrees <= 0f)
-            return;
+        _recoilTarget += new Vector3(Mathf.DegToRad(pitch), Mathf.DegToRad(yaw), Mathf.DegToRad(roll));
+        _recoilSnap = Mathf.Max(snappiness, 1f);
+        _recoilReturn = Mathf.Max(returnSpeed, 0.1f);
+    }
 
-        float radians = Mathf.DegToRad(degrees);
-        _kick += new Vector2(_rng.RandfRange(-0.4f, 0.4f) * radians, radians);
+    /// Atterraggio: la visuale si abbassa in proporzione all'impatto e risale.
+    public void AddLandingDip(float impactSpeed, float hardLandingSpeed)
+    {
+        float hardness = Mathf.Clamp(impactSpeed / Mathf.Max(hardLandingSpeed, 0.001f), 0f, 1f);
+        _dip = Mathf.Max(_dip, hardness * LandingDip);
     }
 
     private static float Damp(float speed, float dt) => 1.0f - Mathf.Exp(-speed * dt);

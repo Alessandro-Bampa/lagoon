@@ -1,81 +1,62 @@
 namespace Lagoon;
 
 /// <summary>
-/// Indirizzo di una posizione che puo' contenere item, ovunque essa sia: una griglia del proprio
-/// inventario, uno slot indossato, un contenitore nel mondo (zaino droppato o cassa) o il terreno.
+/// Indirizzo di una DESTINAZIONE: una griglia o uno slot di un item, uno slot del personaggio,
+/// oppure il terreno. La SORGENTE di uno spostamento non ha bisogno di un indirizzo: basta la
+/// coppia (spazio, InstanceId), perche' gli id sono unici e ogni istanza sa dove si trova.
 ///
-/// E' il fondamento del refactor: avendo UN modo di indicare "da dove" e "verso dove", tutte le
-/// interazioni (trascinamento, quick move, quick equip, scarto rapido, voci del menu contestuale)
-/// si riducono a una sola operazione di spostamento (<see cref="ItemTransfer"/>) e a una sola RPC,
-/// invece di una RPC per ogni combinazione.
+/// <b>Spazio</b>: <c>0</c> = il proprio inventario; un valore positivo = l'<c>Uid</c> di un
+/// oggetto nel mondo (cassa, zaino a terra, oggetto sfuso).
 ///
-/// Si codifica in 3 int (<see cref="Realm"/>, <see cref="A"/>, <see cref="B"/>) per attraversare le
-/// RPC senza strutture complesse.
+/// Si codifica in 4 int per attraversare le RPC senza strutture.
 /// </summary>
 public readonly struct ItemAddress : System.IEquatable<ItemAddress>
 {
-    public enum RealmType
+    public enum Kind
     {
-        /// Una griglia dell'inventario del giocatore. A = containerId (vedi PlayerInventoryModel).
-        PlayerGrid = 0,
+        /// Griglia <see cref="Index"/> dell'item <see cref="Owner"/>.
+        Grid = 0,
 
-        /// Uno slot di equipaggiamento indossato. A = EquipSlotType.
-        PlayerEquip = 1,
+        /// Slot <see cref="Index"/> dell'item <see cref="Owner"/>; con Owner = 0 e' uno slot del
+        /// personaggio e Index e' un <see cref="EquipSlotType"/>.
+        Slot = 1,
 
-        /// Un contenitore nel mondo. A = uid del world item, B = InstanceId del container nel payload.
-        WorldContainer = 2,
-
-        /// Il terreno: destinazione di uno scarto (l'item cade ai piedi del giocatore).
-        WorldLoose = 3,
+        /// Il terreno ai piedi del giocatore.
+        Ground = 2,
     }
 
-    public RealmType Realm { get; }
-    public int A { get; }
-    public int B { get; }
+    /// Spazio che vale "il proprio inventario".
+    public const int PlayerSpace = 0;
 
-    public ItemAddress(RealmType realm, int a = 0, int b = 0)
+    public int Space { get; }
+    public int Owner { get; }
+    public Kind Type { get; }
+    public int Index { get; }
+
+    public ItemAddress(int space, int owner, Kind type, int index)
     {
-        Realm = realm;
-        A = a;
-        B = b;
+        Space = space;
+        Owner = owner;
+        Type = type;
+        Index = index;
     }
 
-    // --- costruttori espressivi ----------------------------------------------------------
+    public static ItemAddress Equip(EquipSlotType slot) => new(PlayerSpace, 0, Kind.Slot, (int)slot);
+    public static ItemAddress GridOf(int space, int ownerId, int gridIndex) => new(space, ownerId, Kind.Grid, gridIndex);
+    public static ItemAddress SlotOf(int space, int ownerId, int slotIndex) => new(space, ownerId, Kind.Slot, slotIndex);
+    public static ItemAddress Ground() => new(PlayerSpace, 0, Kind.Ground, 0);
 
-    /// Una griglia dell'inventario (tasche, rig, zaino, container annidato).
-    public static ItemAddress PlayerGridAt(int containerId) => new(RealmType.PlayerGrid, containerId);
+    public bool IsPlayer => Space == PlayerSpace && Type != Kind.Ground;
+    public bool IsGround => Type == Kind.Ground;
+    public bool IsEquipSlot => Type == Kind.Slot && Owner == 0 && Space == PlayerSpace;
+    public EquipSlotType EquipSlot => (EquipSlotType)Index;
 
-    /// Le tasche (griglia sempre presente).
-    public static ItemAddress Pockets() => PlayerGridAt(PlayerInventoryModel.PocketsContainerId);
+    public static ItemAddress Decode(int space, int owner, int type, int index)
+        => new(space, owner, (Kind)type, index);
 
-    /// Uno slot indossato.
-    public static ItemAddress Equip(EquipSlotType slot) => new(RealmType.PlayerEquip, (int)slot);
-
-    /// <summary>
-    /// Un contenitore nel mondo. <paramref name="containerInstanceId"/> = 0 indica l'item radice
-    /// del world item stesso (es. lo zaino droppato), altrimenti un container annidato nel payload.
-    /// </summary>
-    public static ItemAddress WorldContainerAt(int worldItemUid, int containerInstanceId = 0)
-        => new(RealmType.WorldContainer, worldItemUid, containerInstanceId);
-
-    /// Il terreno ai piedi del giocatore.
-    public static ItemAddress Ground() => new(RealmType.WorldLoose);
-
-    // --- comodita' -----------------------------------------------------------------------
-
-    public bool IsWorld => Realm is RealmType.WorldContainer or RealmType.WorldLoose;
-    public bool IsPlayer => Realm is RealmType.PlayerGrid or RealmType.PlayerEquip;
-
-    public EquipSlotType Slot => (EquipSlotType)A;
-    public int ContainerId => A;
-    public int WorldItemUid => A;
-    public int ContainerInstanceId => B;
-
-    public static ItemAddress Decode(int realm, int a, int b) => new((RealmType)realm, a, b);
-
-    public bool Equals(ItemAddress other) => Realm == other.Realm && A == other.A && B == other.B;
+    public bool Equals(ItemAddress other)
+        => Space == other.Space && Owner == other.Owner && Type == other.Type && Index == other.Index;
     public override bool Equals(object? obj) => obj is ItemAddress other && Equals(other);
-    public override int GetHashCode() => System.HashCode.Combine((int)Realm, A, B);
-
-    public override string ToString() => $"{Realm}(a={A}, b={B})";
+    public override int GetHashCode() => System.HashCode.Combine(Space, Owner, (int)Type, Index);
+    public override string ToString() => $"{Type}(space={Space}, owner={Owner}, index={Index})";
 }

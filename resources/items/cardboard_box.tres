@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://inventory/scripts/ItemDefinition.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+ItemId = "cardboard_box"
+Width = 3
+Height = 3
+Weight = 2.0
+Category = 2
+ContainerColumns = 5
+ContainerRows = 4
+WorldAnchored = true
