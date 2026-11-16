@@ -7,7 +7,7 @@
 [ext_resource type="Script" path="res://combat/scripts/HitboxComponent.cs" id="5"]
 
 [sub_resource type="CapsuleShape3D" id="Shape_Body"]
-radius = 0.5
+radius = 0.35
 height = 2.0
 
 ; Stesse proprieta' replicate del giocatore, meno SyncAnchorId: un NPC non sale in barca.

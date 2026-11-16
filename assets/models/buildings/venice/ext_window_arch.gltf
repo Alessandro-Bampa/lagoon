@@ -11,14 +11,19 @@
 		{
 			"name":"Scene",
 			"nodes":[
-				0
+				0,
+				1
 			]
 		}
 	],
 	"nodes":[
 		{
 			"mesh":0,
-			"name":"ext_window_arch-col"
+			"name":"ext_window_arch"
+		},
+		{
+			"mesh":1,
+			"name":"ext_window_arch_col-colonly"
 		}
 	],
 	"materials":[
@@ -141,6 +146,19 @@
 					},
 					"indices":18,
 					"material":4
+				}
+			]
+		},
+		{
+			"name":"ext_window_arch_col",
+			"primitives":[
+				{
+					"attributes":{
+						"POSITION":19,
+						"NORMAL":20,
+						"TEXCOORD_0":21
+					},
+					"indices":22
 				}
 			]
 		}
@@ -358,6 +376,40 @@
 			"componentType":5123,
 			"count":60,
 			"type":"SCALAR"
+		},
+		{
+			"bufferView":19,
+			"componentType":5126,
+			"count":8,
+			"max":[
+				1,
+				3,
+				0
+			],
+			"min":[
+				-1,
+				0,
+				-0.30000001192092896
+			],
+			"type":"VEC3"
+		},
+		{
+			"bufferView":20,
+			"componentType":5126,
+			"count":8,
+			"type":"VEC3"
+		},
+		{
+			"bufferView":21,
+			"componentType":5126,
+			"count":8,
+			"type":"VEC2"
+		},
+		{
+			"bufferView":22,
+			"componentType":5123,
+			"count":12,
+			"type":"SCALAR"
 		}
 	],
 	"bufferViews":[
@@ -474,6 +526,30 @@
 			"byteLength":120,
 			"byteOffset":9980,
 			"target":34963
+		},
+		{
+			"buffer":0,
+			"byteLength":96,
+			"byteOffset":10100,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":96,
+			"byteOffset":10196,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":64,
+			"byteOffset":10292,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":24,
+			"byteOffset":10356,
+			"target":34963
 		}
 	],
 	"samplers":[
@@ -484,7 +560,7 @@
 	],
 	"buffers":[
 		{
-			"byteLength":10100,
+			"byteLength":10380,
 			"uri":"ext_window_arch.bin"
 		}
 	]

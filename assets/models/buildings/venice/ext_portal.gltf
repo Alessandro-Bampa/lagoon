@@ -11,14 +11,19 @@
 		{
 			"name":"Scene",
 			"nodes":[
-				0
+				0,
+				1
 			]
 		}
 	],
 	"nodes":[
 		{
 			"mesh":0,
-			"name":"ext_portal-col"
+			"name":"ext_portal"
+		},
+		{
+			"mesh":1,
+			"name":"ext_portal_col-colonly"
 		}
 	],
 	"materials":[
@@ -95,6 +100,19 @@
 					},
 					"indices":10,
 					"material":2
+				}
+			]
+		},
+		{
+			"name":"ext_portal_col",
+			"primitives":[
+				{
+					"attributes":{
+						"POSITION":11,
+						"NORMAL":12,
+						"TEXCOORD_0":13
+					},
+					"indices":14
 				}
 			]
 		}
@@ -226,6 +244,40 @@
 			"componentType":5123,
 			"count":180,
 			"type":"SCALAR"
+		},
+		{
+			"bufferView":11,
+			"componentType":5126,
+			"count":60,
+			"max":[
+				1,
+				3,
+				0
+			],
+			"min":[
+				-1,
+				0,
+				-0.30000001192092896
+			],
+			"type":"VEC3"
+		},
+		{
+			"bufferView":12,
+			"componentType":5126,
+			"count":60,
+			"type":"VEC3"
+		},
+		{
+			"bufferView":13,
+			"componentType":5126,
+			"count":60,
+			"type":"VEC2"
+		},
+		{
+			"bufferView":14,
+			"componentType":5123,
+			"count":90,
+			"type":"SCALAR"
 		}
 	],
 	"bufferViews":[
@@ -294,6 +346,30 @@
 			"byteLength":360,
 			"byteOffset":6520,
 			"target":34963
+		},
+		{
+			"buffer":0,
+			"byteLength":720,
+			"byteOffset":6880,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":720,
+			"byteOffset":7600,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":480,
+			"byteOffset":8320,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":180,
+			"byteOffset":8800,
+			"target":34963
 		}
 	],
 	"samplers":[
@@ -304,7 +380,7 @@
 	],
 	"buffers":[
 		{
-			"byteLength":6880,
+			"byteLength":8980,
 			"uri":"ext_portal.bin"
 		}
 	]

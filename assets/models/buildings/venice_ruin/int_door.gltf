@@ -11,14 +11,19 @@
 		{
 			"name":"Scene",
 			"nodes":[
-				0
+				0,
+				1
 			]
 		}
 	],
 	"nodes":[
 		{
 			"mesh":0,
-			"name":"int_door-col"
+			"name":"int_door"
+		},
+		{
+			"mesh":1,
+			"name":"int_door_col-colonly"
 		}
 	],
 	"materials":[
@@ -72,6 +77,19 @@
 					},
 					"indices":7,
 					"material":1
+				}
+			]
+		},
+		{
+			"name":"int_door_col",
+			"primitives":[
+				{
+					"attributes":{
+						"POSITION":8,
+						"NORMAL":9,
+						"TEXCOORD_0":10
+					},
+					"indices":11
 				}
 			]
 		}
@@ -138,12 +156,12 @@
 			"componentType":5126,
 			"count":60,
 			"max":[
-				0.5799999833106995,
+				0.6800000071525574,
 				2.180000066757202,
 				0.10000000149011612
 			],
 			"min":[
-				-0.5799999833106995,
+				-0.6800000071525574,
 				0,
 				-0.10000000149011612
 			],
@@ -165,6 +183,40 @@
 			"bufferView":7,
 			"componentType":5123,
 			"count":90,
+			"type":"SCALAR"
+		},
+		{
+			"bufferView":8,
+			"componentType":5126,
+			"count":36,
+			"max":[
+				1,
+				2.700000047683716,
+				0.07999999821186066
+			],
+			"min":[
+				-1,
+				0,
+				-0.07999999821186066
+			],
+			"type":"VEC3"
+		},
+		{
+			"bufferView":9,
+			"componentType":5126,
+			"count":36,
+			"type":"VEC3"
+		},
+		{
+			"bufferView":10,
+			"componentType":5126,
+			"count":36,
+			"type":"VEC2"
+		},
+		{
+			"bufferView":11,
+			"componentType":5123,
+			"count":54,
 			"type":"SCALAR"
 		}
 	],
@@ -216,6 +268,30 @@
 			"byteLength":180,
 			"byteOffset":2760,
 			"target":34963
+		},
+		{
+			"buffer":0,
+			"byteLength":432,
+			"byteOffset":2940,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":432,
+			"byteOffset":3372,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":288,
+			"byteOffset":3804,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":108,
+			"byteOffset":4092,
+			"target":34963
 		}
 	],
 	"samplers":[
@@ -226,7 +302,7 @@
 	],
 	"buffers":[
 		{
-			"byteLength":2940,
+			"byteLength":4200,
 			"uri":"int_door.bin"
 		}
 	]

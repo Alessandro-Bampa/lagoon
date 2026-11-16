@@ -2,20 +2,21 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://xw2c1xgydofl"
-path="res://.godot/imported/stone.png-ff61f7cdec03bd9d73084dec17da1ccf.ctex"
+uid="uid://beyg14lblucd"
+path.s3tc="res://.godot/imported/stone.png-ff61f7cdec03bd9d73084dec17da1ccf.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/buildings/venice/textures/stone.png"
-dest_files=["res://.godot/imported/stone.png-ff61f7cdec03bd9d73084dec17da1ccf.ctex"]
+dest_files=["res://.godot/imported/stone.png-ff61f7cdec03bd9d73084dec17da1ccf.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

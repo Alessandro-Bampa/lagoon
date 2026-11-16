@@ -2,20 +2,21 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://rgnqxhss0tdd"
-path="res://.godot/imported/glass.png-8014eb75e8fe0a4e1710c581e8987eb5.ctex"
+uid="uid://bbxwpvjnlievl"
+path.s3tc="res://.godot/imported/glass.png-8014eb75e8fe0a4e1710c581e8987eb5.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/buildings/venice_ruin/textures/glass.png"
-dest_files=["res://.godot/imported/glass.png-8014eb75e8fe0a4e1710c581e8987eb5.ctex"]
+dest_files=["res://.godot/imported/glass.png-8014eb75e8fe0a4e1710c581e8987eb5.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

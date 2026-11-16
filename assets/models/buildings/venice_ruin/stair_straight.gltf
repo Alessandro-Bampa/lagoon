@@ -12,7 +12,9 @@
 			"name":"Scene",
 			"nodes":[
 				0,
-				1
+				1,
+				2,
+				3
 			]
 		}
 	],
@@ -23,6 +25,14 @@
 		},
 		{
 			"mesh":1,
+			"name":"stair_straight_rail_l-convcolonly"
+		},
+		{
+			"mesh":2,
+			"name":"stair_straight_rail_r-convcolonly"
+		},
+		{
+			"mesh":3,
 			"name":"stair_straight_ramp-convcolonly"
 		}
 	],
@@ -54,6 +64,35 @@
 				},
 				"metallicFactor":0
 			}
+		},
+		{
+			"alphaMode":"MASK",
+			"extensions":{
+				"KHR_materials_specular":{
+					"specularFactor":0
+				}
+			},
+			"name":"railing",
+			"pbrMetallicRoughness":{
+				"baseColorTexture":{
+					"index":2
+				},
+				"metallicFactor":0
+			}
+		},
+		{
+			"extensions":{
+				"KHR_materials_specular":{
+					"specularFactor":0
+				}
+			},
+			"name":"wood",
+			"pbrMetallicRoughness":{
+				"baseColorTexture":{
+					"index":3
+				},
+				"metallicFactor":0
+			}
 		}
 	],
 	"meshes":[
@@ -77,6 +116,50 @@
 					},
 					"indices":7,
 					"material":1
+				},
+				{
+					"attributes":{
+						"POSITION":8,
+						"NORMAL":9,
+						"TEXCOORD_0":10
+					},
+					"indices":11,
+					"material":2
+				},
+				{
+					"attributes":{
+						"POSITION":12,
+						"NORMAL":13,
+						"TEXCOORD_0":14
+					},
+					"indices":15,
+					"material":3
+				}
+			]
+		},
+		{
+			"name":"stair_straight_rail_l",
+			"primitives":[
+				{
+					"attributes":{
+						"POSITION":16,
+						"NORMAL":17,
+						"TEXCOORD_0":18
+					},
+					"indices":19
+				}
+			]
+		},
+		{
+			"name":"stair_straight_rail_r",
+			"primitives":[
+				{
+					"attributes":{
+						"POSITION":20,
+						"NORMAL":21,
+						"TEXCOORD_0":22
+					},
+					"indices":19
 				}
 			]
 		},
@@ -85,11 +168,11 @@
 			"primitives":[
 				{
 					"attributes":{
-						"POSITION":8,
-						"NORMAL":9,
-						"TEXCOORD_0":10
+						"POSITION":23,
+						"NORMAL":24,
+						"TEXCOORD_0":25
 					},
-					"indices":11
+					"indices":26
 				}
 			]
 		}
@@ -102,6 +185,14 @@
 		{
 			"sampler":0,
 			"source":1
+		},
+		{
+			"sampler":0,
+			"source":2
+		},
+		{
+			"sampler":0,
+			"source":3
 		}
 	],
 	"images":[
@@ -114,6 +205,16 @@
 			"mimeType":"image/png",
 			"name":"ceiling",
 			"uri":"textures/ceiling.png"
+		},
+		{
+			"mimeType":"image/png",
+			"name":"railing",
+			"uri":"textures/railing.png"
+		},
+		{
+			"mimeType":"image/png",
+			"name":"wood",
+			"uri":"textures/wood.png"
 		}
 	],
 	"accessors":[
@@ -188,6 +289,136 @@
 		{
 			"bufferView":8,
 			"componentType":5126,
+			"count":16,
+			"max":[
+				0.9559999704360962,
+				3.950000047683716,
+				0
+			],
+			"min":[
+				-0.9559999704360962,
+				0,
+				-4
+			],
+			"type":"VEC3"
+		},
+		{
+			"bufferView":9,
+			"componentType":5126,
+			"count":16,
+			"type":"VEC3"
+		},
+		{
+			"bufferView":10,
+			"componentType":5126,
+			"count":16,
+			"type":"VEC2"
+		},
+		{
+			"bufferView":11,
+			"componentType":5123,
+			"count":24,
+			"type":"SCALAR"
+		},
+		{
+			"bufferView":12,
+			"componentType":5126,
+			"count":128,
+			"max":[
+				0.9799999594688416,
+				4.03000020980835,
+				0
+			],
+			"min":[
+				-0.9799999594688416,
+				0,
+				-4
+			],
+			"type":"VEC3"
+		},
+		{
+			"bufferView":13,
+			"componentType":5126,
+			"count":128,
+			"type":"VEC3"
+		},
+		{
+			"bufferView":14,
+			"componentType":5126,
+			"count":128,
+			"type":"VEC2"
+		},
+		{
+			"bufferView":15,
+			"componentType":5123,
+			"count":192,
+			"type":"SCALAR"
+		},
+		{
+			"bufferView":16,
+			"componentType":5126,
+			"count":24,
+			"max":[
+				-0.9200000166893005,
+				3.990000009536743,
+				0
+			],
+			"min":[
+				-0.9799999594688416,
+				0,
+				-4
+			],
+			"type":"VEC3"
+		},
+		{
+			"bufferView":17,
+			"componentType":5126,
+			"count":24,
+			"type":"VEC3"
+		},
+		{
+			"bufferView":18,
+			"componentType":5126,
+			"count":24,
+			"type":"VEC2"
+		},
+		{
+			"bufferView":19,
+			"componentType":5123,
+			"count":36,
+			"type":"SCALAR"
+		},
+		{
+			"bufferView":20,
+			"componentType":5126,
+			"count":24,
+			"max":[
+				0.9799999594688416,
+				3.990000009536743,
+				0
+			],
+			"min":[
+				0.9200000166893005,
+				0,
+				-4
+			],
+			"type":"VEC3"
+		},
+		{
+			"bufferView":21,
+			"componentType":5126,
+			"count":24,
+			"type":"VEC3"
+		},
+		{
+			"bufferView":22,
+			"componentType":5126,
+			"count":24,
+			"type":"VEC2"
+		},
+		{
+			"bufferView":23,
+			"componentType":5126,
 			"count":30,
 			"max":[
 				0.9800000190734863,
@@ -202,19 +433,19 @@
 			"type":"VEC3"
 		},
 		{
-			"bufferView":9,
+			"bufferView":24,
 			"componentType":5126,
 			"count":30,
 			"type":"VEC3"
 		},
 		{
-			"bufferView":10,
+			"bufferView":25,
 			"componentType":5126,
 			"count":30,
 			"type":"VEC2"
 		},
 		{
-			"bufferView":11,
+			"bufferView":26,
 			"componentType":5123,
 			"count":48,
 			"type":"SCALAR"
@@ -271,26 +502,116 @@
 		},
 		{
 			"buffer":0,
-			"byteLength":360,
+			"byteLength":192,
 			"byteOffset":9240,
 			"target":34962
 		},
 		{
 			"buffer":0,
+			"byteLength":192,
+			"byteOffset":9432,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":128,
+			"byteOffset":9624,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":48,
+			"byteOffset":9752,
+			"target":34963
+		},
+		{
+			"buffer":0,
+			"byteLength":1536,
+			"byteOffset":9800,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":1536,
+			"byteOffset":11336,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":1024,
+			"byteOffset":12872,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":384,
+			"byteOffset":13896,
+			"target":34963
+		},
+		{
+			"buffer":0,
+			"byteLength":288,
+			"byteOffset":14280,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":288,
+			"byteOffset":14568,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":192,
+			"byteOffset":14856,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":72,
+			"byteOffset":15048,
+			"target":34963
+		},
+		{
+			"buffer":0,
+			"byteLength":288,
+			"byteOffset":15120,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":288,
+			"byteOffset":15408,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":192,
+			"byteOffset":15696,
+			"target":34962
+		},
+		{
+			"buffer":0,
 			"byteLength":360,
-			"byteOffset":9600,
+			"byteOffset":15888,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":360,
+			"byteOffset":16248,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":240,
-			"byteOffset":9960,
+			"byteOffset":16608,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":96,
-			"byteOffset":10200,
+			"byteOffset":16848,
 			"target":34963
 		}
 	],
@@ -302,7 +623,7 @@
 	],
 	"buffers":[
 		{
-			"byteLength":10296,
+			"byteLength":16944,
 			"uri":"stair_straight.bin"
 		}
 	]

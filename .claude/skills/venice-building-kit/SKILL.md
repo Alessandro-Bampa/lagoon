@@ -18,8 +18,8 @@ Due kit dalla stessa sorgente, in `assets/models/buildings/<kit>/`:
 
 | Kit | Cos'è |
 |---|---|
-| `venice` | pulito: 41 moduli, ~2.300 triangoli, vetri opachi |
-| `venice_ruin` | stile S.T.A.L.K.E.R.: **gli stessi 41 moduli con gli stessi nomi e misure** (texture sporche, intonaco caduto, muschio, vetri trasparenti) + 20 pezzi rotti (§3). 61 moduli, ~3.400 triangoli |
+| `venice` | pulito: 50 moduli, ~3.500 triangoli, vetri opachi |
+| `venice_ruin` | stile S.T.A.L.K.E.R.: **gli stessi 50 moduli con gli stessi nomi e misure** (texture sporche, intonaco caduto, muschio, vetri trasparenti) + 20 pezzi rotti (§3). 70 moduli, ~4.500 triangoli |
 
 Stesso nome = stesso ingombro: un generatore passa da un kit all'altro cambiando solo la cartella, e
 può mescolarli. Ogni kit ha un `<modulo>.gltf` + `.bin` per modulo e `textures/*.png` **condivise**
@@ -48,7 +48,7 @@ una copia delle texture per file). `RUIN` nello script decide tutto: `grime()` s
 | `ext_window_rect_shut`, `ext_window_arch_shut`, `ext_window_gothic_shut` | le stesse finestre con gli **scuri chiusi** (superficie `shutters`, dentro l'imbotte; il vetro resta dietro) |
 | `ext_window_grille` | finestrella alta con inferriata (piano terra, mezzanini) |
 | `ext_window_high` | finestrella alta (1,85–2,55 m): **l'unica finestra da mettere sul fondo di un vano scala**, sta sopra il pianerottolo |
-| `ext_door`, `ext_portal` | varco 1,1 × 2,3 m e portale ad arco 1,3 m (porta d'acqua). Senza anta: `door_ext`, `door_portal` |
+| `ext_door`, `ext_portal` | varco 1,2 × 2,3 m e portale ad arco 1,3 m (porta d'acqua). Senza anta: `door_ext`, `door_portal` |
 | `ext_balcony` | portafinestra gotica con poggiolo calpestabile e balaustra |
 | `ext_quadrifora` | **modulo doppio (4 m)**: origine al centro delle due celle |
 | `ext_plinth`, `ext_stringcourse`, `ext_cornice` | zoccolo (piano terra, da saltare sotto le porte), marcapiano (alla quota di ogni solaio), cornicione con gronda (alla quota di colmo muro: `piani × 3`) |
@@ -58,21 +58,40 @@ una copia delle texture per file). `RUIN` nello script decide tutto: `grime()` s
 | `roof_corner_outer`, `roof_corner_inner` | displuvio e compluvio, angolo basso a (−X, +Z) |
 | `roof_ridge`, `roof_ridge_end`, `roof_peak` | chiudono le strisce larghe una cella (colmo lungo X; testata chiusa a −X) |
 | `chimney` | camino a campana rovesciata; affonda 0,6 m sotto l'origine |
-| `int_wall`, `int_door`, `int_arch`, `int_post` | tramezzi; `int_post` copre incroci, angoli e testate libere. Anta: `door_int` |
+| `int_wall`, `int_door`, `int_arch`, `int_post` | tramezzi; `int_door` ha un varco di 1,2 × 2,1 m; `int_post` copre incroci, angoli e testate libere. Anta: `door_int` |
 | `floor_terrazzo`, `floor_planks`, `floor_paving` | un quad; `floor_paving` (masegni) va bene anche per corti e fondamenta |
 | `ceiling_plaster`, `ceiling_beams` | soffitto del piano; le travi corrono lungo Z |
 | `floor_edge` | testa del solaio attorno ai vani scala |
-| `stair_u` | **la scala da usare di norma.** 2 × 2 celle, origine al centro del bordo d'ingresso. Rampa a sinistra (−X) verso −Z fino al pianerottolo a 1,5 m, rampa a destra che torna indietro: **arriva sullo stesso bordo da cui parte**, quindi sul pavimento del piano di sopra per costruzione, e si impila identica a ogni piano |
+| `stair_u` | **la scala da usare di norma.** 2 × 2 celle, origine al centro del bordo d'ingresso. Rampa a sinistra (−X) verso −Z fino al pianerottolo a 1,5 m, rampa a destra che torna indietro: **arriva sullo stesso bordo da cui parte**, quindi sul pavimento del piano di sopra per costruzione, e si impila identica a ogni piano. **Porta le sue ringhiere** (fianchi esterni e interni delle rampe, tre lati del pianerottolo): sta in mezzo a una stanza senza muri attorno |
+| `stair_u_narrow` | scala a U **stretta**: 1 × 2 celle (2 m × 4 m), stessa origine e stessa logica di `stair_u` (si impila identica), rampe da 0,9 m. Ha solo le due ringhiere centrali: **va sempre chiusa fra muri su fianchi e fondo** (esterni o tramezzi), è il generatore a garantirlo. Rientra di 10 cm (`STAIR_NARROW_INSET`) |
+| `stair_u_core`, `stair_u_rail_l`, `stair_u_rail_r`, `stair_u_rail_back` | `stair_u` **a pezzi**, stessa origine: corpo (rampe, pianerottolo, le due ringhiere centrali) e ringhiere esterne per lato (fianco della rampa + quel lato del pianerottolo; fondo del pianerottolo). Un corrimano contro un muro non va messo: il generatore monta `_core` e solo i lati liberi. Stessa cosa per `stair_straight_core`, `stair_straight_rail_l`, `stair_straight_rail_r` |
+| `stair_rail` | parapetto da 2 m per i bordi del foro nel solaio: modulo di bordo, stessa posa di `floor_edge` (vuoto a +Z, il parapetto sta sul pavimento) |
 | `stair_straight` | 1 × 2 celle, sale 3 m verso **−Z** partendo dall'origine. Arriva sul bordo opposto: la cella dopo l'arrivo **dev'essere pavimento** del piano di sopra, mai un muro |
 
-**Muri attorno a `stair_u`**: i tre lati del vano diversi dall'ingresso devono essere muri
-(esterni o tramezzi). Sul fondo va `ext_wall` o `ext_window_high`; sui fianchi `ext_wall`: una
-finestra normale verrebbe tagliata a metà dal pianerottolo (1,5 m) o dalle rampe. La scala rientra
-di 13 cm da quei tre lati (`STAIR_INSET`): a filo cella sbucava dalla faccia esterna e attraversava
-i vetri. `stair_straight` rientra di soli 2 cm e di fianco vuole un muro cieco o il pavimento.
+**Attorno a `stair_u` non servono muri**: la scala è aperta e ha le ringhiere. Dentro una stanza
+(salone di una casa padronale) non va chiusa con tramezzi: diventavano quinte sottili che
+tagliavano il locale e coprivano le porte. Si può invece farne una **tromba delle scale**, cioè una
+stanza a sé coi muri sui bordi delle sue celle e l'ingresso libero (i condomini del generatore).
+Se un lato del vano cade contro un muro **esterno**, lì va `ext_wall` (o `ext_window_high`
+sul fondo): una finestra normale verrebbe tagliata a metà dal pianerottolo (1,5 m) o dalle rampe.
+La scala rientra di 13 cm dai tre lati diversi dall'ingresso (`STAIR_INSET`): a filo cella sbucava
+dalla faccia esterna e attraversava i vetri. `stair_straight` rientra di soli 2 cm e ha una
+ringhiera per fianco.
 
-**Porte e vano scala**: sui tramezzi che chiudono il vano non va mai `int_door`/`int_arch`: si
-aprirebbero contro il fianco di una rampa. Al vano si accede solo dal lato d'ingresso.
+**Parapetti del foro**: ai piani sopra il terreno, attorno al foro va `stair_rail` su ogni tratto
+da cui si cadrebbe nel vano: fondo, fianco destro, metà di fondo del fianco sinistro. Non va sul
+tratto d'arrivo (metà destra del bordo d'ingresso) né dove parte la rampa che sale (metà sinistra
+dell'ingresso e metà d'ingresso del fianco sinistro: chiude il fianco della rampa). **All'ultimo
+piano** quella rampa non c'è e il parapetto va anche lì. Dove dietro c'è subito un muro si omette.
+
+**Ringhiere** (`railing()` nello script): pannello di tondini a due facce (superficie `railing`,
+ritaglio `MASK`), corrimano e montanti `wood`, alte 0,95 m (`RAIL_H`), 6 cm in pianta (`RAIL_T`).
+Per la fisica ogni tratto è una **lastra piena** (convessa nelle scale, trimesh in `stair_rail`):
+ferma personaggi e colpi come una grata.
+
+**Larghezza dei varchi**: la capsula dei personaggi è larga 0,7 m (raggio 0,35 in `Player.tscn` e
+`NpcCharacter.tscn`) e alta 2 m. Il generatore stringe i moduli fino al 75%: un varco da cui si
+deve passare va disegnato **largo almeno 1,2 m** (0,9 m da stretto) e alto almeno 2,1 m.
 
 **Spessore del solaio**: soffitto (2,7 m) e pavimento del piano sopra (3 m) sono due quad
 separati, e i tramezzi arrivano a 2,7 m. Su **ogni lato in cui una cella col pavimento confina con
@@ -110,7 +129,7 @@ l'origine sul cardine e nessuna collisione: aprirle è compito del gioco.
 ## 3b. Materiali e colori
 
 I nomi delle superfici sono stabili: `facade`, `plaster`, `stone`, `stone_blocks`, `dentil`,
-`window`, `shutter`, `shutters`, `grille`, `balustrade`, `door_ext`, `door_int`, `wood`, `boards`,
+`window`, `shutter`, `shutters`, `grille`, `balustrade`, `railing`, `door_ext`, `door_int`, `wood`, `boards`,
 `ceiling`, `terrazzo`, `planks`, `paving`, `roof`; nella rovina anche `glass` (al posto di
 `window`), `glass_broken`, `brick_core`, `rubble`, `roof_bare`.
 
@@ -175,6 +194,18 @@ Blender: stesse regole, e la texture va passata dalle stesse `psx()`/`grime()` (
 
 - Gli oggetti si chiamano `<modulo>-col`: Godot genera `MeshInstance3D` + `StaticBody3D` trimesh
   sul layer 1 (`CollisionLayers.World`). Fasce decorative e ante non ne hanno.
+- **I muri con un'apertura hanno una collisione semplificata a parte**: oggetto
+  `<modulo>_col-colonly` (solo `StaticBody3D`, niente mesh), costruito da `collider_wall()`.
+  Apertura **chiusa** (vetro integro, scuri chiusi, grata, assi: `op_blocked`) = muro pieno, 4
+  triangoli; apertura **da cui si passa** (porte, portale, vetri rotti, archi interni) = muro col
+  varco e la sua imbotte, col profilo ridotto a 4 punti presi da quello vero (`simple_chain`),
+  quindi inscritto nel varco visibile. Niente cornici, davanzali, scuri aperti. Una finestra passa
+  da 150–220 triangoli a 4. Restano con la mesh intera le brecce (`raw`), i muri crollati e la
+  quadrifora.
+- Conseguenza: un colpo su una finestra chiusa si ferma sul filo del muro, 10 cm davanti al vetro
+  visibile. Un vetro "che si rompe" in gioco richiederà di ridare a quel modulo il suo varco.
+- Un modulo nuovo con un'apertura passa da `ext_wall(ops)` / `int_wall(ops)` e la eredita; se
+  aggiunge parti calpestabili o che fermano (come il poggiolo) le deve aggiungere a `b.col`.
 - Le scale hanno **rampe convesse** (`-convcolonly`, una per rampa più il pianerottolo) al posto
   dei gradini, lungo la linea dei nasi (40°).
 - **Nessun materiale è double-sided**: vetri, grate e balaustre hanno due facce contrapposte,
@@ -198,6 +229,6 @@ Blender: stesse regole, e la texture va passata dalle stesse `psx()`/`grime()` (
 - I moduli d'angolo e quelli di cella (tetti, pavimenti) valgono solo ad angoli retti: su piante
   oblique il generatore li sostituisce con geometria propria. I moduli di bordo reggono una scala
   in X fra 0,75 e 1,3.
-- Niente ringhiere per le scale, abbaini, altane, arredi.
+- Niente abbaini, altane, arredi.
 - Rovina: non ci sono versioni rotte di portali, quadrifora, poggiolo, scale e angoli del tetto;
-  il vetro integro ferma i colpi (è nella collisione del muro), quello rotto no.
+  il vetro integro ferma i colpi (per la fisica la finestra chiusa è un muro pieno), quello rotto no.

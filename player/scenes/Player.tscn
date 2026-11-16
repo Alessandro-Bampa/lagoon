@@ -14,9 +14,10 @@
 [ext_resource type="Script" uid="uid://cxa1xl5rry6tp" path="res://player/scripts/PlayerAnimationBridge.cs" id="14"]
 
 [sub_resource type="CapsuleShape3D" id="Shape_1"]
+radius = 0.35
 
 [sub_resource type="CapsuleShape3D" id="Shape_Headroom"]
-radius = 0.45
+radius = 0.3
 height = 1.0
 
 [sub_resource type="SceneReplicationConfig" id="Repl_1"]

@@ -1,0 +1,6 @@
+[gd_resource type="StandardMaterial3D" format=3 uid="uid://c5umiu3n6137d"]
+
+[resource]
+resource_name = "far_dark"
+albedo_color = Color(0.07, 0.075, 0.085, 1)
+metallic_specular = 0.0

@@ -22,8 +22,11 @@ GRIGLIA E ASSI (dettagli e tabella dei moduli nella skill `venice-building-kit`)
   - moduli "di cella" (pavimenti, soffitti, tetto): origine al centro della cella.
 
 COLLISIONI. Gli oggetti si chiamano `<modulo>-col`: l'import di Godot ne ricava un
-MeshInstance3D + StaticBody3D (trimesh). Le scale hanno invece rampe convesse
-(`-convcolonly`) al posto dei gradini. Nessun materiale e' double-sided: dove serve il
+MeshInstance3D + StaticBody3D (trimesh). I muri con un'apertura hanno invece una collisione
+SEMPLIFICATA a parte (`<modulo>_col-colonly`, vedi `collider_wall`): muro pieno se
+l'apertura e' chiusa (vetro, scuri, grata), muro col varco se ci si passa; niente cornici,
+davanzali e scuri. Le scale hanno rampe
+convesse (`-convcolonly`) al posto dei gradini. Nessun materiale e' double-sided: dove serve il
 retro (vetri, grate, balaustre) ci sono due facce, perche' un trimesh non ferma chi arriva
 da dietro.
 """
@@ -559,6 +562,18 @@ def tex_balustrade():
     return img, alpha.astype(np.float32)
 
 
+def tex_railing():
+    """Ringhiera in ferro 1 m x 0,95 m: tondini verticali ogni 12,5 cm e due correnti."""
+    w = h = 64
+    xx, yy = grid(w, h)
+    bar = (xx % 8) < 2
+    rail = (yy < 3) | ((yy >= 54) & (yy < 57))
+    img = shade(flat(w, h, c(0.13, 0.12, 0.12)), grain(w, h, 195, 0.3))
+    rust = np.random.default_rng(196).random((h, w)) > 0.85
+    img[rust] = c(0.30, 0.17, 0.10)
+    return img, (bar | rail).astype(np.float32)
+
+
 # Texture che lo sporco lo hanno gia' dentro, o che non devono averlo.
 NO_GRIME = {"glass", "glass_broken", "roof", "brick_core", "rubble", "roof_bare"}
 NO_DRIPS = {"terrazzo", "planks", "boards", "paving", "ceiling", "wood"}
@@ -627,7 +642,7 @@ def build_textures():
         "roof": tex_roof(),
         "shutters": tex_shutters_closed(),
     }
-    cutouts = {"grille": tex_grille(), "balustrade": tex_balustrade(),
+    cutouts = {"grille": tex_grille(), "balustrade": tex_balustrade(), "railing": tex_railing(),
                "glass": tex_glass(0.75 if RUIN else 0.12, False, 501)}
     if RUIN:
         simple["brick_core"] = tex_brick_core()
@@ -665,6 +680,7 @@ MATERIALS = {
     "roof": ("roof", (2.0, 2.0)),
     "grille": ("grille", (1.0, 1.0)),
     "balustrade": ("balustrade", (1.0, 0.9)),
+    "railing": ("railing", (1.0, 0.95)),
     "shutters": ("shutters", (1.0, 1.0)),
     "glass": ("glass", (1.0, 1.0)),
     "glass_broken": ("glass_broken", (1.0, 1.0)),
@@ -672,7 +688,7 @@ MATERIALS = {
     "rubble": ("rubble", (1.0, 1.0)),
     "roof_bare": ("roof_bare", (2.0, 2.0)),
 }
-CUTOUT = {"grille", "balustrade", "roof_bare"}    # alfa a soglia (MASK)
+CUTOUT = {"grille", "balustrade", "railing", "roof_bare"}    # alfa a soglia (MASK)
 BLEND = {"glass", "glass_broken"}                 # alfa sfumata (BLEND)
 MATS = {}
 
@@ -988,6 +1004,42 @@ def boards(b, op, seed):
         b.poly([(x, -0.050, z) for x, z in corners], "wood", (0, 1, 0), uv)
 
 
+def simple_chain(chain):
+    """Profilo superiore di un'apertura ridotto a 4 punti al massimo (per le collisioni).
+
+    I punti sono presi dal profilo vero: il varco che ne esce e' inscritto in quello visibile.
+    """
+    count = len(chain)
+    if count <= 4:
+        return list(chain)
+    picks = sorted({0, round((count - 1) / 3), round(2 * (count - 1) / 3), count - 1})
+    return [chain[i] for i in picks]
+
+
+def collider_wall(ops, xl, xr, zt, y0, y1, blocked):
+    """Collisione semplificata di un muro con aperture: le due facce e, solo per le aperture
+    da cui si passa davvero, il varco con la sua imbotte.
+
+    Dove `blocked(op)` e' vero (vetro integro, scuri chiusi, grata, assi) il muro e' pieno:
+    per la fisica una finestra chiusa e' un muro. Una finestra passa cosi' da 150-220
+    triangoli a 4, una porta da 30-100 a 18-30.
+    """
+    c = Builder()
+    simple = [opening(op["x0"], op["x1"], op["z0"], simple_chain(op["chain"]))
+              for op in ops if not blocked(op)]
+    face_with_openings(c, xl, xr, 0, zt, simple, y0, -1, None)
+    face_with_openings(c, xl, xr, 0, zt, simple, y1, 1, None)
+    for op in simple:
+        reveal(c, outline(op), y0, y1, None, op["z0"] <= 0)
+    return c
+
+
+def op_blocked(op):
+    """L'apertura ferma chi passa (e i colpi)? Vetro integro, scuri chiusi, grata o assi."""
+    glazed = op.get("glass", True) and not op.get("broken")
+    return bool(glazed or op.get("shut") or op.get("grille") or op.get("boarded"))
+
+
 GLASS = "window"  # materiale dei vetri: opaco nel kit pulito, "glass" (trasparente) nella rovina
 TRIM_W = 0.10     # larghezza della cornice in pietra
 TRIM_D = 0.04     # sporgenza della cornice
@@ -1029,6 +1081,9 @@ def ext_wall(ops=(), width=W):
             # resta un solo scuro, appeso al cardine alto
             shutter(b.nocol, op["x1"], op["x1"] + half, op["z0"], op["zs"], -14.0,
                     (op["x1"], op["zs"]))
+    # Le brecce (`raw`) hanno un profilo irregolare anche in basso: tengono la mesh intera.
+    if ops and not any(op.get("raw") for op in ops):
+        b.col = collider_wall(ops, xl, xr, H, 0.0, T, op_blocked)
     return b
 
 
@@ -1062,7 +1117,7 @@ def m_ext_window_grille():
 
 
 def m_ext_door():
-    return ext_wall([opening(-0.55, 0.55, 0.0, chain_flat(-0.55, 0.55, 2.3), glass=False)])
+    return ext_wall([opening(-0.6, 0.6, 0.0, chain_flat(-0.6, 0.6, 2.3), glass=False)])
 
 
 def m_ext_portal():
@@ -1087,6 +1142,13 @@ def m_ext_balcony():
         for x, hint in ((sx * 0.75, sx), (sx * 0.738, -sx)):
             b.poly([(x, -0.52, 0), (x, -0.02, 0), (x, -0.02, 0.9), (x, -0.52, 0.9)], "balustrade",
                    (hint, 0, 0), [(0, 0), (0.5, 0), (0.5, 1), (0, 1)])
+    # collisione: la soletta del poggiolo e la balaustra (le mensole no)
+    b.col.box(-0.82, 0.82, -0.56, 0.0, -0.12, 0.0, None, "xXyzZ")
+    for y, hint in ((-0.52, -1), (-0.508, 1)):
+        b.col.poly([(-0.75, y, 0), (0.75, y, 0), (0.75, y, 0.9), (-0.75, y, 0.9)], None, (0, hint, 0))
+    for sx in (-1, 1):
+        for x, hint in ((sx * 0.75, sx), (sx * 0.738, -sx)):
+            b.col.poly([(x, -0.52, 0), (x, -0.02, 0), (x, -0.02, 0.9), (x, -0.52, 0.9)], None, (hint, 0, 0))
     return b
 
 
@@ -1297,6 +1359,8 @@ def int_wall(ops=(), frame=None):
             trim(b, loop, 0.08, y1, y1 + 0.02, frame, True)
         else:
             reveal(b, loop, y0, y1, "plaster", True)
+    if ops and not any(op.get("raw") for op in ops):
+        b.col = collider_wall(ops, -1, 1, HI, y0, y1, lambda op: False)
     return b
 
 
@@ -1305,7 +1369,9 @@ def m_int_wall():
 
 
 def m_int_door():
-    return int_wall([opening(-0.5, 0.5, 0.0, chain_flat(-0.5, 0.5, 2.1))], "wood")
+    # 1,2 m: il generatore stringe i moduli fino al 75%, e a 0,9 m deve ancora passarci
+    # una capsula larga 0,7 m senza doverla infilare al centimetro.
+    return int_wall([opening(-0.6, 0.6, 0.0, chain_flat(-0.6, 0.6, 2.1))], "wood")
 
 
 def m_int_arch():
@@ -1424,37 +1490,202 @@ def ramp(x0, x1, y_start, direction, z_base, steps):
     return prism([(y_start + direction * d, z_base + z) for d, z in local], x0, x1)
 
 
-def m_stair_straight():
+RAIL_H = 0.95          # altezza della ringhiera sulla linea di base (pavimento o rampa)
+RAIL_T = 0.06          # ingombro in pianta di corrimano e montanti
+
+
+def rail_slab(target, a, c):
+    """Lastra piena che fa da collisione a un tratto di ringhiera (6 facce, convessa)."""
+    a, c = Vector(a), Vector(c)
+    d = Vector((c.x - a.x, c.y - a.y, 0)).normalized()
+    n = Vector((-d.y, d.x, 0)) * (RAIL_T / 2)
+    up = Vector((0, 0, RAIL_H + 0.04))
+    target.poly([a - n, c - n, c - n + up, a - n + up], None, -n)
+    target.poly([a + n, c + n, c + n + up, a + n + up], None, n)
+    target.poly([a - n, a + n, a + n + up, a - n + up], None, -d)
+    target.poly([c - n, c + n, c + n + up, c - n + up], None, d)
+    target.poly([a - n + up, c - n + up, c + n + up, a + n + up], None, (0, 0, 1))
+    target.poly([a - n, c - n, c + n, a + n], None, (0, 0, -1))
+
+
+def railing(b, a, c, post_a=True, post_c=True):
+    """Ringhiera da `a` a `c` (punti della linea di base, lungo X o lungo Y, anche in salita):
+    pannello di tondini a due facce, corrimano di legno, montanti agli estremi.
+
+    Ritorna il solido di collisione: una lastra convessa, perche' un pannello traforato
+    disegnato a texture non ferma nessuno e un trimesh sottile si attraversa di corsa.
+    """
+    a, c = Vector(a), Vector(c)
+    flat_run = Vector((c.x - a.x, c.y - a.y, 0))
+    length = flat_run.length
+    d = flat_run / length
+    n = Vector((-d.y, d.x, 0))
+    half = n * (RAIL_T / 2)
+    up = Vector((0, 0, 1))
+    for sign in (-1, 1):
+        o = n * (0.006 * sign)
+        b.poly([a + o, c + o, c + o + up * RAIL_H, a + o + up * RAIL_H], "railing", n * sign,
+               [(0, 0), (length, 0), (length, 1), (0, 1)])
+    lo, hi = up * (RAIL_H - 0.02), up * (RAIL_H + 0.04)
+    b.poly([a - half + hi, c - half + hi, c + half + hi, a + half + hi], "wood", (0, 0, 1))
+    b.poly([a - half + lo, c - half + lo, c + half + lo, a + half + lo], "wood", (0, 0, -1))
+    for sign in (-1, 1):
+        s = half * sign
+        b.poly([a + s + lo, c + s + lo, c + s + hi, a + s + hi], "wood", n * sign)
+    b.poly([a - half + lo, a + half + lo, a + half + hi, a - half + hi], "wood", -d)
+    b.poly([c - half + lo, c + half + lo, c + half + hi, c - half + hi], "wood", d)
+    for base, inward, wanted in ((a, d, post_a), (c, -d, post_c)):
+        if not wanted:
+            continue
+        p, q = base - half, base + half + inward * RAIL_T
+        b.box(min(p.x, q.x), max(p.x, q.x), min(p.y, q.y), max(p.y, q.y), base.z,
+              base.z + RAIL_H + 0.08, "wood", "xXyYZ")
+    solid = Builder()
+    rail_slab(solid, a, c)
+    return solid
+
+
+def m_stair_rail():
+    """Parapetto attorno al foro di un vano scala: modulo di bordo da 2 m, come `floor_edge`.
+
+    Sta sul lato del pavimento (-Z in Godot), a filo del foro; il vuoto e' a +Z.
+    """
+    b = Builder()
+    a, c = (-1, RAIL_T / 2, 0), (1, RAIL_T / 2, 0)
+    railing(b, a, c)
+    b.col = Builder()
+    rail_slab(b.col, a, c)
+    return b
+
+
+def stair_straight(part="all"):
     """Rampa dritta: 1 x 2 celle (4 m verso +Y), sale di un piano.
 
     Arriva sul bordo opposto a quello di partenza: la cella DOPO l'arrivo dev'essere pavimento
     del piano di sopra. Se li' c'e' un muro, usare `stair_u`.
+    `part`: "all" (rampa e due ringhiere), "core" (sola rampa), "rail_l" / "rail_r" (una sola
+    ringhiera, come modulo a se'): contro un muro la ringhiera non va messa.
     """
     b = Builder()
     half = 1 - STAIR_SLIVER
-    flight(b, -half, half, 0.0, 1, 0.0, 16)
-    return b, {"ramp": ramp(-half, half, 0.0, 1, 0.0, 16)}
+    solids = {}
+    if part in ("all", "core"):
+        flight(b, -half, half, 0.0, 1, 0.0, 16)
+        solids["ramp"] = ramp(-half, half, 0.0, 1, 0.0, 16)
+    for tag, x in (("rail_l", -half + RAIL_T / 2), ("rail_r", half - RAIL_T / 2)):
+        if part in ("all", tag):
+            solids[tag] = railing(b, (x, 0, 0), (x, 4, H))
+    return b, solids
 
 
-def m_stair_u():
+def m_stair_straight():
+    return stair_straight()
+
+
+def m_stair_straight_core():
+    return stair_straight("core")
+
+
+def m_stair_straight_rail_l():
+    return stair_straight("rail_l")
+
+
+def m_stair_straight_rail_r():
+    return stair_straight("rail_r")
+
+
+def stair_u(part="all"):
     """Scala a U: 2 x 2 celle, origine al centro del bordo d'ingresso.
 
     Prima rampa a sinistra (-X) verso +Y fino al pianerottolo a 1,5 m, seconda a destra che
     torna indietro: ARRIVA SULLO STESSO BORDO DA CUI E' PARTITA, quindi sul pavimento del
     piano di sopra per costruzione, e si impila identica a ogni piano.
+    `part`: "all" (tutto), "core" (rampe, pianerottolo e le due ringhiere centrali),
+    "rail_l" / "rail_r" (fianco esterno di una rampa + quel lato del pianerottolo),
+    "rail_back" (fondo del pianerottolo). Le ringhiere esterne sono moduli a se' perche'
+    contro un muro non vanno messe: il generatore monta "core" e solo i lati liberi.
     """
     b = Builder()
     side, far, top = 2 - STAIR_INSET, 4 - STAIR_INSET, H / 2
+    solids = {}
+    e = RAIL_T / 2
+    xo, yb = side - e, far - e
+    if part in ("all", "core"):
+        flight(b, -side, 0, 0.0, 1, 0.0, 8)
+        flight(b, 0, side, 2.0, -1, top, 8)
+        b.poly([(-side, 2, top), (side, 2, top), (side, far, top), (-side, far, top)], "stone", (0, 0, 1))
+        b.poly([(-side, 2, top - STAIR_SLAB), (side, 2, top - STAIR_SLAB), (side, far, top - STAIR_SLAB),
+                (-side, far, top - STAIR_SLAB)], "ceiling", (0, 0, -1))
+        b.box(-side, side, 2, far, top - STAIR_SLAB, top, "stone", "xXyY")
+        solids["ramp_a"] = ramp(-side, 0, 0.0, 1, 0.0, 8)
+        solids["ramp_b"] = ramp(0, side, 2.0, -1, top, 8)
+        solids["landing"] = prism([(2, top - STAIR_SLAB), (far, top - STAIR_SLAB), (far, top), (2, top)],
+                                  -side, side)
+        # I due fianchi interni: di la' c'e' il vuoto sopra l'altra rampa. I montanti al centro
+        # del bordo d'ingresso, impilando le scale, si affiancano a quelli del piano accanto.
+        solids["rail_a_in"] = railing(b, (-e, 0, 0), (-e, 2, top))
+        solids["rail_b_in"] = railing(b, (e, 2, top), (e, 0, H))
+    if part in ("all", "rail_l"):
+        solids["rail_a_out"] = railing(b, (-xo, 0, 0), (-xo, 2, top))
+        solids["rail_land_l"] = railing(b, (-xo, 2, top), (-xo, far, top), post_a=False)
+    if part in ("all", "rail_r"):
+        solids["rail_b_out"] = railing(b, (xo, 2, top), (xo, 0, H))
+        solids["rail_land_r"] = railing(b, (xo, 2, top), (xo, far, top), post_a=False)
+    if part in ("all", "rail_back"):
+        solids["rail_land_back"] = railing(b, (-side + RAIL_T, yb, top), (side - RAIL_T, yb, top), False, False)
+    return b, solids
+
+
+def m_stair_u():
+    return stair_u()
+
+
+def m_stair_u_core():
+    return stair_u("core")
+
+
+def m_stair_u_rail_l():
+    return stair_u("rail_l")
+
+
+def m_stair_u_rail_r():
+    return stair_u("rail_r")
+
+
+def m_stair_u_rail_back():
+    return stair_u("rail_back")
+
+
+# La scala stretta sta sempre fra tre muri (vedi sotto): basta staccarla dalla faccia di un
+# tramezzo (8 cm dalla linea di griglia).
+STAIR_NARROW_INSET = 0.10
+
+
+def m_stair_u_narrow():
+    """Scala a U stretta: 1 x 2 celle (2 m di larghezza, 4 di profondita'), per le case strette.
+
+    Stessa logica di `stair_u` (origine al centro del bordo d'ingresso, rampa a sinistra fino al
+    pianerottolo a 1,5 m, rampa a destra che torna sullo stesso bordo: si impila identica), ma
+    con rampe da 0,9 m. NON ha ringhiere sui fianchi esterni ne' sul pianerottolo: toglierebbero
+    il passo a una capsula larga 0,7 m. Va quindi SEMPRE chiusa fra muri su fianchi e fondo
+    (esterni o tramezzi): e' il generatore a garantirlo.
+    """
+    b = Builder()
+    side, far, top = 1 - STAIR_NARROW_INSET, 4 - STAIR_NARROW_INSET, H / 2
     flight(b, -side, 0, 0.0, 1, 0.0, 8)
     flight(b, 0, side, 2.0, -1, top, 8)
     b.poly([(-side, 2, top), (side, 2, top), (side, far, top), (-side, far, top)], "stone", (0, 0, 1))
     b.poly([(-side, 2, top - STAIR_SLAB), (side, 2, top - STAIR_SLAB), (side, far, top - STAIR_SLAB),
             (-side, far, top - STAIR_SLAB)], "ceiling", (0, 0, -1))
     b.box(-side, side, 2, far, top - STAIR_SLAB, top, "stone", "xXyY")
-    return b, {"ramp_a": ramp(-side, 0, 0.0, 1, 0.0, 8),
-               "ramp_b": ramp(0, side, 2.0, -1, top, 8),
-               "landing": prism([(2, top - STAIR_SLAB), (far, top - STAIR_SLAB), (far, top), (2, top)],
-                                -side, side)}
+    solids = {"ramp_a": ramp(-side, 0, 0.0, 1, 0.0, 8),
+              "ramp_b": ramp(0, side, 2.0, -1, top, 8),
+              "landing": prism([(2, top - STAIR_SLAB), (far, top - STAIR_SLAB), (far, top), (2, top)],
+                               -side, side)}
+    e = RAIL_T / 2
+    solids["rail_a_in"] = railing(b, (-e, 0, 0), (-e, 2, top))
+    solids["rail_b_in"] = railing(b, (e, 2, top), (e, 0, H))
+    return b, solids
 
 
 def door_leaf(width, height, thick, mat):
@@ -1470,11 +1701,11 @@ def door_leaf(width, height, thick, mat):
 
 
 def m_door_int():
-    return door_leaf(0.98, 2.08, 0.04, "door_int")
+    return door_leaf(1.18, 2.08, 0.04, "door_int")
 
 
 def m_door_ext():
-    return door_leaf(1.08, 2.28, 0.06, "door_ext")
+    return door_leaf(1.18, 2.28, 0.06, "door_ext")
 
 
 def m_door_portal():
@@ -1721,6 +1952,15 @@ MODULES = {
     "ceiling_beams": (m_ceiling_beams, True),
     "stair_straight": (m_stair_straight, False),
     "stair_u": (m_stair_u, False),
+    "stair_u_core": (m_stair_u_core, False),
+    "stair_u_rail_l": (m_stair_u_rail_l, False),
+    "stair_u_rail_r": (m_stair_u_rail_r, False),
+    "stair_u_rail_back": (m_stair_u_rail_back, False),
+    "stair_straight_core": (m_stair_straight_core, False),
+    "stair_straight_rail_l": (m_stair_straight_rail_l, False),
+    "stair_straight_rail_r": (m_stair_straight_rail_r, False),
+    "stair_u_narrow": (m_stair_u_narrow, False),
+    "stair_rail": (m_stair_rail, True),
     "door_int": (m_door_int, False),
     "door_ext": (m_door_ext, False),
     "door_portal": (m_door_portal, False),
@@ -1811,11 +2051,16 @@ def build_modules():
         builder, colliders = result if isinstance(result, tuple) else (result, {})
         if RUIN and name.startswith("roof_"):
             add_underside(builder)
-        visible = [to_object(name, builder, name + ("-col" if collide else ""))]
+        simple = getattr(builder, "col", None)
+        has_simple = bool(collide and simple is not None and simple.faces)
+        visible = [to_object(name, builder, name + ("-col" if collide and not has_simple else ""))]
         loose = getattr(builder, "nocol", None)
         if loose is not None and loose.faces:
             visible.append(to_object(name + "_loose", loose))
         objects = list(visible)
+        if has_simple:
+            # `-colonly`: Godot ne ricava solo lo StaticBody3D (trimesh), senza mesh visibile.
+            objects.append(to_object(name + "_col", simple, name + "_col-colonly"))
         for tag, solid in colliders.items():
             objects.append(to_object("{}_{}".format(name, tag), solid, "{}_{}-convcolonly".format(name, tag)))
         export(name, objects)
