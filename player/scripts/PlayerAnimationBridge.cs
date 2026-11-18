@@ -92,6 +92,16 @@ public partial class PlayerAnimationBridge : Node
         _animator.Grounded = _controller.SyncGrounded;
         _animator.Vaulting = _controller.SyncVaulting;
         _animator.Swimming = _controller.SyncSwimming;
+
+        // Al timone: seduti, mani sul governo della barca. La modalita' si deduce su ogni peer dal
+        // pilota REPLICATO della barca (PlayerController.Mode), le mani da nodi della barca mossi
+        // dallo stato replicato di sterzo: niente stato nuovo per l'animazione.
+        BoatAssembly? helm = _controller.Mode == PlayerMode.Driving ? _controller.DrivingBoat?.Assembly : null;
+        _animator.Seated = helm != null;
+        _animator.SeatPose = helm?.Helm == HelmType.Wheel ? 1f : 0f;
+        _animator.SeatTiller = helm?.Helm == HelmType.Tiller;
+        _animator.SeatLeftHand = helm?.LeftHandTarget;
+        _animator.SeatRightHand = helm?.RightHandTarget;
         _animator.Aiming = _controller.SyncAiming;
         _animator.Reloading = reloading;
         _animator.Dead = _health?.IsDead ?? false;
@@ -102,9 +112,15 @@ public partial class PlayerAnimationBridge : Node
         _animator.LookYaw = _controller.SyncAimYaw;
         _animator.LookPitch = _controller.SyncAimPitch;
 
+        // Visuale da fuori (terza persona al timone, o qualunque altra camera corrente): si vede il
+        // proprio corpo intero e non il viewmodel, che fluttuerebbe all'altezza degli occhi.
+        bool firstPersonView = _camera == null || _camera.Current;
+        _animator.ThirdPersonView = !firstPersonView;
+
         if (_viewmodel == null)
             return;
 
+        _viewmodel.Visible = firstPersonView;
         _viewmodel.SetWeapon(weapon);
         _viewmodel.Speed = _controller.SyncLocalVelocity.Length();
         _viewmodel.Grounded = _controller.SyncGrounded;
@@ -112,7 +128,7 @@ public partial class PlayerAnimationBridge : Node
         _viewmodel.Aiming = _controller.SyncAiming;
         _viewmodel.Reloading = reloading;
         // A nuoto le mani nuotano: niente viewmodel di nuoto (lacuna), l'arma esce di vista.
-        _viewmodel.Lowered = _controller.SyncVaulting || _controller.SyncSwimming;
+        _viewmodel.Lowered = _controller.SyncVaulting || _controller.SyncSwimming || helm != null;
         _viewmodel.MagazineEmpty = _weapon is { IsArmed: true, MagazineAmmo: <= 0 };
     }
 

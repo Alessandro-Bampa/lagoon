@@ -49,6 +49,11 @@ public static class InputBindings
             "quick_slot_4", "quick_slot_5", "quick_slot_6",
             "quick_slot_7", "quick_slot_8", "quick_slot_9", "quick_slot_0",
         }),
+        new("UI_BIND_GROUP_VEHICLE", new[]
+        {
+            "vehicle_trim_up", "vehicle_trim_down", "vehicle_thruster_left", "vehicle_thruster_right",
+            "vehicle_camera_toggle", "vehicle_camera_reset",
+        }),
     };
 
     /// Eventi dichiarati in <c>project.godot</c>, catturati prima di applicare qualunque override.

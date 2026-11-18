@@ -3,7 +3,10 @@ using Godot;
 namespace Lagoon;
 
 /// <summary>
-/// Imbarcazione a galleggiamento per punti (Fase 4).
+/// Una barca su misura: corpo rigido mosso dal nucleo fisico per triangoli (<see cref="BoatPhysics"/>,
+/// skill vehicles-boats §10) che monta il figlio <see cref="BoatAssembly"/> da una <see cref="BoatConfig"/>.
+/// Massa, baricentro, inerzia e smorzamenti del corpo li scrive il codice: i valori dell'ispettore del
+/// <c>RigidBody3D</c> non contano.
 ///
 /// A differenza del movimento del giocatore, che e' client-authoritative (eccezione dichiarata della
 /// Fase 1), la fisica della barca e' **interamente host-autoritativa** (CLAUDE.md §3): solo l'host
@@ -16,8 +19,8 @@ namespace Lagoon;
 /// dall'host. Nessun client decide di essere al timone: <see cref="PilotPeerId"/> e' una proprieta'
 /// REPLICATA dall'host, non un broadcast via RPC — cosi' anche un late-joiner vede lo stato giusto.
 ///
-/// L'acqua non ha corpo fisico: la superficie (marea + onde) si legge da <see cref="WaterVolume.Sample"/>
-/// per ogni punto di galleggiamento (<see cref="Buoyancy"/>).
+/// L'acqua non ha corpo fisico: la superficie (marea + onde) la campiona il solutore per ogni vertice
+/// della mesh idrodinamica.
 /// </summary>
 public partial class BoatController : RigidBody3D
 {
@@ -34,20 +37,11 @@ public partial class BoatController : RigidBody3D
     /// </summary>
     [Export] public int VehicleId { get; set; } = 1;
 
-    [Export] public float ThrustForce { get; set; } = 9000f;
-    /// La retromarcia e' volutamente piu' debole della marcia avanti.
-    [Export] public float ReverseFactor { get; set; } = 0.4f;
-    [Export] public float SteerTorque { get; set; } = 12000f;
-
-    /// Profondita' oltre la quale la spinta di galleggiamento non cresce piu' (metri).
-    [Export] public float MaxSubmerge { get; set; } = 0.8f;
     /// <summary>
-    /// Smorzamento verticale per punto, RELATIVO all'acqua (1/s): senza, la barca oscilla come una molla.
-    /// A riposo (immersione media 50%) 3,0 equivale al vecchio smorzamento globale di 1,5.
+    /// Massa di una persona a bordo SENZA equipaggiamento (kg): con l'inventario (host) fa il peso
+    /// che sbanda e appoppa la barca (vedi <see cref="BoatMassModel"/>).
     /// </summary>
-    [Export] public float VerticalDampFactor { get; set; } = 3.0f;
-    /// Attrito di chiglia: senza questo la barca scivola di lato come sul ghiaccio.
-    [Export] public float LateralDragFactor { get; set; } = 4.0f;
+    [Export] public float CrewBodyMass { get; set; } = 80f;
 
     /// Distanza massima dal timone per poterlo prendere (validata dall'host, non dal client).
     [Export] public float HelmRange { get; set; } = 3.0f;
@@ -56,9 +50,16 @@ public partial class BoatController : RigidBody3D
     /// Reattivita' dell'interpolazione di presentazione sui client.
     [Export] public float RemoteLerpSpeed { get; set; } = 14.0f;
 
-    /// Solo per il collaudo (fasi 1-3): forza l'acceleratore a tutta senza pilota. Da spegnere.
+    /// <summary>
+    /// Solo per il collaudo (<c>tools/boat_trials.gd</c>, <c>playtest_water.gd</c>): comandi imposti
+    /// senza pilota, motore acceso. Da spegnere.
+    /// </summary>
     [Export] public bool DebugAutoDrive { get; set; }
     [Export] public float DebugSteer { get; set; }
+    [Export] public float DebugThrottle { get; set; } = 1f;
+    [Export] public float DebugTrimCommand { get; set; }
+    [Export] public bool DebugAutoTrim { get; set; } = true;
+    [Export] public float DebugThruster { get; set; }
 
     // ====================================================================================
     //  Stato replicato (Boat/Sync, autorita' host, visibile a tutti)
@@ -75,6 +76,18 @@ public partial class BoatController : RigidBody3D
     /// </summary>
     [Export] public int PilotPeerId { get; set; }
 
+    /// <summary>
+    /// Stato degli attuatori, deciso dall'host dall'intento del pilota e replicato perche' ogni peer
+    /// veda motore, timone, elica e volante (e, in futuro, ne senta il suono): leva (−1..1), angolo di
+    /// governo (rad: fuoribordo sul piantone o timone; positivo = vira a dritta), trim (rad), giri del
+    /// motore e dell'elica (con segno: negativi in retromarcia).
+    /// </summary>
+    [Export] public float SyncThrottle { get; set; }
+    [Export] public float SyncMotorAngle { get; set; }
+    [Export] public float SyncTrim { get; set; }
+    [Export] public float SyncEngineRpm { get; set; }
+    [Export] public float SyncPropRpm { get; set; }
+
     // ====================================================================================
     //  Stato locale
     // ====================================================================================
@@ -82,7 +95,12 @@ public partial class BoatController : RigidBody3D
     // Solo host: ultimo intento ricevuto dal pilota.
     private float _throttle;
     private float _steer;
+    private float _trimCommand;
+    private float _thruster;
+    private bool _manualTrim;
     private float _sinceLastInput;
+    private float _sinceCrewUpdate;
+    private readonly System.Collections.Generic.HashSet<int> _crewSeen = new();
 
     // Solo client: eta' dell'ultimo pacchetto di stato ricevuto, per l'extrapolazione.
     private float _sinceLastState;
@@ -103,14 +121,21 @@ public partial class BoatController : RigidBody3D
     /// </summary>
     private const float MaxExtrapolationSeconds = 0.15f;
 
-    private Node3D[] _floaters = null!;
     private Marker3D _helmSeat = null!;
     private Node3D _visual = null!;
     private WaterVolume? _water;
+    private BoatAssembly? _assembly;
+    private BoatPhysics? _physics;
+    private BoatMassModel? _massModel;
     private EventBus _eventBus = null!;
-    private float _gravity;
+
+    /// Nucleo fisico per triangoli (null = configurazione o mesh idrodinamica mancante: barca ferma).
+    public BoatPhysics? Physics => _physics;
 
     public bool HasPilot => PilotPeerId != 0;
+
+    /// Montaggio da configurazione (scafo, propulsione, consolle, masse).
+    public BoatAssembly? Assembly => _assembly;
 
     /// <summary>
     /// Posizione del posto di guida nello spazio LOCALE della barca: e' esattamente la
@@ -153,16 +178,26 @@ public partial class BoatController : RigidBody3D
         _visual = GetNode<Node3D>("Visual");
         _eventBus = GetNode<EventBus>("/root/EventBus");
         _water = WaterVolume.Find(this);
+        _assembly = GetNodeOrNull<BoatAssembly>("Assembly");
 
-        _floaters = Buoyancy.CollectPoints(GetNode<Node3D>("Floaters"));
-
-        _gravity = (float)(double)ProjectSettings.GetSetting("physics/3d/default_gravity", 9.8);
-
-        // Il centro di massa nell'origine rende banale l'offset da passare ad ApplyForce.
-        CenterOfMassMode = CenterOfMassModeEnum.Custom;
-        CenterOfMass = Vector3.Zero;
+        // Massa, baricentro e inerzia li ha gia' scritti BoatMassModel (Assembly._Ready viene prima).
+        // Gravita' sommata dal solutore (la massa aggiunta la scala), nessuno smorzamento del motore
+        // fisico (agirebbe anche in aria e senza dipendere dall'immersione), urti veloci col CCD.
         FreezeMode = FreezeModeEnum.Kinematic;
         CanSleep = false;
+        GravityScale = 0f;
+        LinearDampMode = DampMode.Replace;
+        LinearDamp = 0f;
+        AngularDampMode = DampMode.Replace;
+        AngularDamp = 0f;
+        ContinuousCd = true;
+
+        _physics = _assembly?.Physics;
+        _massModel = _assembly?.MassModel;
+        if (_physics != null)
+            _physics.UpdateStatics(Mass, _water?.Density ?? 1025f);
+        else
+            GD.PushError($"[BoatController] '{Name}': manca la configurazione o la mesh HydroHull dello scafo; la barca resta ferma.");
 
         SyncBodyPosition = GlobalPosition;
         SyncBodyRotation = GlobalBasis.GetRotationQuaternion();
@@ -197,6 +232,33 @@ public partial class BoatController : RigidBody3D
             RemotePresentation(delta);
     }
 
+    public override void _Process(double delta)
+    {
+        // Resa del governo su ogni peer, dallo stato replicato (sull'host e' lo stesso valore).
+        _assembly?.ApplyHelmPose(SyncMotorAngle, SyncTrim, SyncPropRpm, delta);
+    }
+
+    /// <summary>
+    /// Passo del nucleo fisico (solo host, solo barche montate da configurazione): legge lo stato del
+    /// corpo nel passo stesso e applica UNA forza centrale e UNA coppia (vedi <see cref="BoatPhysics"/>).
+    /// </summary>
+    public override void _IntegrateForces(PhysicsDirectBodyState3D state)
+    {
+        if (_physics == null || Freeze || !IsMultiplayerAuthority())
+            return;
+        _physics.Step(state, Mass, _massModel?.Inertia ?? Inertia, _water, CurrentCommands());
+    }
+
+    private BoatCommands CurrentCommands() => new()
+    {
+        Throttle = _throttle,
+        Steer = _steer,
+        Trim = _trimCommand,
+        Thruster = _thruster,
+        AutoTrim = !_manualTrim,
+        Running = HasPilot || DebugAutoDrive,
+    };
+
     /// <summary>
     /// Sceglie fra simulazione e presentazione. Va richiamata a ogni cambio di stato della rete e non
     /// una volta sola in <c>_Ready</c>: il livello viene caricato PRIMA che esista un peer, e con
@@ -206,7 +268,9 @@ public partial class BoatController : RigidBody3D
     private void ApplySimulationMode()
     {
         bool host = IsMultiplayerAuthority();
-        Freeze = !host;
+        // Senza nucleo fisico (configurazione rotta) la barca resta ferma anche sull'host: niente
+        // gravita' senza galleggiamento.
+        Freeze = !host || _physics == null;
 
         if (host)
             return;
@@ -230,8 +294,17 @@ public partial class BoatController : RigidBody3D
         // Il pilota si e' disconnesso: timone libero e comandi a zero. Il timeout di
         // InputTimeoutSeconds e' la seconda rete di sicurezza, indipendente da questo segnale.
         PilotPeerId = 0;
+        ResetControls();
+    }
+
+    /// Comandi a zero e trim restituito all'assistenza (nuovo pilota o timone lasciato).
+    private void ResetControls()
+    {
         _throttle = 0f;
         _steer = 0f;
+        _trimCommand = 0f;
+        _thruster = 0f;
+        _manualTrim = false;
     }
 
     // ====================================================================================
@@ -247,46 +320,178 @@ public partial class BoatController : RigidBody3D
             // processo morto prima che ENet lo rilevi): la barca va in folle, non resta a tutta forza.
             _throttle = 0f;
             _steer = 0f;
+            _trimCommand = 0f;
+            _thruster = 0f;
         }
 
         if (DebugAutoDrive)
         {
-            _throttle = 1f;
+            _throttle = DebugThrottle;
             _steer = DebugSteer;
+            _trimCommand = DebugTrimCommand;
+            _manualTrim = !DebugAutoTrim;
+            _thruster = DebugThruster;
         }
 
-        HostApplyBuoyancy();
-        HostApplyPropulsion();
+        // Le forze sono in _IntegrateForces; qui solo le masse (prima del passo) e la pubblicazione.
+        HostUpdateCrew(delta);
         HostPublishState();
     }
 
-    private void HostApplyBuoyancy()
+    /// <summary>
+    /// Chi sta a bordo pesa (10 Hz): ogni giocatore ancorato a questa barca (passeggero o pilota) e'
+    /// una massa dinamica ai suoi piedi, corpo + equipaggiamento. La posizione e' quella REPLICATA
+    /// nello spazio della barca (<see cref="PlayerController.SyncPosition"/> con l'ancora), cosi'
+    /// spostarsi sul ponte sposta il baricentro. Massa e inerzia si riscrivono solo se cambiano.
+    /// </summary>
+    private void HostUpdateCrew(double delta)
     {
-        if (_water == null)
+        if (_massModel == null)
             return;
+        _sinceCrewUpdate += (float)delta;
+        if (_sinceCrewUpdate < 0.1f)
+            return;
+        _sinceCrewUpdate = 0f;
 
-        // Spinta per punto sulla superficie CON le onde, e smorzamento rispetto all'acqua (non al
-        // mondo): la barca sale e scende con l'onda invece di esserne frenata, e quando un'onda presa
-        // veloce la lancia fuori dall'acqua nessuna forza la trattiene (vedi Buoyancy).
-        var settings = new Buoyancy.Settings(MaxSubmerge, 2f, VerticalDampFactor, 0f);
-        Buoyancy.Apply(this, _floaters, _water, _gravity, settings);
+        _crewSeen.Clear();
+        if (GetTree().GetFirstNodeInGroup(GameWorld.GroupName) is GameWorld world)
+        {
+            float bodyCenter = _assembly?.PilotBodyCenter ?? 1f;
+            foreach (PlayerController player in world.AllPlayers())
+            {
+                if (player.SyncAnchorId != VehicleId || !int.TryParse(player.Name, out int peer))
+                    continue;
+                float carried = player.GetNodeOrNull<PlayerInventory>("Inventory")?.Model.TotalWeight() ?? 0f;
+                _massModel.SetDynamic(peer, CrewBodyMass + carried, player.SyncPosition - Vector3.Up * bodyCenter);
+                _crewSeen.Add(peer);
+            }
+        }
+        foreach (int key in _debugMasses)
+            _crewSeen.Add(key);
+        _massModel.RetainDynamic(_crewSeen);
+
+        if (_massModel.Apply(this))
+            _physics?.UpdateStatics(Mass, _water?.Density ?? 1025f);
     }
 
-    private void HostApplyPropulsion()
+    private readonly System.Collections.Generic.HashSet<int> _debugMasses = new();
+
+    /// <summary>
+    /// Solo collaudo: una massa (kg) a bordo nel punto <paramref name="localPosition"/> (spazio della
+    /// barca), identificata da <paramref name="key"/> (negativa: non collide coi peer). Massa 0 la toglie.
+    /// </summary>
+    public void DebugSetMass(int key, float mass, Vector3 localPosition)
     {
-        Vector3 forward = -GlobalTransform.Basis.Z;
-        Vector3 right = GlobalTransform.Basis.X;
+        if (_massModel == null)
+            return;
+        if (mass > 0f)
+            _debugMasses.Add(key);
+        else
+            _debugMasses.Remove(key);
+        _massModel.SetDynamic(key, mass, localPosition);
+        _sinceCrewUpdate = 1f;
+    }
 
-        ApplyCentralForce(forward * _throttle * ThrustForce * (_throttle >= 0f ? 1f : ReverseFactor));
-        ApplyCentralForce(-right * LinearVelocity.Dot(right) * Mass * LateralDragFactor);
+    /// <summary>
+    /// Solo collaudo: braccio raddrizzante GZ (m) in acqua piatta allo sbandamento dato, a
+    /// dislocamento costante (stessa idrostatica del runtime). GM ≈ GZ / sin φ per piccoli angoli.
+    /// Positivo = la barca torna dritta.
+    /// </summary>
+    public float DebugRightingArm(float heelDegrees)
+    {
+        if (_physics == null)
+            return 0f;
+        float volume = Mass / (_water?.Density ?? 1025f);
+        return _physics.Hydro.Hull.RightingArm(volume, CenterOfMass, Mathf.DegToRad(heelDegrees));
+    }
 
-        // Il timone non fa nulla da fermo: e' fisicamente giusto ed evita di girare sul posto.
-        float speedFactor = Mathf.Clamp(LinearVelocity.Dot(forward) / 4f, -1f, 1f);
-        ApplyTorque(Vector3.Up * -_steer * SteerTorque * speedFactor);
+    /// Solo collaudo: trim del fuoribordo imposto (gradi) e lasciato al comando manuale.
+    public void DebugSetTrimDegrees(float degrees)
+    {
+        _physics?.Outboard?.SetTrim(Mathf.DegToRad(degrees));
+        DebugAutoTrim = false;
+        DebugTrimCommand = 0f;
+    }
+
+    /// <summary>
+    /// Telemetria dell'host per collaudo e HUD di prova (nodi, giri, spinta, resistenze, assetto,
+    /// sbandamento, Froude, impatti, ventilazione, massa e baricentro).
+    /// </summary>
+    public Godot.Collections.Dictionary DebugTelemetry()
+    {
+        var d = new Godot.Collections.Dictionary();
+        Basis b = GlobalBasis;
+        Vector3 fwd = -b.Z;
+        d["pitch_deg"] = Mathf.RadToDeg(Mathf.Asin(Mathf.Clamp(fwd.Y, -1f, 1f)));
+        d["heel_deg"] = Mathf.RadToDeg(Mathf.Asin(Mathf.Clamp(-b.X.Y, -1f, 1f)));
+        d["mass"] = Mass;
+        d["com"] = CenterOfMass;
+        d["inertia"] = Inertia;
+        if (_physics == null)
+            return d;
+        HydroSolver h = _physics.Hydro;
+        d["speed_kn"] = h.SpeedThroughWater / 0.514444f;
+        d["speed_ground_kn"] = new Vector2(LinearVelocity.X, LinearVelocity.Z).Length() / 0.514444f;
+        d["immersed_area"] = h.ImmersedArea;
+        d["static_area"] = _physics.StaticImmersedArea;
+        d["static_heave"] = _physics.StaticHeave;
+        d["volume"] = h.DisplacedVolume;
+        d["wetted_length"] = h.WettedLength;
+        d["fn"] = h.Froude;
+        d["fnv"] = h.FroudeVolumetric;
+        d["drag_viscous"] = h.ViscousDrag;
+        d["drag_pressure"] = h.PressureDrag;
+        d["drag_wave"] = h.WaveDrag;
+        d["slam_g"] = _physics.LastSlamG;
+        d["invalid_steps"] = _physics.InvalidSteps;
+        d["clamped_steps"] = _physics.ClampedSteps;
+        d["water_height"] = h.MeanWaterHeight;
+        d["drive"] = _physics.Outboard != null ? "outboard" : _physics.Shaft != null ? "inboard" : "";
+        d["thruster"] = _physics.Thruster != null;
+        d["com_physics"] = GlobalTransform.AffineInverse() * _physics.Context.Com;
+        d["lcb_static"] = _physics.StaticBuoyancyCenter.Z;
+        d["step_ms"] = _physics.StepMilliseconds;
+        d["hull_length"] = h.Hull.Bounds.Size.Z;
+        d["hull_beam"] = h.Hull.Bounds.Size.X;
+        d["hull_bottom"] = h.Hull.Bounds.Position.Y;
+        d["hull_triangles"] = h.Hull.TriangleCount;
+        d["hull_volume"] = h.Hull.Volume;
+        PropulsionUnit? unit = _physics.Outboard?.Unit ?? _physics.Shaft?.Unit;
+        if (unit != null)
+        {
+            d["rpm"] = unit.Engine.Rpm;
+            d["gear"] = unit.Engine.Gear;
+            d["throttle"] = unit.Engine.Throttle;
+            d["thrust"] = unit.Thrust;
+            d["thrust_net"] = unit.Thrust * (1f - unit.Propeller.ThrustDeduction);
+            d["prop_torque"] = unit.Torque;
+            d["prop_depth"] = unit.Depth;
+            d["prop_immersion"] = unit.Immersion;
+            d["slip"] = unit.Slip;
+            d["ventilating"] = unit.Ventilating;
+            d["limiter"] = unit.Engine.Limiting;
+            d["fuel_kg_h"] = unit.Engine.FuelRate * 3600f;
+        }
+        d["steer_deg"] = Mathf.RadToDeg(SyncMotorAngle);
+        d["trim_deg"] = Mathf.RadToDeg(SyncTrim);
+        return d;
     }
 
     private void HostPublishState()
     {
+        SyncThrottle = _throttle;
+        if (_physics?.Outboard is OutboardDrive outboard)
+        {
+            SyncMotorAngle = outboard.SteerAngle;
+            SyncTrim = outboard.Trim;
+        }
+        else if (_physics?.Shaft is ShaftDrive shaft)
+        {
+            SyncMotorAngle = shaft.RudderAngle;
+        }
+        PropulsionUnit? unit = _physics?.Outboard?.Unit ?? _physics?.Shaft?.Unit;
+        SyncEngineRpm = unit?.Engine.Rpm ?? 0f;
+        SyncPropRpm = (unit?.Revs ?? 0f) * 60f;
         SyncBodyPosition = GlobalPosition;
         SyncBodyRotation = GlobalBasis.GetRotationQuaternion();
         SyncLinearVelocity = LinearVelocity;
@@ -363,12 +568,16 @@ public partial class BoatController : RigidBody3D
             RpcId(NetworkConstants.HostPeerId, MethodName.RequestLeaveHelm);
     }
 
-    public void SubmitControls(float throttle, float steer)
+    /// <summary>
+    /// Intento di guida: leva, governo, trim (−1 giu' / +1 su / 0) ed elica di prua, tutti −1..1 e
+    /// relativi al veicolo.
+    /// </summary>
+    public void SubmitControls(float throttle, float steer, float trim, float thruster)
     {
         if (IsMultiplayerAuthority())
-            RequestControls(throttle, steer);
+            RequestControls(throttle, steer, trim, thruster);
         else
-            RpcId(NetworkConstants.HostPeerId, MethodName.RequestControls, throttle, steer);
+            RpcId(NetworkConstants.HostPeerId, MethodName.RequestControls, throttle, steer, trim, thruster);
     }
 
     /// <summary>
@@ -395,8 +604,7 @@ public partial class BoatController : RigidBody3D
             return;
 
         PilotPeerId = sender;
-        _throttle = 0f;
-        _steer = 0f;
+        ResetControls();
         _sinceLastInput = 0f;
     }
 
@@ -407,8 +615,7 @@ public partial class BoatController : RigidBody3D
             return;
 
         PilotPeerId = 0;
-        _throttle = 0f;
-        _steer = 0f;
+        ResetControls();
     }
 
     /// <summary>
@@ -416,17 +623,22 @@ public partial class BoatController : RigidBody3D
     /// non cambiano, perche' un pacchetto "acceleratore a zero" perso lascerebbe la barca a tutta forza.
     /// </summary>
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Unreliable)]
-    public void RequestControls(float throttle, float steer)
+    public void RequestControls(float throttle, float steer, float trim, float thruster)
     {
         if (!ValidatePilot())
             return;
 
         // Un valore non finito (o enorme) sparerebbe la barca fuori dal mondo: si rifiuta e si satura.
-        if (!float.IsFinite(throttle) || !float.IsFinite(steer))
+        if (!float.IsFinite(throttle) || !float.IsFinite(steer) || !float.IsFinite(trim) || !float.IsFinite(thruster))
             return;
 
         _throttle = Mathf.Clamp(throttle, -1f, 1f);
         _steer = Mathf.Clamp(steer, -1f, 1f);
+        _trimCommand = Mathf.Clamp(trim, -1f, 1f);
+        _thruster = Mathf.Clamp(thruster, -1f, 1f);
+        // Toccare il trim lo toglie all'assistenza fino a quando si lascia il timone.
+        if (Mathf.Abs(_trimCommand) > 0.01f)
+            _manualTrim = true;
         _sinceLastInput = 0f;
     }
 

@@ -28,6 +28,9 @@ public partial class VehicleInput : Node
     private GameManager _game = null!;
     private float _sinceLastSend;
 
+    /// Visuale in terza persona al timone (solo sull'avatar locale).
+    private BoatChaseCamera? _chaseCamera;
+
     public override void _Ready()
     {
         _player = GetParent<PlayerController>();
@@ -42,6 +45,12 @@ public partial class VehicleInput : Node
 
         _input = _player.GetNode<PlayerInput>("Input");
         _game = GetNode<GameManager>("/root/GameManager");
+
+        // Figlia di questo nodo (un Node, non un Node3D): la sua posa e' gia' in coordinate mondo,
+        // e non c'e' da toccare Player.tscn. Esiste solo sul peer proprietario, come la camera FPS.
+        _chaseCamera = new BoatChaseCamera { Name = "BoatChaseCamera" };
+        _chaseCamera.Setup(_player, _player.GetNode<FirstPersonCamera>("PlayerCamera"));
+        AddChild(_chaseCamera);
     }
 
     public override void _PhysicsProcess(double delta)
@@ -59,16 +68,40 @@ public partial class VehicleInput : Node
         _sinceLastSend = 0f;
 
         Vector2 motion = _input.ReadRawMovement();
+        bool blocked = _game.UiModalOpen;
+        float trim = blocked ? 0f : Input.GetAxis("vehicle_trim_down", "vehicle_trim_up");
+        float thruster = blocked ? 0f : Input.GetAxis("vehicle_thruster_left", "vehicle_thruster_right");
 
         // Comandi RELATIVI AL VEICOLO, non allo sguardo: volutamente NON si ruota dello yaw della
         // camera come si fa per il camminare. Al timone ci si puo' guardare attorno, e il timone
-        // non deve cambiare significato mentre lo si fa.
-        _player.DrivingBoat?.SubmitControls(-motion.Y, motion.X);
+        // non deve cambiare significato mentre lo si fa. Il trim e' una velocita' (tenuto = si muove
+        // a 2-4°/s); toccarlo toglie il trim all'assistenza finche' non si lascia il timone.
+        _player.DrivingBoat?.SubmitControls(-motion.Y, motion.X, trim, thruster);
     }
 
     public override void _UnhandledInput(InputEvent @event)
     {
-        if (!@event.IsActionPressed("interact") || _game.UiModalOpen)
+        if (_game.UiModalOpen)
+            return;
+
+        // Visuale al timone: prima/terza persona e ritorno verso la prua. Pura resa locale.
+        if (_chaseCamera != null && _player.DrivingBoat != null)
+        {
+            if (@event.IsActionPressed("vehicle_camera_toggle"))
+            {
+                _chaseCamera.Toggle();
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+            if (@event.IsActionPressed("vehicle_camera_reset"))
+            {
+                _chaseCamera.ResetView();
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+        }
+
+        if (!@event.IsActionPressed("interact"))
             return;
 
         // Al timone: F lo lascia. E' il caso che vince su tutto (vedi VehicleInteraction).

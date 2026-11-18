@@ -16,7 +16,12 @@ I pack **non stanno nel repo** (gli FBX delle animazioni pesano fino a 65 MB l'u
 si passa il percorso allo script. Chi consuma gli asset: skill `character-animation`.
 
 Fa eccezione `buildings/venice/`: kit modulare generato per intero da `build_venice_kit.py`, senza
-pack. Vedi la skill `venice-building-kit`.
+pack. Vedi la skill `venice-building-kit`. Anche `boats/` (barchino, gozzo e peschereccio placeholder,
+fuoribordo, consolle, accessori) e' procedurale: `tools/blender/build_lagoon_boats.py [preview <cartella>]`,
+nomi e convenzioni nella docstring e nella skill `vehicles-boats` §9-§10 (ogni scafo esporta anche la
+mesh chiusa `HydroHull` per la fisica). Lo script RESETTA la scena: se l'utente ha Blender aperto con
+lavoro suo, eseguirlo in un Blender separato in background (`blender --background --factory-startup
+--python <runner>` che definisce `PROJECT_DIR` e `ARGV` come fa `blender_client.py`).
 
 ## 1. Parlare con Blender
 

@@ -79,6 +79,19 @@ Death01 ────────────────────────
   spento (sul corpo orizzontale le sue rotazioni diventerebbero un rollio). Arma riposta; viewmodel
   `Lowered`. Da morti in acqua il ramo si spegne e il corpo scende di `SwimBodyLift`.
 
+- **Seduti al governo** (`Seated` ← il bridge, dal pilota replicato della barca): ramo `SeatBlend`
+  sopra a tutto, `Sitting_Idle` (barra, `SeatPose` 0) o `Driving` (volante, 1). Nelle clip il bacino
+  sta 0,31 m DIETRO i piedi: il `Body` avanza di `SeatedForwardShift` (0,25 m) perche' la testa stia
+  sopra i piedi nominali, dove c'e' la camera; i posti di guida delle barche sono misurati con questo
+  valore. Mani: `FillSeatGoals` porta in IK la sinistra su `SeatLeftHand` e la destra su
+  `SeatRightHand` (nodi della barca che si muovono con volante e motore). Il bersaglio e' il punto di
+  PRESA: il polso si arretra di `SeatGripToWrist` lungo le dita. Volante: pollici in su su entrambe
+  le mani (asse delle nocche lungo la corona verso l'alto), dita verso il centro. Arma riposta,
+  viewmodel `Lowered`. In prima persona `FirstPersonBodyView.SetView` mostra la copia "seduti":
+  busto e testa collassati sulla spina, spalle e braccia sul gomito, ogni vertice sul pivot
+  dell'influenza piu' pesante e quelli pesati < 0,5 lasciati dove sono (con la media o col busto sul
+  collo uscivano lame di pelle tirata attraverso la vista). Si vedono avambracci, mani e gambe.
+
 - **La libreria ha solo clip in AVANTI.** Di lato `BodyAimModifier` gira il bacino verso il moto e
   contro-ruota la spina (`MaxHipSwivelDegrees`); all'indietro la clip gira al contrario (`*Scale = -1`)
   col bacino dalla parte opposta. L'isteresi 80°/110° evita che il verso si inverta a ogni frame.
@@ -106,7 +119,7 @@ costruzione, con qualunque locomozione sotto.
 - `IsTwoHanded` decide come sta la sinistra: sotto l'astina (armi lunghe) o attorno alla destra.
 - In corsa l'arma si abbassa ruotando attorno all'impugnatura (`Lowered*`); i gomiti piegano nel
   riferimento dello **sguardo**, non dell'arma.
-- Sull'avatar locale (`FirstPersonOwner`) l'arma in terza persona è `ShadowsOnly`.
+- Sull'avatar locale (`FirstPersonOwner`) l'arma in terza persona è `ShadowsOnly`, salvo in `ThirdPersonView`.
 
 ## 4. Viewmodel in prima persona
 
@@ -140,6 +153,10 @@ Aim (idle_aim/walk_aim) ──────────────────�
   con tutto da `Spine` in su collassato è l'unica visibile → guardando in basso si vedono le gambe.
   **Non nascondere parti agendo sullo scheletro**: sparirebbero anche dall'ombra. Chi cambia
   materiale o visibilità della mesh del corpo a runtime deve farlo su entrambe.
+- **Il giocatore locale visto da fuori** (`CharacterAnimator.ThirdPersonView`): lo alza
+  `PlayerAnimationBridge` quando `PlayerCamera` non è la camera corrente (visuale esterna al timone,
+  `BoatChaseCamera`, o la camera di un collaudo). `SetView` nasconde le copie e rimette l'originale
+  a ombra+resa; arma visibile, viewmodel nascosto (`Visible = false`: fluttuerebbe agli occhi).
 
 ## 6. Stato in ingresso
 

@@ -66,6 +66,13 @@ public partial class FirstPersonCamera : Camera3D
     private SettingsService _settings = null!;
     private CharacterMotor _body = null!;
 
+    /// <summary>
+    /// Occhi da seduti al governo di una barca (sopra i piedi). La testa nelle pose sedute di UAL sta a
+    /// ~1,2 m; piu' in basso la camera finirebbe fra le spalle, con le braccia davanti agli occhi.
+    /// </summary>
+    [Export] public float SeatedEyeHeight { get; set; } = 1.20f;
+    private float _seated;
+
     private float _crouch;
     private float _dip;
 
@@ -117,8 +124,11 @@ public partial class FirstPersonCamera : Camera3D
     /// _Input e non _UnhandledInput: a mouse catturato non c'e' UI che debba vedere il movimento.
     public override void _Input(InputEvent @event)
     {
+        // Non corrente = la visuale e' di un'altra camera (terza persona al timone, BoatChaseCamera),
+        // che usa il mouse per conto suo.
         if (@event is not InputEventMouseMotion motion
-            || Input.MouseMode != Input.MouseModeEnum.Captured)
+            || Input.MouseMode != Input.MouseModeEnum.Captured
+            || !Current)
             return;
 
         // ScreenRelative e non Relative: quest'ultimo passa dalla scala UI (ContentScaleFactor), e
@@ -141,6 +151,8 @@ public partial class FirstPersonCamera : Camera3D
         Fov = Mathf.Lerp(Fov, Zoomed ? AimFovDegrees : FovDegrees, Damp(FovBlendSpeed, dt));
 
         _crouch = Mathf.Lerp(_crouch, _body.SyncCrouching ? 1f : 0f, Damp(CrouchBlendSpeed, dt));
+        bool seated = _body is PlayerController { Mode: PlayerMode.Driving, DrivingBoat.Assembly: not null };
+        _seated = Mathf.Lerp(_seated, seated ? 1f : 0f, Damp(CrouchBlendSpeed, dt));
         _dip = Mathf.Lerp(_dip, 0f, Damp(7f, dt));
 
         // Scavalcando ci si raccoglie e ci si protende sopra l'ostacolo: senza viewmodel (l'arma e'
@@ -169,11 +181,23 @@ public partial class FirstPersonCamera : Camera3D
     private float EyeLocalHeight()
     {
         float height = Mathf.Lerp(_body.EyeHeight, _body.CrouchEyeHeight, _crouch);
+        height = Mathf.Lerp(height, SeatedEyeHeight, _seated);
         return height - _body.StandHeight * 0.5f;
     }
 
     /// Ruota lo sguardo di un angolo: lo usa chi trasporta l'avatar (ponte di una barca in virata).
     public void AddYaw(float radians) => LookYaw = Mathf.Wrap(LookYaw + radians, -Mathf.Pi, Mathf.Pi);
+
+    /// <summary>
+    /// Impone lo sguardo: lo usa la visuale in terza persona al timone (<c>BoatChaseCamera</c>), che
+    /// possiede il mouse mentre e' attiva e fa guardare il pilota dove guarda lei.
+    /// </summary>
+    public void SetLook(float yaw, float pitch)
+    {
+        float maxPitch = Mathf.DegToRad(MaxPitchDegrees);
+        LookYaw = Mathf.Wrap(yaw, -Mathf.Pi, Mathf.Pi);
+        LookPitch = Mathf.Clamp(pitch, -maxPitch, maxPitch);
+    }
 
     /// Tiene lo sguardo entro <paramref name="maxDegrees"/> da <paramref name="centerYaw"/>.
     public void ClampYawAround(float centerYaw, float maxDegrees)

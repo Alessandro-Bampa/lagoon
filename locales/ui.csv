@@ -217,3 +217,19 @@ CATEGORY_MONEY,Money,Denaro
 CATEGORY_BARTER,Barter item,Oggetto di scambio
 CATEGORY_INFO,Information,Informazioni
 CATEGORY_SPECIALITEM,Special tool,Strumento speciale
+UI_DEBUG_SEA,"Sea: {0} ({1})  ·  level {2} m  ·  {3}     [{4}/{5}] sea state   [{6}] lagoon/open sea","Mare: {0} ({1})  ·  livello {2} m  ·  {3}     [{4}/{5}] stato del mare   [{6}] laguna/mare aperto"
+UI_DEBUG_SEA_LAGOON,lagoon (sheltered),laguna (riparata)
+UI_DEBUG_SEA_OPEN,open sea,mare aperto
+SEA_STATE_CALM,calm,calmo
+SEA_STATE_SLIGHT,slight,poco mosso
+SEA_STATE_MODERATE,moderate,mosso
+SEA_STATE_ROUGH,rough,agitato
+SEA_STATE_STORM,storm,tempesta
+UI_BIND_GROUP_VEHICLE,Boats,Barche
+UI_ACTION_VEHICLE_TRIM_UP,Outboard trim up,Trim del motore su
+UI_ACTION_VEHICLE_TRIM_DOWN,Outboard trim down,Trim del motore giù
+UI_ACTION_VEHICLE_THRUSTER_LEFT,Bow thruster to port,Elica di prua a sinistra
+UI_ACTION_VEHICLE_THRUSTER_RIGHT,Bow thruster to starboard,Elica di prua a dritta
+UI_ACTION_VEHICLE_CAMERA_TOGGLE,Helm camera: first/third person,Visuale al timone: prima/terza persona
+UI_ACTION_VEHICLE_CAMERA_RESET,Helm camera: look at the bow,Visuale al timone: verso la prua
+UI_DEBUG_BOAT,"Boat: {0} kn  ·  {1} rpm  ·  gear {2}  ·  trim {3}°  ·  pitch {4}°  ·  heel {5}°     [{6}/{7}] trim   [{8}/{9}] bow thruster","Barca: {0} nodi  ·  {1} giri/min  ·  marcia {2}  ·  trim {3}°  ·  assetto {4}°  ·  sbandamento {5}°     [{6}/{7}] trim   [{8}/{9}] elica di prua"

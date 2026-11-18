@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="HydroCoefficients" format=3]
+
+[ext_resource type="Script" path="res://vehicles/scripts/Hydro/HydroCoefficients.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+Hull = 2
+FormFactorK = 0.15
+ReferenceSpeed = 10.0
+PressureQuadratic = 0.4
+WaveResistanceScale = 0.6
+SlamMaxG = 10.0
+AddedMass = Vector3(0.05, 0.45, 0.5)
+AddedInertia = Vector3(0.35, 0.6, 0.45)
+SafetyAngular = Vector3(3.5, 0.6, 0.3)

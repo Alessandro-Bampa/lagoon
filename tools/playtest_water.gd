@@ -115,7 +115,7 @@ func run_physics() -> void:
 	var level: Node = load("res://world/scenes/Levels/TestLevel.tscn").instantiate()
 	root.add_child(level)
 	var water: Node = level.get_node("Lagoon/Water")
-	var boat: RigidBody3D = level.get_node("Boat")
+	var boat: RigidBody3D = level.get_node("Barchino")
 	var crate: RigidBody3D = level.get_node("Lagoon/CrateA")
 	var cam := Camera3D.new()
 	level.add_child(cam)
@@ -144,12 +144,8 @@ func run_physics() -> void:
 		var speed_max := 0.0
 		for i in 60:
 			await wait(0.1)
-			# In volo: tutti i punti di galleggiamento sopra la superficie.
-			var dry := true
-			for f in boat.get_node("Floaters").get_children():
-				if water.call("HeightAt", f.global_position) > f.global_position.y:
-					dry = false
-			if dry:
+			# In volo: nessun triangolo della carena sott'acqua.
+			if float(boat.call("DebugTelemetry").get("immersed_area", 1.0)) <= 0.0:
 				airborne += 1
 			speed_max = max(speed_max, boat.linear_velocity.length())
 			y_min = min(y_min, boat.global_position.y)

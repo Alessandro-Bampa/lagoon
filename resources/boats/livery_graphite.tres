@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="BoatLivery" format=3]
+
+[ext_resource type="Script" path="res://vehicles/scripts/BoatLivery.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+Hull = Color(0.300, 0.330, 0.370, 1)
+Stripe = Color(0.060, 0.060, 0.070, 1)
+Deck = Color(0.400, 0.430, 0.470, 1)
+Interior = Color(0.820, 0.830, 0.840, 1)
+Cushion = Color(0.800, 0.810, 0.820, 1)
+Motor = Color(0.200, 0.220, 0.250, 1)
+MotorTrim = Color(0.050, 0.050, 0.060, 1)

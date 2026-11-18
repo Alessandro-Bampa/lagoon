@@ -1,0 +1,136 @@
+[gd_resource type="Resource" script_class="BoatConfig" format=3 uid="uid://c2n1axirn4dy3"]
+
+[ext_resource type="Script" uid="uid://bsgfu4kps7q8c" path="res://vehicles/scripts/BoatConfig.cs" id="1"]
+[ext_resource type="PackedScene" uid="uid://c8fum5k1ydymd" path="res://assets/models/boats/Peschereccio_Placeholder.glb" id="2"]
+[ext_resource type="PackedScene" uid="uid://bwa0etxrfh2v1" path="res://assets/models/boats/Console_Helm.glb" id="3"]
+[ext_resource type="Resource" path="res://resources/boats/accessory_ladder.tres" id="5"]
+[ext_resource type="Script" uid="uid://cy4vin6px0eks" path="res://vehicles/scripts/Propulsion/EngineDefinition.cs" id="6"]
+[ext_resource type="Script" uid="uid://d1p2n2jykwij" path="res://vehicles/scripts/Propulsion/GearboxDefinition.cs" id="7"]
+[ext_resource type="Script" uid="uid://cfrnswtwlvfyc" path="res://vehicles/scripts/Propulsion/PropellerDefinition.cs" id="8"]
+[ext_resource type="Script" uid="uid://5c1r86wn5nmo" path="res://vehicles/scripts/Propulsion/FoilDefinition.cs" id="9"]
+[ext_resource type="Script" uid="uid://d241n372inmjy" path="res://vehicles/scripts/Propulsion/InboardDefinition.cs" id="10"]
+[ext_resource type="Script" uid="uid://btpa80e32w62h" path="res://vehicles/scripts/Hydro/HydroCoefficients.cs" id="11"]
+[ext_resource type="Script" uid="uid://cduk1e8f0ahf7" path="res://vehicles/scripts/BoatMassItem.cs" id="12"]
+[ext_resource type="Script" uid="uid://b6q6lwd6af785" path="res://vehicles/scripts/Propulsion/BowThrusterDefinition.cs" id="13"]
+
+[sub_resource type="Resource" id="Keel"]
+script = ExtResource("9")
+Kind = 2
+Mount = "Mount_Keel"
+Area = 12.0
+Span = 1.6
+StallDegrees = 25.0
+DragCoefficient = 0.02
+ChordSegments = 4
+Chord = 13.0
+
+[sub_resource type="Resource" id="Hydro"]
+script = ExtResource("11")
+Hull = 0
+FormFactorK = 0.35
+PressureQuadratic = 0.1
+SuctionQuadratic = 0.05
+ReferenceSpeed = 5.0
+WaveResistanceScale = 0.8
+SlamMaxG = 2.0
+AddedMass = Vector3(0.07, 0.9, 0.9)
+AddedInertia = Vector3(0.4, 0.9, 0.8)
+SafetyLinear = Vector3(0, 0.3, 1.5)
+SafetyAngular = Vector3(0.9, 1.5, 0.4)
+
+[sub_resource type="Resource" id="Engine"]
+script = ExtResource("6")
+Type = 1
+MaxPowerKw = 368.0
+RatedRpm = 1800.0
+IdleRpm = 600.0
+LimiterRpm = 1950.0
+InertiaKgm2 = 8.0
+ThrottleTimeConstant = 1.5
+BsfcGPerKwh = 210.0
+Mass = 3500.0
+
+[sub_resource type="Resource" id="Gearbox"]
+script = ExtResource("7")
+RatioForward = 5.0
+RatioReverse = 5.0
+ShiftSeconds = 1.5
+NeutralDwellSeconds = 1.0
+MaxShiftRpm = 900.0
+
+[sub_resource type="Resource" id="Propeller"]
+script = ExtResource("8")
+Diameter = 1.6
+Pitch = 1.28
+Kt0 = 0.37
+Kq0 = 0.036
+Nozzle = true
+NozzleK0 = 1.45
+WakeFraction = 0.3
+ThrustDeduction = 0.2
+PropWalkAhead = 0.03
+PropWalkAstern = 0.1
+PropWalkSpeed = 1.5
+InertiaKgm2 = 60.0
+
+[sub_resource type="Resource" id="Rudder"]
+script = ExtResource("9")
+Area = 2.1
+Span = 2.0
+StallDegrees = 35.0
+
+[sub_resource type="Resource" id="Inboard"]
+script = ExtResource("10")
+Engine = SubResource("Engine")
+Propeller = SubResource("Propeller")
+Gearbox = SubResource("Gearbox")
+Rudder = SubResource("Rudder")
+RudderRateDegrees = 4.0
+
+[sub_resource type="Resource" id="Mass0"]
+script = ExtResource("12")
+Label = "Zavorra"
+Mass = 15000.0
+Position = Vector3(0, -1.8, 0)
+Size = Vector3(1, 0.4, 8)
+
+[sub_resource type="Resource" id="Mass1"]
+script = ExtResource("12")
+Label = "Stiva e ghiaccio"
+Mass = 12000.0
+Position = Vector3(0, -0.6, -2.5)
+Size = Vector3(4, 1.5, 4)
+
+[sub_resource type="Resource" id="Mass2"]
+script = ExtResource("12")
+Label = "Gasolio"
+Mass = 8000.0
+Position = Vector3(0, -1.2, 1.5)
+Size = Vector3(3, 1, 2.5)
+
+[sub_resource type="Resource" id="Mass3"]
+script = ExtResource("12")
+Label = "Attrezzatura e reti"
+Mass = 4000.0
+Position = Vector3(0, 2.2, -8)
+Size = Vector3(4, 1, 2)
+
+[sub_resource type="Resource" id="Thruster"]
+script = ExtResource("13")
+MaxThrust = 6000.0
+SpinUpSeconds = 0.8
+
+[resource]
+script = ExtResource("1")
+Hull = ExtResource("2")
+HullMass = 110000.0
+HullCenterOfMass = Vector3(0, 0.4, 1.3)
+Hydro = SubResource("Hydro")
+Inboard = SubResource("Inboard")
+Thruster = SubResource("Thruster")
+FixedFoils = [SubResource("Keel")]
+MassItems = [SubResource("Mass0"), SubResource("Mass1"), SubResource("Mass2"), SubResource("Mass3")]
+Helm = 1
+Console = ExtResource("3")
+WheelTurnsLockToLock = 2.0
+Accessories = [ExtResource("5")]

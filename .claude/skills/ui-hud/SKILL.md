@@ -28,7 +28,7 @@ Ogni nuovo elemento di HUD va aggiunto a `PlayerHud._hudRoot` (eredita rect e re
 ## 3. Cursore e sguardo
 
 - In gioco il mouse è **catturato** e muove lo sguardo (`FirstPersonCamera._Input`, solo a mouse
-  catturato, da `ScreenRelative` così la scala UI non altera la sensibilità).
+  catturato e se è la camera corrente — al timone in terza persona il mouse è di `BoatChaseCamera`, da `ScreenRelative` così la scala UI non altera la sensibilità).
 - **`PlayerHud` è l'unico proprietario di `Input.MouseMode`**: lo rilascia quando l'inventario è aperto
   o `GameManager.UiModalOpen` è vero, lo ricattura alla chiusura, lo rende visibile in `_ExitTree`.
   Chi apre una UI alza il proprio stato e basta.
@@ -72,6 +72,9 @@ Nel codice si usa sempre il **nome dell'azione**; nei testi `Loc.KeyFor("azione"
 | `toggle_inventory` | Tab | `PlayerHud._Input` |
 | `interact` | **F** | `PlayerHud._Input` (oggetto guardato: breve = raccogli/apri, lunga = menu) oppure `VehicleInput._UnhandledInput` (timone) |
 | `quick_drop` | Backspace | `PlayerHud._Input` |
+| `vehicle_trim_up` / `vehicle_trim_down` · `vehicle_thruster_left` / `vehicle_thruster_right` | E / Q · Z / X | `VehicleInput`, solo al timone (trim del fuoribordo, elica di prua; skill `vehicles-boats` §12). Gruppo "Barche" |
+| `vehicle_camera_toggle` · `vehicle_camera_reset` | V · C | `VehicleInput._UnhandledInput`, solo al timone: prima/terza persona e visuale verso la prua (`BoatChaseCamera`, skill `vehicles-boats` §9). Gruppo "Barche" |
+| `debug_sea_up` / `debug_sea_down` / `debug_sea_exposure` | PagSu / PagGiu' / Home | `SeaStateDebugControls`, solo nei livelli di prova delle onde, solo host. Non riassegnabili (non in `Groups`) |
 | `toggle_menu` | Esc | `PauseMenu` — non riassegnabile. A inventario aperto è di `PlayerHud` (chiude l'ultima finestra, poi l'inventario): `PauseMenu` si astiene se `GameManager.InventoryOpen` |
 
 **Tasto conteso fra due sistemi → niente tasto nuovo**: chi ha il contesto più specifico usa `_Input` e

@@ -19,6 +19,8 @@ addons/venice_builder/tools/water_map.py   genera world/maps/<mappa>/water/ (git
 tools/playtest_water.gd         collaudo: view (screenshot), physics (numeri), perf (ms GPU)
 tools/playtest_swim.gd          collaudo del nuoto: test (livello di prova), laguna, net-host/net-client
 tools/playtest_water_net.gd     collaudo di rete: host + client ENet, righe da confrontare per ora
+water/scripts/SeaStateDebugControls.cs   tasti di prova (PagSu/PagGiu', Home) + riga di stato
+world/scenes/MainWaveTest.tscn  livello di prova: mare aperto, pontile, barchini (skill vehicles-boats §9)
 ```
 
 ## 1. Il contratto CPU ⇄ GPU (da non rompere)
@@ -74,7 +76,20 @@ sotto con l'alta di sizigie, San Marco (+1,0) con alta + sovralzo ≳ 0,5 m. `Su
 medio con la marea, senza onde (lo usa solo la rete di sicurezza contro il vuoto di
 `PlayerController`, a `SurfaceY − 40`). Chi nuota o galleggia legge `Sample()`, mai `SurfaceY`.
 
+## 3b. Cosa offre l'acqua alla fisica
+
+- `Sample(p)`: quota, normale, velocita' delle particelle (onde + `Current`), esposizione.
+- `SampleNear(p, ref offset, iterazioni)`: stessa cosa ma l'inversione di Gerstner riparte dallo
+  spostamento del passo prima (lo scafo per triangoli campiona centinaia di vertici: 2 iterazioni).
+- `PeakWavenumber(esposizione)`: k del picco dello spettro corrente, per attenuare con la profondita'.
+- `Density` (1025), `WindVelocity` (a 10 m, dalla direzione delle onde; `WindSpeedOverride` < 0 =
+  dallo stato del mare: calmo 1,5 … tempesta 17 m/s), `Current` (corrente uniforme X/Z, sommata a
+  `Sample`: la seguono barche, casse e chi nuota). Dati del livello, non replicati: li usa solo l'host.
+
 ## 4. Galleggiamento (`Buoyancy.Apply`)
+
+Le barche su misura NON lo usano piu': hanno lo scafo per triangoli (skill vehicles-boats §10).
+`Buoyancy` resta per le casse (`FloatingBody`) e la scatola di prova `Boat.tscn`.
 
 Per punto (`Marker3D` figli di `Floaters`): spinta ∝ immersione sotto la superficie CON le onde,
 satura a `MaxSubmerge`, auto-bilanciata (`BuoyancyRatio` 2 = a metà); smorzamento verticale
@@ -193,7 +208,7 @@ la deduce (`Swimming`) su ogni peer.
 Annegamento (fiato, danno) e la rete di sicurezza contro il vuoto è l'unico rientro; viewmodel di
 nuoto (in prima persona l'arma esce di vista e basta); nuoto 3D seguendo lo sguardo (si sale e
 scende solo coi tasti); schizzi all'entrata; acqua bassa che rallenta chi cammina; onde che bagnano il
-ponte, scie e spruzzi, portanza di planata, interazione onde-barca (la barca non scava l'acqua),
+ponte, scie e spruzzi, interazione onde-barca (la barca non scava l'acqua),
 dispersione in acque basse, un solo vento per livello (niente rotazione), qualità non ancora nelle
 impostazioni (`WaterSurface.Quality` a mano), caustiche, nessun compenso del ritardo di
 presentazione sul client.

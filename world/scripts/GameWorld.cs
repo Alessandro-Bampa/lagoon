@@ -118,6 +118,14 @@ public partial class GameWorld : Node3D
         return _players.GetNodeOrNull<PlayerController>(peerId.ToString());
     }
 
+    /// Tutti gli avatar presenti (es. per sapere chi sta a bordo di una barca, skill vehicles-boats §12).
+    public System.Collections.Generic.IEnumerable<PlayerController> AllPlayers()
+    {
+        foreach (Node child in _players.GetChildren())
+            if (child is PlayerController player && !player.IsQueuedForDeletion())
+                yield return player;
+    }
+
     // ====================================================================================
     //  Item nel mondo (host-authoritative, replicati dal MultiplayerSpawner)
     // ====================================================================================

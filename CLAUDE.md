@@ -172,7 +172,7 @@ La documentazione d'ambito vive in `.claude/skills/<nome>/SKILL.md`. **Carica la
 | `ui-hud` | `ui/`, la HUD, menu e popup, scala UI, risoluzione, audio, **o l'assegnazione di un tasto/azione di input** |
 | `steam-networking` | `NetworkManager`, `addons/godotsteam*`, lobby, trasporti, errori di GDExtension Steam |
 | `water-ocean` | `water/`, `resources/water/` — onde (Gerstner CPU = GPU), marea, stato del mare, galleggiamento di barche e oggetti, colore dell'acqua per zona, shader dell'acqua, **qualunque cosa debba sapere la quota dell'acqua** |
-| `vehicles-boats` | `vehicles/` — barche, timone, passeggeri, ponte calpestabile, piattaforme mobili, coordinate locali a un veicolo (`SyncAnchorId`) |
+| `vehicles-boats` | `vehicles/`, `resources/boats/` — barche su misura (scafo, fuoribordo/entrobordo, consolle, accessori, livrea), fisica per triangoli (planata, resistenze, impatti, massa aggiunta), motore, elica, invertitore, trim, timone, pesi a bordo, passeggeri, ponte calpestabile, piattaforme mobili, coordinate locali a un veicolo (`SyncAnchorId`) |
 | `i18n-localization` | `locales/`, `Loc`, **qualunque testo visibile all'utente**: nuove label, nuovi item, dialoghi, cambio lingua, chiavi grezze a video |
 | `blender-pipeline` | `assets/models/`, `tools/blender/` — corpo `Mannequin.glb` (Universal Animation Library, BoneMap umanoide), armi del Retro Weapon Pack (`VM_*.glb`, `W_*.glb`), scala/unità/assi di un modello importato, dialogo con Blender via MCP |
 | `character-animation` | `animation/` — viewmodel in prima persona e corpo in terza, alberi di blend da codice, clip e loop, mira (ADS) e allineamento delle tacche, mani sull'arma in IK, modificatori di scheletro, rinculo visivo, T-pose o animazioni ferme, aggiunta di un'arma |

@@ -453,7 +453,11 @@ public partial class PlayerController : CharacterMotor
         SyncAnchorId = boat.VehicleId;
         SyncPosition = boat.HelmLocalPosition;
         SyncFacing = boat.HeadingYaw;
-        Visual.Rotation = new Vector3(0f, SyncFacing, 0f);
+        AlignVisualWithBoat(boat);
+
+        // Al timone non si e' accovacciati: gli occhi da seduti li mette FirstPersonCamera
+        // (SeatedEyeHeight), e l'arma e' riposta (nessun colpo parte da qui).
+        SyncCrouching = false;
 
         // Il corpo guarda la prua; lo sguardo resta libero ma vira con la barca, entro il limite.
         if (_hasHelmHeading)
@@ -618,5 +622,17 @@ public partial class PlayerController : CharacterMotor
         GlobalPosition = anchor != null ? anchor.GlobalTransform * _remoteLocal : _remoteLocal;
 
         ApplyRemoteFacing(InterpolationSpeed, delta);
+        if (Mode == PlayerMode.Driving && DrivingBoat is BoatController boat)
+            AlignVisualWithBoat(boat);
+    }
+
+    /// <summary>
+    /// Al timone il corpo segue beccheggio e rollio dello scafo: diritto, su una barca inclinata
+    /// dall'onda, finirebbe dentro il sedile o sopra la consolle. Il Visual guarda +Z, la prua e' -Z
+    /// della barca: mezzo giro attorno alla verticale della barca. Pura resa, su ogni peer.
+    /// </summary>
+    private void AlignVisualWithBoat(BoatController boat)
+    {
+        Visual.GlobalBasis = boat.GlobalBasis.Orthonormalized() * new Basis(Vector3.Up, Mathf.Pi);
     }
 }

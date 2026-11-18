@@ -31,7 +31,7 @@ $root = Split-Path -Parent $PSScriptRoot
 
 # Chiavi generate per convenzione: non compaiono mai come letterale nel codice (si costruiscono da
 # un ItemId o dal nome di un enum), quindi non vanno segnalate come "mai referenziate".
-$conventionPrefixes = @('ITEM_', 'SLOT_', 'CATEGORY_', 'UI_MOUSE_', 'DLG_', 'UI_ACTION_')
+$conventionPrefixes = @('ITEM_', 'SLOT_', 'CATEGORY_', 'UI_MOUSE_', 'DLG_', 'UI_ACTION_', 'SEA_STATE_')
 
 # Proprieta' che finiscono sotto gli occhi del giocatore. Se ne aggiungi una qui, il controllo la
 # copre ovunque nel progetto.

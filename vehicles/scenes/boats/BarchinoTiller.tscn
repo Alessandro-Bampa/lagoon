@@ -1,0 +1,9 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://vehicles/scenes/Boat.tscn" id="1"]
+[ext_resource type="Resource" path="res://resources/boats/barchino_tiller.tres" id="2"]
+
+[node name="BarchinoTiller" instance=ExtResource("1")]
+
+[node name="Assembly" parent="." index="5"]
+Config = ExtResource("2")

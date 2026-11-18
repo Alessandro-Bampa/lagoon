@@ -113,6 +113,21 @@ public partial class WaterVolume : Node3D
         set { _tideStartHours = value; if (_spectrum != null) _tideHours = value; }
     }
 
+    [ExportGroup("Fisica")]
+    /// Densita' dell'acqua (kg/m³): 1025 mare, ~1020 laguna, 1000 dolce.
+    [Export] public float Density { get; set; } = 1025f;
+    /// <summary>
+    /// Vento a 10 m (m/s) che spinge le parti emerse delle barche. Negativo = dallo stato del mare
+    /// (calmo 1,5 … tempesta 17 m/s), dalla direzione <see cref="WindFromDegrees"/> delle onde.
+    /// </summary>
+    [Export] public float WindSpeedOverride { get; set; } = -1f;
+    /// <summary>
+    /// Corrente uniforme (m/s, solo X e Z): si somma alla velocita' delle particelle di
+    /// <see cref="Sample"/>, quindi la seguono barche, casse e chi nuota. Non e' replicata: e' un dato
+    /// del livello, e solo l'host la usa per la fisica.
+    /// </summary>
+    [Export] public Vector3 Current { get; set; }
+
     [ExportGroup("Editor")]
     /// Anima le onde nella vista 3D dell'editor.
     [Export] public bool AnimateInEditor { get; set; } = true;
@@ -213,6 +228,26 @@ public partial class WaterVolume : Node3D
     /// Orologio delle onde per il disegno: interpolato fra i passi fisici, cosi' le onde scorrono a
     /// ogni frame ma restano nello stesso tempo della fisica (la barca non "scivola" sull'onda).
     public double RenderTime => _renderTime;
+
+    private static readonly float[] WindBySeaState = { 1.5f, 4f, 7f, 11f, 17f };
+
+    /// Velocita' del vento a 10 m (m/s), nel verso in cui soffia (vedi <see cref="WindSpeedOverride"/>).
+    public Vector3 WindVelocity
+    {
+        get
+        {
+            float speed = WindSpeedOverride;
+            if (speed < 0f)
+            {
+                float s = Mathf.Clamp(_seaState, 0f, WindBySeaState.Length - 1);
+                int i = Mathf.Min((int)s, WindBySeaState.Length - 2);
+                speed = Mathf.Lerp(WindBySeaState[i], WindBySeaState[i + 1], s - i);
+            }
+            // Mondo: X est, Z sud; il vento "da" θ soffia verso θ + 180° (come WaveSpectrum).
+            float travel = Mathf.DegToRad(_windFromDegrees + 180f);
+            return new Vector3(Mathf.Sin(travel), 0f, -Mathf.Cos(travel)) * speed;
+        }
+    }
 
     /// Altezza della marea astronomica + sovralzo rispetto a <see cref="BaseLevel"/>.
     public float TideHeight => _waterLevel - BaseLevel;
@@ -470,7 +505,43 @@ public partial class WaterVolume : Node3D
         }
 
         _spectrum.Evaluate(x0, z0, t, exposure, out Vector3 disp, out Vector3 normal, out Vector3 velocity);
-        return new WaterSample(_waterLevel + disp.Y, normal, velocity, exposure);
+        return new WaterSample(_waterLevel + disp.Y, normal, velocity + new Vector3(Current.X, 0f, Current.Z), exposure);
+    }
+
+    /// <summary>
+    /// Numero d'onda di picco (rad/m) del mare corrente all'esposizione data: serve ad attenuare con
+    /// la profondita' pressione e velocita' delle onde (e^(−k·z)) sotto uno scafo che pesca molto.
+    /// </summary>
+    public float PeakWavenumber(float exposure)
+    {
+        WaveSpectrum.SeaParams p = Spectrum.Current;
+        float open = Mathf.Clamp(exposure * 2f - 1f, 0f, 1f);
+        float wavelength = Mathf.Lerp(p.ShelteredPeakWavelength, p.OpenPeakWavelength, open);
+        return Mathf.Tau / Mathf.Max(wavelength, 0.5f);
+    }
+
+    /// <summary>
+    /// Come <see cref="Sample"/>, ma l'inversione di Gerstner riparte dallo spostamento orizzontale
+    /// trovato al passo precedente (<paramref name="offset"/>, aggiornato in uscita): per un punto che
+    /// si muove poco fra due passi bastano 1-2 iterazioni invece di 4. Lo usa lo scafo per triangoli
+    /// (skill vehicles-boats §10), che campiona centinaia di vertici a ogni passo.
+    /// </summary>
+    public WaterSample SampleNear(Vector3 globalPoint, ref Vector2 offset, int iterations)
+    {
+        double t = _physicsTime;
+        double x = globalPoint.X, z = globalPoint.Z;
+        double x0 = x - offset.X, z0 = z - offset.Y;
+        float exposure = ExposureAt(x0, z0);
+        for (int i = 0; i < iterations; i++)
+        {
+            _spectrum.Horizontal(x0, z0, t, exposure, out double dx, out double dz);
+            x0 = x - dx;
+            z0 = z - dz;
+            exposure = ExposureAt(x0, z0);
+        }
+        offset = new Vector2((float)(x - x0), (float)(z - z0));
+        _spectrum.Evaluate(x0, z0, t, exposure, out Vector3 disp, out Vector3 normal, out Vector3 velocity);
+        return new WaterSample(_waterLevel + disp.Y, normal, velocity + new Vector3(Current.X, 0f, Current.Z), exposure);
     }
 
     /// <summary>

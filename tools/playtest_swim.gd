@@ -269,21 +269,35 @@ func run_test_level() -> void:
 	check(not bool(player.get("SyncSwimming")) and player.global_position.y > 2.0, "risalita dalla scaletta del molo")
 	await snap("test_scaletta_molo")
 
-	# A bordo della barca dalla sua scaletta (fianco sinistro), con la passerella tolta e mare mosso.
-	var plank := main.get_node_or_null("TestLevel/Lagoon/Plank")
-	if plank:
-		plank.queue_free()
-	var boat: Node3D = main.get_node("TestLevel/Boat")
+	# A bordo del barchino dalla sua scaletta (sullo specchio di poppa, a dritta) col mare mosso.
+	var boat: RigidBody3D = main.get_node("TestLevel/Barchino")
 	water.call("SetSeaState", 2.0, 0.0)
+	# Non ci sono cime d'ormeggio: le fasi in tempesta l'hanno spinta altrove (anche sul molo).
+	boat.global_transform = Transform3D(Basis.IDENTITY, Vector3(31.0, 0.1, 3.0))
+	boat.linear_velocity = Vector3.ZERO
+	boat.angular_velocity = Vector3.ZERO
 	await wait(1.5)
-	var side: Vector3 = boat.global_transform.basis.x
-	var ladder_pos: Vector3 = boat.global_transform * Vector3(-2.0, 0.0, 0.0)
-	teleport(player, ladder_pos - side * 0.7 + Vector3(0, -0.4, 0))
+	var ladder: Node3D = null
+	for n in boat.find_children("*", "Node3D", true, false):
+		if n.is_in_group("swim_ladder"):
+			ladder = n
+			break
+	var forward: Vector3 = -boat.global_transform.basis.z
+	var ladder_pos: Vector3 = ladder.global_position if ladder else boat.global_transform * Vector3(0.55, 0.0, 2.3)
+	teleport(player, Vector3(ladder_pos.x, boat.global_position.y - 0.4, ladder_pos.z) - forward * 0.7)
 	await wait(1.5)
-	await climb(player, side)
+	# DEBUG temporaneo
+	var space := (player as Node3D).get_world_3d().direct_space_state
+	print("[swim] DBG ladder ", ladder, " pos ", ladder_pos, " player ", player.global_position, " boat ", boat.global_position, " fwd ", forward)
+	for h in [-0.3, -0.1, 0.1, 0.3, 0.5]:
+		var from: Vector3 = Vector3(player.global_position.x, h, player.global_position.z)
+		var q := PhysicsRayQueryParameters3D.create(from, from + forward * 2.0, 39)
+		var hit := space.intersect_ray(q)
+		print("[swim] DBG ray y=%.1f -> %s" % [h, (str(hit.get("position")) + " " + str(hit.get("collider"))) if hit else "niente"])
+	await climb(player, forward)
 	await wait(0.5)
 	print("[swim] barca: ancora %d, a nuoto %s, quota %.2f (ponte %.2f)" % [int(player.get("SyncAnchorId")),
-		player.get("SyncSwimming"), player.global_position.y - 1.0, (boat.global_transform * Vector3(0, 1.05, 0)).y])
+		player.get("SyncSwimming"), player.global_position.y - 1.0, (boat.global_transform * Vector3(0, -0.05, 0)).y])
 	check(int(player.get("SyncAnchorId")) == int(boat.get("VehicleId")) and not bool(player.get("SyncSwimming")),
 		"a bordo della barca dalla scaletta")
 	await snap("test_barca")

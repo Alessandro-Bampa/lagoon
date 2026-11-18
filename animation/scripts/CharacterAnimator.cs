@@ -48,6 +48,11 @@ public partial class CharacterAnimator : Node3D
     private const string ClipSwimIdle = "Swim_Idle";
     private const string ClipSwimMove = "Swim_Fwd";
 
+    // Seduti al governo di una barca: senza volante (barra del fuoribordo) e al volante. Bacino a
+    // 0,54 m e 0,31 m DIETRO l'origine della clip, piano di seduta ~0,46 m.
+    private const string ClipSit = "Sitting_Idle";
+    private const string ClipDrive = "Driving";
+
     // Parametri dell'albero.
     private const string MovePosition = "parameters/Move/blend_position";
     private const string MoveScale = "parameters/MoveScale/scale";
@@ -58,6 +63,8 @@ public partial class CharacterAnimator : Node3D
     private const string SwimPosition = "parameters/Swim/blend_position";
     private const string SwimScale = "parameters/SwimScale/scale";
     private const string SwimAmount = "parameters/SwimBlend/blend_amount";
+    private const string SeatPoseAmount = "parameters/Seat/blend_amount";
+    private const string SeatAmount = "parameters/SeatBlend/blend_amount";
     private const string LandRequest = "parameters/Land/request";
     private const string HitRequest = "parameters/Hit/request";
     private const string HitPoseRequest = "parameters/HitPose/transition_request";
@@ -106,6 +113,18 @@ public partial class CharacterAnimator : Node3D
 
     [Export] public float SwimBlendSpeed { get; set; } = 5.0f;
 
+    /// <summary>
+    /// Da seduti il corpo avanza di tanto rispetto all'origine: nelle clip il bacino sta 0,31 m
+    /// dietro i piedi, e la testa finirebbe dietro la camera in prima persona, che sta sulla
+    /// verticale dei piedi. Avanzato, la testa e' sopra i piedi; i posti di guida delle barche sono
+    /// misurati con questo valore (build_lagoon_boats.py, <c>Seat_Helm</c>).
+    /// </summary>
+    [Export] public float SeatedForwardShift { get; set; } = 0.25f;
+    [Export] public float SeatBlendSpeed { get; set; } = 6.0f;
+
+    /// Distanza fra polso e centro del palmo che stringe barra o corona (m).
+    [Export] public float SeatGripToWrist { get; set; } = 0.08f;
+
     [Export] public float BlendSpeed { get; set; } = 10.0f;
     [Export] public float VelocitySmoothing { get; set; } = 14.0f;
     [Export] public float AirBlendSpeed { get; set; } = 12.0f;
@@ -126,6 +145,20 @@ public partial class CharacterAnimator : Node3D
     /// A nuoto: clip di nuoto, corpo alzato alla superficie e girato verso il moto, arma riposta.
     public bool Swimming { get; set; }
 
+    /// Seduti al governo di una barca (pilota). Lo deduce il bridge dallo stato replicato.
+    public bool Seated { get; set; }
+
+    /// Posa seduta: 0 = barra del fuoribordo (Sitting_Idle), 1 = volante (Driving).
+    public float SeatPose { get; set; }
+
+    /// Dove vanno le mani da seduti (barra, volante): nodi della barca, letti a ogni frame. Null =
+    /// quella mano resta come nella clip.
+    public Node3D? SeatLeftHand { get; set; }
+    public Node3D? SeatRightHand { get; set; }
+
+    /// La sinistra impugna la barra (pugno su un tubo che va verso prua), non un volante.
+    public bool SeatTiller { get; set; }
+
     /// Arma all'occhio (mira col tasto destro).
     public bool Aiming { get; set; }
 
@@ -145,6 +178,13 @@ public partial class CharacterAnimator : Node3D
     /// vista c'e' il viewmodel.
     /// </summary>
     public bool FirstPersonOwner { get; set; }
+
+    /// <summary>
+    /// Solo con <see cref="FirstPersonOwner"/>: il giocatore locale si sta guardando da fuori (la
+    /// camera corrente non e' quella in prima persona, es. la visuale esterna al timone). Corpo intero
+    /// e arma visibili invece delle copie della prima persona.
+    /// </summary>
+    public bool ThirdPersonView { get; set; }
 
     // ====================================================================================
     //  Uscite
@@ -169,6 +209,9 @@ public partial class CharacterAnimator : Node3D
 
     // Nuoto: peso del ramo, peso delle bracciate (orizzontale) e rotazione del corpo verso il moto.
     private float _swimWeight;
+    private float _seatWeight;
+    private bool _seatedView;
+    private bool _thirdPersonView;
     private float _swimStroke;
     private float _swimYaw;
     private bool _swimBackward;
@@ -247,7 +290,7 @@ public partial class CharacterAnimator : Node3D
         foreach (string clip in new[]
         {
             ClipIdle, ClipWalk, ClipJog, ClipSprint, ClipCrouchIdle, ClipCrouchMove, ClipAir,
-            ClipLand, ClipHitChest, ClipHitHead, ClipDeath, ClipSwimIdle, ClipSwimMove,
+            ClipLand, ClipHitChest, ClipHitHead, ClipDeath, ClipSwimIdle, ClipSwimMove, ClipSit, ClipDrive,
         })
         {
             if (!_tree.HasAnimation(clip))
@@ -310,9 +353,19 @@ public partial class CharacterAnimator : Node3D
         tree.ConnectNode("SwimBlend", 0, "Air");
         tree.ConnectNode("SwimBlend", 1, "SwimScale");
 
+        // Seduti al governo: sopra a tutto il resto della locomozione.
+        tree.AddNode("SitPose", Clip(ClipSit));
+        tree.AddNode("DrivePose", Clip(ClipDrive));
+        tree.AddNode("Seat", new AnimationNodeBlend2());
+        tree.ConnectNode("Seat", 0, "SitPose");
+        tree.ConnectNode("Seat", 1, "DrivePose");
+        tree.AddNode("SeatBlend", new AnimationNodeBlend2());
+        tree.ConnectNode("SeatBlend", 0, "SwimBlend");
+        tree.ConnectNode("SeatBlend", 1, "Seat");
+
         tree.AddNode("LandPose", Clip(ClipLand));
         tree.AddNode("Land", new AnimationNodeOneShot { FadeInTime = 0.08f, FadeOutTime = 0.3f });
-        tree.ConnectNode("Land", 0, "SwimBlend");
+        tree.ConnectNode("Land", 0, "SeatBlend");
         tree.ConnectNode("Land", 1, "LandPose");
 
         // Reazione al colpo: solo busto e braccia, le gambe continuano a camminare.
@@ -372,6 +425,16 @@ public partial class CharacterAnimator : Node3D
 
         UpdateSwivel(speed, dt);
         UpdateSwim(speed, dt);
+        _seatWeight = Mathf.Lerp(_seatWeight, Seated && !Dead ? 1f : 0f, SkeletonMath.Damp(SeatBlendSpeed, dt));
+        bool seatedView = _seatWeight > 0.5f;
+        if (FirstPersonOwner && (seatedView != _seatedView || ThirdPersonView != _thirdPersonView))
+        {
+            // In prima persona, seduti, si vedono le proprie mani sul governo; in terza persona il
+            // corpo intero (FirstPersonBodyView).
+            _seatedView = seatedView;
+            _thirdPersonView = ThirdPersonView;
+            FirstPersonBodyView.SetView(this, _seatedView, _thirdPersonView);
+        }
         UpdateWeapon(speed, dt);
 
         if (_bodyNode != null)
@@ -392,6 +455,8 @@ public partial class CharacterAnimator : Node3D
         _tree.Set(SwimPosition, Mathf.Min(speed, SwimSpeed));
         _tree.Set(SwimScale, (_swimBackward ? -1f : 1f) * Mathf.Max(1f, speed / Mathf.Max(SwimSpeed, 0.1f)));
         _tree.Set(SwimAmount, _swimWeight);
+        _tree.Set(SeatAmount, _seatWeight);
+        _tree.Set(SeatPoseAmount, Mathf.Clamp(SeatPose, 0f, 1f));
 
         if (Dead != _wasDead)
         {
@@ -410,7 +475,7 @@ public partial class CharacterAnimator : Node3D
             // A nuoto il busto non segue lo sguardo: sul corpo orizzontale di Swim_Fwd le rotazioni
             // "attorno alla verticale" dello scheletro diventerebbero un rollio. Gira il corpo intero.
             _bodyAim.Influence = alive * (1f - _swimWeight);
-            _bodyAim.HipYaw = -_hipYaw * (1f - _airWeight) * (inManeuver ? 0f : 1f);
+            _bodyAim.HipYaw = -_hipYaw * (1f - _airWeight) * (inManeuver ? 0f : 1f) * (1f - _seatWeight);
             _bodyAim.LookYaw = relativeYaw;
             _bodyAim.LookPitch = LookPitch;
             _bodyAim.LeanPitch = maneuver.Lean;
@@ -421,6 +486,8 @@ public partial class CharacterAnimator : Node3D
             _armIk.Influence = alive;
             _armIk.LookBasis = Basis.FromEuler(new Vector3(LookPitch, relativeYaw + Mathf.Pi, 0f));
             FillLedgeGoals(maneuver.Hands);
+            if (_seatWeight > 0.001f && maneuver.Hands <= 0.001f)
+                FillSeatGoals(_seatWeight);
         }
     }
 
@@ -482,6 +549,67 @@ public partial class CharacterAnimator : Node3D
     /// Sale fra <paramref name="in0"/> e <paramref name="in1"/>, scende fra <paramref name="out0"/> e <paramref name="out1"/>.
     private static float Bump(float t, float in0, float in1, float out0, float out1) =>
         Mathf.SmoothStep(in0, in1, t) * (1f - Mathf.SmoothStep(out0, out1, t));
+
+    /// <summary>
+    /// Mani sul governo: sul volante (dita attorno alla corona, verso il piantone) o sulla barra
+    /// (pugno chiuso su un tubo che corre verso prua). I bersagli sono nodi della barca che si
+    /// muovono con volante e motore, quindi le mani girano con loro.
+    /// </summary>
+    private void FillSeatGoals(float weight)
+    {
+        if (Skeleton == null)
+            return;
+        Transform3D toSkeleton = Skeleton.GlobalTransform.AffineInverse();
+        FillSeatGoal(ref _armIk!.Left, SeatLeftHand, toSkeleton, weight, left: true);
+        FillSeatGoal(ref _armIk.Right, SeatRightHand, toSkeleton, weight, left: false);
+    }
+
+    private void FillSeatGoal(ref ArmIkModifier.HandGoal goal, Node3D? target, Transform3D toSkeleton, float weight, bool left)
+    {
+        if (target == null || !IsInstanceValid(target))
+        {
+            goal.Weight = 0f;
+            return;
+        }
+
+        Transform3D t = target.GlobalTransform;
+        Vector3 up = Vector3.Up;
+        // Il rig guarda +Z e la sua sinistra e' +X.
+        Vector3 bodyForward = GlobalTransform.Basis.Z;
+        Vector3 outward = (left ? 1f : -1f) * GlobalTransform.Basis.X;
+        Vector3 fingers, across;
+        if (SeatTiller)
+        {
+            // Barra: il tubo va verso prua; pugno sopra, dita che scendono attorno al tubo.
+            Vector3 bar = (t.Basis * Vector3.Forward).Normalized();
+            fingers = (-up * 0.8f - outward * 0.2f).Normalized();
+            across = bar;
+        }
+        else
+        {
+            // Volante: il piantone (Y del nodo ruota) va dal pilota verso la consolle; le dita vanno verso
+            // la consolle e il centro, l'asse delle nocche segue la corona.
+            Node3D? wheel = target.GetParent() as Node3D;
+            Vector3 axis = (wheel?.GlobalTransform.Basis.Y ?? up).Normalized();
+            Vector3 hub = wheel?.GlobalPosition ?? t.Origin;
+            Vector3 radial = (t.Origin - hub).Normalized();
+            Vector3 tangent = axis.Cross(radial).Normalized();
+            if (tangent.Dot(up) < 0f)
+                tangent = -tangent;
+            // Pollici in su su entrambe le mani: l'indice sta sopra il mignolo, l'asse delle nocche
+            // sale lungo la corona per tutte e due.
+            fingers = (axis * 0.3f - radial * 0.7f).Normalized();
+            across = tangent;
+        }
+
+        // Il bersaglio e' il punto di PRESA (nel palmo), l'IK porta il POLSO: lo si arretra lungo le dita.
+        goal.Position = toSkeleton * (t.Origin - fingers * SeatGripToWrist);
+        goal.Fingers = toSkeleton.Basis * fingers;
+        goal.Across = toSkeleton.Basis * across;
+        goal.PoleDirection = toSkeleton.Basis * (outward * 0.6f + Vector3.Down * 0.6f - bodyForward * 0.2f);
+        goal.Weight = weight;
+        goal.Curl = 0.85f;
+    }
 
     /// Mani sul bordo dell'ostacolo: palmi in giu', dita in avanti, a larghezza di spalle.
     private void FillLedgeGoals(float weight)
@@ -581,8 +709,10 @@ public partial class CharacterAnimator : Node3D
     /// </summary>
     private Transform3D BodyOffset(float drop)
     {
+        // Da seduti il corpo avanza (+Z del rig = avanti): la testa sopra i piedi nominali.
+        Vector3 seat = new(0f, 0f, SeatedForwardShift * _seatWeight);
         if (_swimWeight <= 0.001f)
-            return new Transform3D(Basis.Identity, new Vector3(0f, -drop, 0f));
+            return new Transform3D(Basis.Identity, new Vector3(0f, -drop, 0f) + seat);
 
         // Yaw positivo = verso +X dello scheletro, cioe' la SUA sinistra: il moto a destra va negato.
         var basis = new Basis(Vector3.Up, -_swimYaw * _swimWeight);
@@ -595,10 +725,10 @@ public partial class CharacterAnimator : Node3D
     {
         WeaponAnimationSet? weapon = Dead ? null : Weapon;
         Hold.SetWeapon(weapon);
-        Hold.ShadowOnly = FirstPersonOwner;
+        Hold.ShadowOnly = FirstPersonOwner && !ThirdPersonView;
 
         bool sprinting = Grounded && !Aiming && speed > WalkSpeed * 1.15f;
-        bool stowed = Vaulting || _maneuver != Maneuver.None || Swimming;
+        bool stowed = Vaulting || _maneuver != Maneuver.None || Swimming || Seated;
         Hold.UpdateState(dt, Aiming, sprinting, Reloading, stowed);
     }
 

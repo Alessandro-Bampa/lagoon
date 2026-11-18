@@ -1,0 +1,43 @@
+[gd_resource type="Resource" script_class="OutboardDefinition" format=3 uid="uid://di3ymd3r1d8e1"]
+
+[ext_resource type="Script" uid="uid://bp3gxie20dvat" path="res://vehicles/scripts/OutboardDefinition.cs" id="1"]
+[ext_resource type="PackedScene" uid="uid://ebdrn4ijy3kx" path="res://assets/models/boats/Outboard_25.glb" id="2"]
+[ext_resource type="Script" uid="uid://cy4vin6px0eks" path="res://vehicles/scripts/Propulsion/EngineDefinition.cs" id="3"]
+[ext_resource type="Script" uid="uid://d1p2n2jykwij" path="res://vehicles/scripts/Propulsion/GearboxDefinition.cs" id="4"]
+[ext_resource type="Script" uid="uid://cfrnswtwlvfyc" path="res://vehicles/scripts/Propulsion/PropellerDefinition.cs" id="5"]
+[ext_resource type="Script" uid="uid://5c1r86wn5nmo" path="res://vehicles/scripts/Propulsion/FoilDefinition.cs" id="6"]
+
+[sub_resource type="Resource" id="Engine"]
+script = ExtResource("3")
+MaxPowerKw = 18.4
+InertiaKgm2 = 0.04
+BsfcGPerKwh = 330.0
+
+[sub_resource type="Resource" id="Gearbox"]
+script = ExtResource("4")
+RatioForward = 2.08
+RatioReverse = 2.08
+
+[sub_resource type="Resource" id="LowerUnit"]
+script = ExtResource("6")
+Kind = 1
+Area = 0.045
+Span = 0.35
+AspectRatioMultiplier = 1.0
+StallDegrees = 25.0
+DragCoefficient = 0.02
+
+[sub_resource type="Resource" id="Propeller"]
+script = ExtResource("5")
+Diameter = 0.26
+Pitch = 0.28
+Kq0 = 0.066
+ReverseEfficiency = 0.45
+
+[resource]
+script = ExtResource("1")
+Model = ExtResource("2")
+Engine = SubResource("Engine")
+Gearbox = SubResource("Gearbox")
+Propeller = SubResource("Propeller")
+LowerUnit = SubResource("LowerUnit")

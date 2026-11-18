@@ -785,7 +785,9 @@ public partial class CharacterMotor : CharacterBody3D
 
         Vector3 feet = GlobalPosition - Vector3.Up * _standHeight * 0.5f;
         float submerged = surfaceY - feet.Y;
-        float probeHeight = Mathf.Max(submerged - 0.3f, VaultMinHeight * 0.7f);
+        // Al pelo dell'acqua: allo specchio di poppa un barchino pesca appena 0,1 m (meno ancora fuori
+        // asse, con la stellatura): piu' in basso la sonda passerebbe sotto lo scafo.
+        float probeHeight = Mathf.Max(submerged, VaultMinHeight * 0.7f);
         float maxHeight = submerged + Mathf.Max(SwimClimbMaxAboveWater, LadderClimbMaxAboveWater);
 
         ObstacleProbe.ObstacleInfo info = ObstacleProbe.Scan(
