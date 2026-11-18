@@ -6,8 +6,10 @@ extends RefCounted
 ## headless e senza il nodo Terrain3D in scena.
 
 const REGION_SIZE := 2048
-## Il fondale di mare e canali e' piatto a -3 m: sopra questa soglia e' terra.
-const WATER_THRESHOLD := -2.9
+## Terreno generato da OSM (tools/osm_terrain.py): il mare e' a quota 0, ogni
+## classe di terra sta sopra +0,15 e ogni classe d'acqua sotto -0,1 (velme e
+## acqua bassa comprese). Sopra questa soglia e' terra.
+const WATER_THRESHOLD := 0.0
 ## Quota usata dove il terreno e' acqua o la region non e' importata.
 const FALLBACK_GROUND := 1.0
 

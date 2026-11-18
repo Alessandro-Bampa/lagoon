@@ -157,6 +157,60 @@ public partial class CharacterMotor : CharacterBody3D
     [Export] public float MinParkourSpeed { get; set; }
 
     // ====================================================================================
+    //  Nuoto: la quota dell'acqua la da' chi pilota, il motore non conosce l'acqua
+    // ====================================================================================
+    //
+    //  Il corpo resta una capsula in piedi: cambia solo chi decide la verticale. A piedi e'
+    //  la gravita', in acqua una molla verso la quota di galleggiamento (occhi appena sopra
+    //  l'onda). Collisioni, sguardo e occhi nominali non cambiano: ResolvedEyePosition vale
+    //  anche a nuoto, e l'host non ha bisogno di saperlo.
+
+    /// Gruppo dei nodi "scaletta": vicino a uno di essi si risale dall'acqua su bordi piu' alti.
+    public const string SwimLadderGroup = "swim_ladder";
+
+    /// Velocita' a nuoto e a nuoto veloce (tasto di corsa), in m/s.
+    [Export] public float SwimSpeed { get; set; } = 1.6f;
+
+    [Export] public float SwimSprintSpeed { get; set; } = 2.6f;
+
+    /// Reattivita' orizzontale in acqua, in frazione al secondo: bassa, l'acqua ha inerzia.
+    [Export] public float SwimAcceleration { get; set; } = 3.0f;
+
+    /// <summary>
+    /// Quota degli occhi sopra la superficie (onde comprese) quando si galleggia, in metri. Il corpo
+    /// in terza persona si alza di <c>EyeHeight - SwimEyeAboveSurface</c>: le clip di nuoto della
+    /// libreria hanno la superficie all'origine.
+    /// </summary>
+    [Export] public float SwimEyeAboveSurface { get; set; } = 0.2f;
+
+    /// Rigidezza della molla che riporta alla quota di galleggiamento, in 1/s.
+    [Export] public float SwimFloatStiffness { get; set; } = 3.0f;
+
+    /// Prontezza con cui la velocita' verticale raggiunge quella voluta, in 1/s: smorza l'onda.
+    [Export] public float SwimVerticalResponse { get; set; } = 4.0f;
+
+    /// Velocita' di salita (salto tenuto) e d'immersione (accovacciarsi tenuto), in m/s.
+    [Export] public float SwimVerticalSpeed { get; set; } = 1.6f;
+
+    /// Velocita' con cui si risale da soli verso la superficie, in m/s (spinta di galleggiamento).
+    [Export] public float SwimBuoyancySpeed { get; set; } = 0.9f;
+
+    /// Di quanto si alza la quota di galleggiamento col salto tenuto in superficie, in metri.
+    [Export] public float SwimSurfaceLift { get; set; } = 0.25f;
+
+    /// Frazione della velocita' orizzontale delle particelle d'acqua che trascina il nuotatore.
+    [Export] public float SwimCurrentFollow { get; set; } = 0.5f;
+
+    /// Altezza massima sopra l'acqua di un bordo su cui ci si issa nuotando, senza scaletta, in metri.
+    [Export] public float SwimClimbMaxAboveWater { get; set; } = 0.6f;
+
+    /// Come sopra, entro <see cref="LadderReach"/> da un nodo del gruppo <see cref="SwimLadderGroup"/>.
+    [Export] public float LadderClimbMaxAboveWater { get; set; } = 1.6f;
+
+    /// Distanza orizzontale massima fra il punto d'appoggio sulla parete e la scaletta, in metri.
+    [Export] public float LadderReach { get; set; } = 1.0f;
+
+    // ====================================================================================
     //  Stato replicato, comune a tutti i personaggi
     // ====================================================================================
 
@@ -230,6 +284,14 @@ public partial class CharacterMotor : CharacterBody3D
     /// validazione host-side non avrebbe nulla su cui lavorare.
     /// </summary>
     [Export] public bool SyncVaulting { get; set; }
+
+    /// <summary>
+    /// Stato replicato: a nuoto. Come <see cref="SyncVaulting"/> e' uno stato di GIOCO oltre che di
+    /// resa: le mani nuotano, quindi l'host rifiuta tiro e ricarica (<c>WeaponController.HandsFree</c>),
+    /// e gli altri peer scelgono il ramo di nuoto del corpo. Lo scrive chi calcola il movimento
+    /// (<see cref="BeginSwim"/>/<see cref="EndSwim"/>), che sul peer proprietario e' anche lo stato vero.
+    /// </summary>
+    [Export] public bool SyncSwimming { get; set; }
 
     /// <summary>
     /// Inclinazione dello SGUARDO, in radianti: positiva verso l'alto, zero all'orizzonte.
@@ -320,6 +382,12 @@ public partial class CharacterMotor : CharacterBody3D
     /// Manovra in corso: il movimento e' scriptato e l'input di locomozione viene ignorato.
     /// E' lo stato LOCALE del peer che calcola il movimento; per gli altri c'e' <see cref="SyncVaulting"/>.
     public bool Vaulting => _phase != ParkourPhase.None;
+
+    /// <summary>
+    /// Il corpo su cui sta il bordo dell'ultima manovra (o null). Serve al derivato che sa di veicoli:
+    /// se e' il ponte di una barca, la traiettoria va trasportata con lei (<see cref="ShiftManeuver"/>).
+    /// </summary>
+    protected GodotObject? ManeuverLedgeCollider { get; private set; }
 
     /// <summary>
     /// Rialzata in corso da un atterraggio duro: il movimento e' bloccato per tutta la durata della
@@ -496,40 +564,260 @@ public partial class CharacterMotor : CharacterBody3D
 
         if (vault)
         {
-            _phase = ParkourPhase.Vault;
-            _phaseDuration = VaultDuration;
             // LandingPoint e' gia' il punto misurato OLTRE il bordo (la sonda ci ha applicato
             // VaultLandingMargin e ne ha verificato l'ingombro): qui resta solo da alzarlo di
             // mezza capsula, perche' la posizione del corpo e' il suo centro.
-            _vaultEnd = info.LandingPoint + Vector3.Up * _standHeight * 0.5f;
+            BeginManeuver(ParkourPhase.Vault, VaultDuration,
+                info.LandingPoint + Vector3.Up * _standHeight * 0.5f, info);
         }
         else if (mantle)
         {
-            _phase = ParkourPhase.Mantle;
-            _phaseDuration = MantleDuration;
-
-            // Ci si ferma sulla sommita', rientrando quanto basta a non restare in bilico sul bordo.
-            _vaultEnd = info.LedgePoint
-                - info.WallNormal * Mathf.Min(info.Depth * 0.5f, 0.45f)
-                + Vector3.Up * _standHeight * 0.5f;
+            BeginMantle(info);
         }
         else
         {
             return false;
         }
 
+        return true;
+    }
+
+    /// Arrampicata sul bordo misurato: ci si ferma sulla sommita', rientrando quanto basta a non
+    /// restare in bilico sul bordo.
+    private void BeginMantle(in ObstacleProbe.ObstacleInfo info) =>
+        BeginManeuver(ParkourPhase.Mantle, MantleDuration,
+            info.LedgePoint
+                - info.WallNormal * Mathf.Min(info.Depth * 0.5f, 0.45f)
+                + Vector3.Up * _standHeight * 0.5f,
+            info);
+
+    private void BeginManeuver(ParkourPhase phase, float duration, Vector3 end, in ObstacleProbe.ObstacleInfo info)
+    {
+        _phase = phase;
+        _phaseDuration = duration;
+        _vaultEnd = end;
         _vaultStart = GlobalPosition;
         _vaultLedge = info.LedgePoint;
         _phaseTime = 0f;
         SyncVaulting = true;
         Velocity = Vector3.Zero;
+        ManeuverLedgeCollider = info.LedgeCollider;
 
         // Ci si raddrizza sulla parete PRIMA di partire: su un muro angolato la direzione di input
         // non e' quella dell'ostacolo, e la traiettoria si vedrebbe entrare di sbieco nel muro.
         SyncFacing = Mathf.Atan2(-info.WallNormal.X, -info.WallNormal.Z);
 
         OnVaultTriggered(_vaultLedge, info.WallNormal, info.Height);
+    }
+
+    /// <summary>
+    /// Sposta la manovra in corso con il suo riferimento: <paramref name="delta"/> e' il moto del
+    /// corpo su cui sta il bordo dall'ultimo tick (nuovo * vecchio⁻¹). Senza, issandosi su una barca
+    /// che beccheggia la traiettoria restava ferma nel mondo e si finiva dentro o sopra il ponte.
+    /// </summary>
+    protected void ShiftManeuver(Transform3D delta)
+    {
+        if (!Vaulting)
+            return;
+        _vaultStart = delta * _vaultStart;
+        _vaultLedge = delta * _vaultLedge;
+        _vaultEnd = delta * _vaultEnd;
+    }
+
+    // ====================================================================================
+    //  Nuoto
+    // ====================================================================================
+
+    /// <summary>
+    /// Entra in acqua: da qui la verticale la decide <see cref="StepSwim"/>. Nessun evento di
+    /// atterraggio (si cade in acqua, non a terra) e niente aggancio al pavimento, che in acqua
+    /// tirerebbe verso il fondale.
+    /// </summary>
+    protected void BeginSwim()
+    {
+        if (SyncSwimming)
+            return;
+        SyncSwimming = true;
+        FloorSnapLength = 0f;
+        _landLock = 0f;
+        ResetFallState();
+    }
+
+    /// Esce dall'acqua (riva, scaletta, area senza acqua). Si riparte "a terra": se sotto non c'e'
+    /// niente la gravita' se ne accorge al primo tick, senza un falso atterraggio.
+    protected void EndSwim()
+    {
+        if (!SyncSwimming)
+            return;
+        SyncSwimming = false;
+        FloorSnapLength = FloorSnap;
+        ResetFallState();
+    }
+
+    private void ResetFallState()
+    {
+        _wasGrounded = true;
+        _fallSpeed = 0f;
+        _airTime = 0f;
+    }
+
+    /// <summary>
+    /// Un tick a nuoto.
+    ///
+    /// Orizzontale: come a piedi ma con poca accelerazione, piu' una frazione della velocita' delle
+    /// particelle d'acqua (le onde fanno oscillare avanti e indietro, la media e' nulla).
+    /// Verticale: una molla porta gli occhi a <see cref="SwimEyeAboveSurface"/> sopra l'onda e ne
+    /// insegue la velocita' verticale, cosi' si sale e si scende con l'onda invece di esserne
+    /// sommersi; tuffandosi da fermi la stessa molla frena la caduta. Con <paramref name="dive"/> si
+    /// scende, con <paramref name="rise"/> si risale piu' svelti (e in superficie si emerge un po' di
+    /// piu'); lasciati entrambi si torna su da soli.
+    /// </summary>
+    /// <param name="surfaceY">Quota della superficie VERA (marea e onde) sulla verticale del corpo.</param>
+    /// <param name="waterVelocity">Velocita' delle particelle d'acqua alla superficie, in m/s.</param>
+    protected void StepSwim(Vector3 worldDirection, float speed, bool rise, bool dive,
+        float surfaceY, Vector3 waterVelocity, double delta)
+    {
+        float dt = (float)delta;
+
+        if (Vaulting)
+        {
+            StepVault(dt);
+            return;
+        }
+
+        // In acqua non ci si accovaccia: la capsula torna in piedi appena c'e' spazio.
+        UpdateCrouch(dt, false, false);
+
+        Vector3 velocity = Velocity;
+        Vector3 planar = new(velocity.X, 0f, velocity.Z);
+        Vector3 drift = new Vector3(waterVelocity.X, 0f, waterVelocity.Z) * SwimCurrentFollow;
+        planar = planar.Lerp(worldDirection * speed + drift, Damp(SwimAcceleration, dt));
+
+        float floatY = surfaceY + SwimEyeAboveSurface - (EyeHeight - _standHeight * 0.5f);
+        if (rise)
+            floatY += SwimSurfaceLift;
+        float error = floatY - GlobalPosition.Y;
+
+        // Sponda in pendenza (riva di un rio nel terreno, ~60°): ne' pavimento ne' parete, quindi ne'
+        // MoveAndSlide la sale ne' la sonda del parkour la riconosce. Spingendoci contro ci si
+        // arrampica, finche' i piedi non superano SwimClimbMaxAboveWater sopra l'acqua: oltre e' una
+        // sponda alta, come per l'arrampicata da fermi.
+        float feetY = GlobalPosition.Y - _standHeight * 0.5f;
+        bool scrambling = feetY < surfaceY + SwimClimbMaxAboveWater && PushingIntoBank(worldDirection);
+
+        float wantedVy;
+        if (scrambling)
+        {
+            wantedVy = SwimVerticalSpeed;
+        }
+        else if (error < -0.6f)
+        {
+            // Ben fuori dall'acqua (cavo d'onda profondo, o appena caduti dentro): si cade.
+            wantedVy = velocity.Y - Gravity * dt;
+        }
+        else
+        {
+            float up = rise ? SwimVerticalSpeed : SwimBuoyancySpeed;
+            wantedVy = dive
+                ? -SwimVerticalSpeed
+                : Mathf.Clamp(error * SwimFloatStiffness, -SwimVerticalSpeed, up);
+
+            // L'onda si insegue solo vicino alla superficie: a tre metri sotto non ti solleva.
+            float nearSurface = Mathf.Clamp(1f - Mathf.Abs(error), 0f, 1f);
+            if (!dive)
+                wantedVy += waterVelocity.Y * nearSurface;
+        }
+
+        float vy = error < -0.6f && !scrambling
+            ? wantedVy
+            : Mathf.Lerp(velocity.Y, wantedVy, Damp(SwimVerticalResponse, dt));
+
+        Velocity = new Vector3(planar.X, vy, planar.Z);
+        MoveAndSlide();
+
+        // Per l'animazione e per l'uscita dall'acqua: niente posa di volo, niente atterraggi.
+        ResetFallState();
+        SyncGrounded = true;
+    }
+
+    /// <summary>
+    /// Vero se nell'ultimo <c>MoveAndSlide</c> si e' toccata una superficie in pendenza (normale con
+    /// componente verticale fra 0,15 e 0,9) e la direzione voluta ci entra. Le pareti verticali sono
+    /// escluse: quelle si superano con <see cref="TryStartSwimClimb"/>, non strisciandoci sopra.
+    /// </summary>
+    private bool PushingIntoBank(Vector3 worldDirection)
+    {
+        if (worldDirection.LengthSquared() < 0.01f)
+            return false;
+
+        Vector3 wanted = new Vector3(worldDirection.X, 0f, worldDirection.Z).Normalized();
+        for (int i = 0; i < GetSlideCollisionCount(); i++)
+        {
+            Vector3 normal = GetSlideCollision(i).GetNormal();
+            if (normal.Y < 0.15f || normal.Y > 0.9f)
+                continue;
+
+            var into = new Vector3(-normal.X, 0f, -normal.Z);
+            if (into.LengthSquared() > 0.0001f && wanted.Dot(into.Normalized()) > 0.3f)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Prova a issarsi fuori dall'acqua sul bordo davanti (banchina, riva bassa, ponte di una barca).
+    ///
+    /// E' la stessa arrampicata del parkour con due differenze. La parete si cerca appena sotto il
+    /// pelo dell'acqua e non all'altezza dei piedi: sotto c'e' spesso il vuoto (lo scafo, una
+    /// banchina su pali). E il limite si misura dall'ACQUA, non dai piedi:
+    /// <see cref="SwimClimbMaxAboveWater"/>, o <see cref="LadderClimbMaxAboveWater"/> accanto a una
+    /// scaletta. Come <see cref="TryStartParkour"/> esprime un intento: se la geometria non lo
+    /// permette restituisce falso e chi chiede continua a nuotare.
+    /// </summary>
+    public bool TryStartSwimClimb(Vector3 worldDirection, float surfaceY)
+    {
+        if (Vaulting)
+            return false;
+
+        Vector3 forward = worldDirection.LengthSquared() > 0.01f
+            ? new Vector3(worldDirection.X, 0f, worldDirection.Z).Normalized()
+            : new Vector3(Mathf.Sin(SyncFacing), 0f, Mathf.Cos(SyncFacing));
+
+        Vector3 feet = GlobalPosition - Vector3.Up * _standHeight * 0.5f;
+        float submerged = surfaceY - feet.Y;
+        float probeHeight = Mathf.Max(submerged - 0.3f, VaultMinHeight * 0.7f);
+        float maxHeight = submerged + Mathf.Max(SwimClimbMaxAboveWater, LadderClimbMaxAboveWater);
+
+        ObstacleProbe.ObstacleInfo info = ObstacleProbe.Scan(
+            GetWorld3D(), GetRid(), feet, forward,
+            maxHeight, probeHeight, VaultReach, VaultMaxDepth,
+            VaultLandingMargin + _capsule.Radius, _capsule);
+
+        if (!info.Found || !info.TopStandable)
+            return false;
+
+        float aboveWater = info.LedgePoint.Y - surfaceY;
+        float limit = HasSwimLadderNear(info.WallPoint) ? LadderClimbMaxAboveWater : SwimClimbMaxAboveWater;
+        if (aboveWater > limit)
+            return false;
+
+        BeginMantle(info);
         return true;
+    }
+
+    /// Una scaletta (nodo del gruppo <see cref="SwimLadderGroup"/>) entro <see cref="LadderReach"/>, in pianta.
+    private bool HasSwimLadderNear(Vector3 point)
+    {
+        foreach (Node node in GetTree().GetNodesInGroup(SwimLadderGroup))
+        {
+            if (node is not Node3D ladder)
+                continue;
+            Vector3 offset = ladder.GlobalPosition - point;
+            offset.Y = 0f;
+            if (offset.Length() <= LadderReach)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>

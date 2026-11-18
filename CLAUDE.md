@@ -106,9 +106,10 @@ I nomi delle cartelle in `scenes/` e `scripts/` sono **per sistema di gameplay**
 ├── player/          # Input locale, camera in prima persona (FirstPersonCamera), trasporto sui veicoli
 ├── combat/          # Armi, tiro, salute, hitbox        -> skill `combat-shooting`
 ├── inventory/       # Griglia, item, equipaggiamento, HUD -> skill `inventory-tarkov`
-├── vehicles/        # Barche, acqua, galleggiamento           -> skill `vehicles-boats`
+├── vehicles/        # Barche, timone, passeggeri               -> skill `vehicles-boats`
+├── water/           # Onde, marea, galleggiamento, resa dell'acqua -> skill `water-ocean`
 ├── ai/              # NPC umani e navigazione                          -> skill `ai-npc`
-├── world/           # Livelli, spawn di giocatori e oggetti
+├── world/           # Livelli, spawn; maps/laguna = mappa open world (dati rigenerabili) -> skill `venice-terrain`
 ├── quests/          # Riservato, non implementare ora (post-prototipo)
 ├── building/        # Riservato, non implementare ora (post-prototipo)
 ├── resources/       # Dati puri: .tres (items/, enemies/)
@@ -170,12 +171,14 @@ La documentazione d'ambito vive in `.claude/skills/<nome>/SKILL.md`. **Carica la
 | `inventory-tarkov` | `inventory/` — griglia, item, equipaggiamento, contenitori annidati, peso, raccolta/drop, casse, drag & drop, hotbar |
 | `ui-hud` | `ui/`, la HUD, menu e popup, scala UI, risoluzione, audio, **o l'assegnazione di un tasto/azione di input** |
 | `steam-networking` | `NetworkManager`, `addons/godotsteam*`, lobby, trasporti, errori di GDExtension Steam |
-| `vehicles-boats` | `vehicles/` — barche, acqua, galleggiamento, timone, passeggeri, ponte calpestabile, piattaforme mobili, coordinate locali a un veicolo (`SyncAnchorId`) |
+| `water-ocean` | `water/`, `resources/water/` — onde (Gerstner CPU = GPU), marea, stato del mare, galleggiamento di barche e oggetti, colore dell'acqua per zona, shader dell'acqua, **qualunque cosa debba sapere la quota dell'acqua** |
+| `vehicles-boats` | `vehicles/` — barche, timone, passeggeri, ponte calpestabile, piattaforme mobili, coordinate locali a un veicolo (`SyncAnchorId`) |
 | `i18n-localization` | `locales/`, `Loc`, **qualunque testo visibile all'utente**: nuove label, nuovi item, dialoghi, cambio lingua, chiavi grezze a video |
 | `blender-pipeline` | `assets/models/`, `tools/blender/` — corpo `Mannequin.glb` (Universal Animation Library, BoneMap umanoide), armi del Retro Weapon Pack (`VM_*.glb`, `W_*.glb`), scala/unità/assi di un modello importato, dialogo con Blender via MCP |
 | `character-animation` | `animation/` — viewmodel in prima persona e corpo in terza, alberi di blend da codice, clip e loop, mira (ADS) e allineamento delle tacche, mani sull'arma in IK, modificatori di scheletro, rinculo visivo, T-pose o animazioni ferme, aggiunta di un'arma |
 | `ai-npc` | `ai/` — NPC umani, navigazione, waypoint, autorita' host sui personaggi non giocanti |
 | `venice-building-kit` | `assets/models/buildings/`, `tools/blender/build_venice_kit.py` — kit modulare dei palazzi veneziani: griglia e assi dei moduli, colori di facciata, collisioni, **o un generatore procedurale di edifici** |
 | `venice-builder` | `addons/venice_builder/` — generatore degli edifici dai dati OpenStreetMap: `OsmLayer`, segnaposto, montaggio dei moduli sulle piante reali, materiali condivisi dei kit |
+| `venice-terrain` | `world/maps/` — mappa open world della laguna: georeferenziazione (`map.json`), download OSM, terreno dalle classi barena/velma/canale/… (mare a 0), region di Terrain3D 1.1, `TerrainStreamer`, terreno lontano |
 
 Ambiti ancora senza skill perché non implementati: quest, base building. Quando uno di questi viene prototipato, la sua documentazione va in una skill nuova, non qui.

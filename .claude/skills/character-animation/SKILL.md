@@ -66,9 +66,18 @@ Nessuna dà errori a runtime. Escludile prima di ipotizzare altro.
 ```
 Move (Idle/Walk/Jog_Fwd/Sprint, per velocità) ─ MoveScale ─┐
 Crouch (Crouch_Idle/Crouch_Fwd) ─ CrouchScale ─────────────┴ Stance ─┐
-Jump (posa di volo) ─────────────────────────────────────────────────┴ Air ─ Land ─ Hit ─┐
-Death01 ─────────────────────────────────────────────────────────────────────────────────┴ Life
+Jump (posa di volo) ─────────────────────────────────────────────────┴ Air ─┐
+Swim (Swim_Idle/Swim_Fwd) ─ SwimScale ──────────────────────────────────────┴ SwimBlend ─ Land ─ Hit ─┐
+Death01 ──────────────────────────────────────────────────────────────────────────────────────────────┴ Life
 ```
+
+- **Nuoto** (`Swimming` ← `SyncSwimming`). Le clip UAL hanno la **superficie all'origine** (testa a
+  ~0,27 m in `Swim_Idle`, a ~0 in `Swim_Fwd`, corpo orizzontale con la testa 0,54 m avanti): il nodo
+  `Body` si alza di `SwimBodyLift` (= `EyeHeight − SwimEyeAboveSurface`, dal bridge) e arretra di
+  `SwimForwardShift` nelle bracciate, perché la testa resti sopra gli occhi nominali. Di lato gira il
+  corpo INTERO verso il moto (±80°), all'indietro le bracciate vanno al contrario; `BodyAimModifier` è
+  spento (sul corpo orizzontale le sue rotazioni diventerebbero un rollio). Arma riposta; viewmodel
+  `Lowered`. Da morti in acqua il ramo si spegne e il corpo scende di `SwimBodyLift`.
 
 - **La libreria ha solo clip in AVANTI.** Di lato `BodyAimModifier` gira il bacino verso il moto e
   contro-ruota la spina (`MaxHipSwivelDegrees`); all'indietro la clip gira al contrario (`*Scale = -1`)
@@ -175,3 +184,5 @@ alzarla quando mira.
 - Le clip `aim_start`/`aim_end`/`interact`/`pose_*` sono nei `.glb` ma l'albero non le usa: l'entrata
   in mira è un blend, che resta interrompibile.
 - Morte: la clip c'è, le conseguenze di gioco no (un giocatore morto si muove ancora).
+- Nuoto: niente viewmodel di nuoto (braccia), niente clip di risalita dall'acqua (riusa il mantle),
+  nessuna testa che segue lo sguardo a nuoto.

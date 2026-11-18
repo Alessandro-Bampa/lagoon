@@ -54,6 +54,10 @@ public partial class PauseMenu : Control
     private Label _uiScaleValue = null!;
     private CheckButton _fullscreenToggle = null!;
     private CheckButton _vsyncToggle = null!;
+    private OptionButton _renderDistanceOption = null!;
+    private Label _renderDistanceValue = null!;
+    private HSlider _fogSlider = null!;
+    private Label _fogValue = null!;
     private CheckButton _aimToggle = null!;
     private CheckButton _crouchToggle = null!;
     private HSlider _mouseSensitivitySlider = null!;
@@ -86,6 +90,10 @@ public partial class PauseMenu : Control
         _uiScaleValue = GetNode<Label>("%UiScaleValue");
         _fullscreenToggle = GetNode<CheckButton>("%FullscreenToggle");
         _vsyncToggle = GetNode<CheckButton>("%VSyncToggle");
+        _renderDistanceOption = GetNode<OptionButton>("%RenderDistanceOption");
+        _renderDistanceValue = GetNode<Label>("%RenderDistanceValue");
+        _fogSlider = GetNode<HSlider>("%FogSlider");
+        _fogValue = GetNode<Label>("%FogValue");
         _aimToggle = GetNode<CheckButton>("%AimToggle");
         _crouchToggle = GetNode<CheckButton>("%CrouchToggle");
         _mouseSensitivitySlider = GetNode<HSlider>("%MouseSensitivitySlider");
@@ -102,6 +110,7 @@ public partial class PauseMenu : Control
         _mouseSensitivitySlider.MinValue = SettingsService.MinMouseSensitivity;
         _mouseSensitivitySlider.MaxValue = SettingsService.MaxMouseSensitivity;
         BuildLanguageOptions();
+        BuildRenderDistanceOptions();
         BuildBindingRows();
 
         GetNode<Button>("%ResumeButton").Pressed += Close;
@@ -115,6 +124,8 @@ public partial class PauseMenu : Control
 
         // Applicazione live: il giocatore vede l'effetto mentre trascina.
         _languageOption.ItemSelected += _ => ApplyFromControls();
+        _renderDistanceOption.ItemSelected += _ => ApplyFromControls();
+        _fogSlider.ValueChanged += _ => ApplyFromControls();
         _uiScaleSlider.ValueChanged += _ => ApplyFromControls();
         _mouseSensitivitySlider.ValueChanged += _ => ApplyFromControls();
         _masterSlider.ValueChanged += _ => ApplyFromControls();
@@ -249,7 +260,24 @@ public partial class PauseMenu : Control
             return;
 
         BuildLanguageOptions();
+        BuildRenderDistanceOptions();
+        UpdateValueLabels();
         RefreshBindingLabels();
+    }
+
+    /// <summary>
+    /// Livelli della distanza di visione, dalla tabella di <see cref="WorldRenderSettings.Levels"/>.
+    /// Le voci di un <c>OptionButton</c> non passano dall'auto-translate: si rigenerano al cambio
+    /// lingua (vedi <see cref="_Notification"/>).
+    /// </summary>
+    private void BuildRenderDistanceOptions()
+    {
+        int previous = _renderDistanceOption.Selected;
+        _renderDistanceOption.Clear();
+        for (int i = 0; i < WorldRenderSettings.Levels.Length; i++)
+            _renderDistanceOption.AddItem(Loc.T(WorldRenderSettings.Levels[i].LabelKey), i);
+        if (previous >= 0 && previous < _renderDistanceOption.ItemCount)
+            _renderDistanceOption.Selected = previous;
     }
 
     // ====================================================================================
@@ -378,6 +406,8 @@ public partial class PauseMenu : Control
         _uiScaleSlider.Value = _settings.UiScale;
         _fullscreenToggle.ButtonPressed = _settings.Fullscreen;
         _vsyncToggle.ButtonPressed = _settings.VSyncEnabled;
+        _renderDistanceOption.Selected = _settings.RenderDistance;
+        _fogSlider.Value = _settings.FogDensity;
         _aimToggle.ButtonPressed = _settings.AimToggle;
         _crouchToggle.ButtonPressed = _settings.CrouchToggle;
         _mouseSensitivitySlider.Value = _settings.MouseSensitivity;
@@ -398,6 +428,8 @@ public partial class PauseMenu : Control
         _settings.UiScale = (float)_uiScaleSlider.Value;
         _settings.Fullscreen = _fullscreenToggle.ButtonPressed;
         _settings.VSyncEnabled = _vsyncToggle.ButtonPressed;
+        _settings.RenderDistance = _renderDistanceOption.Selected;
+        _settings.FogDensity = (float)_fogSlider.Value;
         _settings.AimToggle = _aimToggle.ButtonPressed;
         _settings.CrouchToggle = _crouchToggle.ButtonPressed;
         _settings.MouseSensitivity = (float)_mouseSensitivitySlider.Value;
@@ -416,6 +448,25 @@ public partial class PauseMenu : Control
         _masterValue.Text = Percent(_masterSlider.Value);
         _musicValue.Text = Percent(_musicSlider.Value);
         _sfxValue.Text = Percent(_sfxSlider.Value);
+        _fogValue.Text = Percent(_fogSlider.Value);
+        _renderDistanceValue.Text = RenderDistanceText();
+    }
+
+    /// <summary>
+    /// Terreno vero garantito attorno al giocatore al livello scelto. Da client, se l'host ospita
+    /// con un livello piu' basso, si mostra il suo: e' quello che vale (vedi
+    /// <see cref="WorldRenderSettings"/>).
+    /// </summary>
+    private string RenderDistanceText()
+    {
+        int level = Mathf.Clamp(_renderDistanceOption.Selected, 0, WorldRenderSettings.Levels.Length - 1);
+        int hostLimit = WorldRenderSettings.Find(GetTree())?.HostLimit() ?? -1;
+        bool limited = hostLimit >= 0 && hostLimit < level;
+        int shown = limited ? hostLimit : level;
+        string km = Loc.Num(WorldRenderSettings.EdgeDistance(WorldRenderSettings.Levels[shown].Radius) / 1000f, "0");
+        return limited
+            ? Loc.T("UI_SETTINGS_RENDER_HOST_LIMIT", km)
+            : Loc.T("UI_SETTINGS_RENDER_KM", km);
     }
 
     private static string Percent(double value) => Loc.T("UI_SETTINGS_PERCENT", Loc.Num((float)value * 100f, "0"));

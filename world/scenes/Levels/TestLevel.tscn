@@ -1,10 +1,12 @@
 [gd_scene format=3 uid="uid://cg24b0t5fxthg"]
 
 [ext_resource type="PackedScene" path="res://combat/scenes/TargetDummy.tscn" id="1"]
-[ext_resource type="Script" uid="uid://dawuxe8qqu2eb" path="res://vehicles/scripts/WaterVolume.cs" id="2"]
+[ext_resource type="PackedScene" path="res://water/scenes/Water.tscn" id="2"]
+[ext_resource type="PackedScene" path="res://water/scenes/FloatingCrate.tscn" id="2_crate"]
 [ext_resource type="PackedScene" path="res://vehicles/scenes/Boat.tscn" id="3"]
 [ext_resource type="PackedScene" path="res://ai/scenes/NpcCharacter.tscn" id="4"]
 [ext_resource type="PackedScene" uid="uid://b1lqcut4wybdg" path="res://world/scenes/Buildings/TestBuilding.tscn" id="5"]
+[ext_resource type="PackedScene" path="res://world/scenes/Props/SwimLadder.tscn" id="6_ladder"]
 
 [sub_resource type="BoxShape3D" id="Shape_1"]
 size = Vector3(140.229, 1, 70.75745)
@@ -17,6 +19,8 @@ roughness = 0.9
 size = Vector3(140.87476, 1, 70.739685)
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat_1"]
+ground_bottom_color = Color(0.6463, 0.6558, 0.6708, 1)
+ground_horizon_color = Color(0.6463, 0.6558, 0.6708, 1)
 
 [sub_resource type="Sky" id="Sky_1"]
 sky_material = SubResource("SkyMat_1")
@@ -58,15 +62,6 @@ size = Vector3(3.5, 0.1, 2)
 
 [sub_resource type="BoxMesh" id="Mesh_Plank"]
 size = Vector3(3.5, 0.1, 2)
-
-[sub_resource type="StandardMaterial3D" id="Mat_Water"]
-transparency = 1
-cull_mode = 2
-depth_draw_mode = 1
-albedo_color = Color(0.1, 0.35, 0.55, 0.45)
-
-[sub_resource type="PlaneMesh" id="Mesh_Water"]
-size = Vector2(60, 60)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_54j0a"]
 size = Vector3(7.2803802, 2.7910156, 1)
@@ -157,14 +152,26 @@ shape = SubResource("Shape_Plank")
 material_override = SubResource("Mat_Wood")
 mesh = SubResource("Mesh_Plank")
 
-[node name="WaterSurface" type="MeshInstance3D" parent="Lagoon" unique_id=394998841]
+[node name="Water" parent="Lagoon" unique_id=1213322289 instance=ExtResource("2")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50, 0, 0)
-material_override = SubResource("Mat_Water")
-mesh = SubResource("Mesh_Water")
+DefaultExposure = 0.45
+InitialSeaState = 1.5
+TideEnabled = false
 
-[node name="WaterVolume" type="Node3D" parent="Lagoon" unique_id=1213322289]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50, 0, 0)
-script = ExtResource("2")
+[node name="Surface" parent="Lagoon/Water" index="1"]
+Extent = 400.0
+
+[node name="CrateA" parent="Lagoon" unique_id=771200301 instance=ExtResource("2_crate")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 8)
+
+[node name="CrateB" parent="Lagoon" unique_id=771200302 instance=ExtResource("2_crate")]
+transform = Transform3D(0.866, 0, 0.5, 0, 1, 0, -0.5, 0, 0.866, 46, 0.5, -9)
+
+[node name="CrateC" parent="Lagoon" unique_id=771200303 instance=ExtResource("2_crate")]
+transform = Transform3D(0.5, 0, -0.866, 0, 1, 0, 0.866, 0, 0.5, 60, 0.5, 4)
+
+[node name="DockLadder" parent="Lagoon" instance=ExtResource("6_ladder")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 27, 0, -2.3)
 
 [node name="ShoreRespawn" type="Marker3D" parent="Lagoon" unique_id=584477760 groups=["water_respawn"]]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22, 2.25, 0)

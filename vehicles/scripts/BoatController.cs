@@ -16,8 +16,8 @@ namespace Lagoon;
 /// dall'host. Nessun client decide di essere al timone: <see cref="PilotPeerId"/> e' una proprieta'
 /// REPLICATA dall'host, non un broadcast via RPC — cosi' anche un late-joiner vede lo stato giusto.
 ///
-/// L'acqua e' un piano piatto a quota costante (<see cref="WaterVolume.SurfaceY"/>): nessuna onda e
-/// soprattutto nessun corpo fisico per l'acqua.
+/// L'acqua non ha corpo fisico: la superficie (marea + onde) si legge da <see cref="WaterVolume.Sample"/>
+/// per ogni punto di galleggiamento (<see cref="Buoyancy"/>).
 /// </summary>
 public partial class BoatController : RigidBody3D
 {
@@ -41,8 +41,11 @@ public partial class BoatController : RigidBody3D
 
     /// Profondita' oltre la quale la spinta di galleggiamento non cresce piu' (metri).
     [Export] public float MaxSubmerge { get; set; } = 0.8f;
-    /// Smorzamento verticale: senza questo la barca oscilla come una molla non smorzata.
-    [Export] public float VerticalDampFactor { get; set; } = 1.5f;
+    /// <summary>
+    /// Smorzamento verticale per punto, RELATIVO all'acqua (1/s): senza, la barca oscilla come una molla.
+    /// A riposo (immersione media 50%) 3,0 equivale al vecchio smorzamento globale di 1,5.
+    /// </summary>
+    [Export] public float VerticalDampFactor { get; set; } = 3.0f;
     /// Attrito di chiglia: senza questo la barca scivola di lato come sul ghiaccio.
     [Export] public float LateralDragFactor { get; set; } = 4.0f;
 
@@ -100,7 +103,7 @@ public partial class BoatController : RigidBody3D
     /// </summary>
     private const float MaxExtrapolationSeconds = 0.15f;
 
-    private Marker3D[] _floaters = null!;
+    private Node3D[] _floaters = null!;
     private Marker3D _helmSeat = null!;
     private Node3D _visual = null!;
     private WaterVolume? _water;
@@ -151,11 +154,7 @@ public partial class BoatController : RigidBody3D
         _eventBus = GetNode<EventBus>("/root/EventBus");
         _water = WaterVolume.Find(this);
 
-        var floaters = new Godot.Collections.Array<Marker3D>();
-        foreach (Node child in GetNode<Node3D>("Floaters").GetChildren())
-            if (child is Marker3D marker)
-                floaters.Add(marker);
-        _floaters = [.. floaters];
+        _floaters = Buoyancy.CollectPoints(GetNode<Node3D>("Floaters"));
 
         _gravity = (float)(double)ProjectSettings.GetSetting("physics/3d/default_gravity", 9.8);
 
@@ -263,31 +262,14 @@ public partial class BoatController : RigidBody3D
 
     private void HostApplyBuoyancy()
     {
-        if (_floaters.Length == 0)
+        if (_water == null)
             return;
 
-        float surface = _water?.SurfaceY ?? 0f;
-
-        // A immersione MEDIA del 50% la spinta pareggia esattamente il peso: la quota di riposo non va
-        // tarata a mano e resta corretta anche cambiando Mass o il numero di punti di galleggiamento.
-        float perFloater = Mass * _gravity / _floaters.Length * 2f;
-
-        foreach (Marker3D floater in _floaters)
-        {
-            Vector3 point = floater.GlobalPosition;
-            if (_water != null && !_water.Contains(point))
-                continue;
-
-            float depth = Mathf.Clamp(surface - point.Y, 0f, MaxSubmerge);
-            if (depth <= 0f)
-                continue;
-
-            // ATTENZIONE: il secondo argomento di ApplyForce e' un OFFSET dal centro di massa in
-            // orientamento globale, non un punto globale. In Godot non esiste ApplyForceAtPosition.
-            ApplyForce(Vector3.Up * (depth / MaxSubmerge) * perFloater, point - GlobalPosition);
-        }
-
-        ApplyCentralForce(Vector3.Down * LinearVelocity.Y * Mass * VerticalDampFactor);
+        // Spinta per punto sulla superficie CON le onde, e smorzamento rispetto all'acqua (non al
+        // mondo): la barca sale e scende con l'onda invece di esserne frenata, e quando un'onda presa
+        // veloce la lancia fuori dall'acqua nessuna forza la trattiene (vedi Buoyancy).
+        var settings = new Buoyancy.Settings(MaxSubmerge, 2f, VerticalDampFactor, 0f);
+        Buoyancy.Apply(this, _floaters, _water, _gravity, settings);
     }
 
     private void HostApplyPropulsion()
@@ -406,6 +388,10 @@ public partial class BoatController : RigidBody3D
             return;
 
         if (player.ResolvedSyncPosition.DistanceTo(HelmGlobalPosition) > HelmRange)
+            return;
+
+        // Dall'acqua il timone e' a portata di braccio ma non di mano: prima si sale a bordo.
+        if (player.SyncSwimming)
             return;
 
         PilotPeerId = sender;

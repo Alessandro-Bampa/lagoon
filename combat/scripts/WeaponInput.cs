@@ -124,5 +124,5 @@ public partial class WeaponInput : Node
     /// bordo, per un colpo che l'host non conta. Si legge lo stato locale del motore, che sul peer
     /// proprietario e' sempre quello vero.
     /// </summary>
-    private bool Suppressed => _game.UiModalOpen || _hud.InventoryOpen || _player.Vaulting;
+    private bool Suppressed => _game.UiModalOpen || _hud.InventoryOpen || _player.Vaulting || _player.SyncSwimming;
 }

@@ -1,0 +1,68 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://water/scripts/FloatingBody.cs" id="1_body"]
+
+[sub_resource type="BoxShape3D" id="Shape_crate"]
+size = Vector3(1.0, 0.7, 0.7)
+
+[sub_resource type="BoxMesh" id="Mesh_crate"]
+size = Vector3(1.0, 0.7, 0.7)
+
+[sub_resource type="StandardMaterial3D" id="Mat_crate"]
+albedo_color = Color(0.55, 0.4, 0.24, 1)
+roughness = 0.9
+
+[sub_resource type="SceneReplicationConfig" id="Repl_crate"]
+properties/0/path = NodePath(".:SyncBodyPosition")
+properties/0/spawn = true
+properties/0/replication_mode = 1
+properties/1/path = NodePath(".:SyncBodyRotation")
+properties/1/spawn = true
+properties/1/replication_mode = 1
+
+[node name="FloatingCrate" type="RigidBody3D"]
+collision_layer = 16
+collision_mask = 17
+mass = 40.0
+linear_damp = 0.2
+angular_damp = 0.8
+can_sleep = false
+script = ExtResource("1_body")
+
+[node name="Shape" type="CollisionShape3D" parent="."]
+shape = SubResource("Shape_crate")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mesh_crate")
+surface_material_override/0 = SubResource("Mat_crate")
+
+[node name="Floaters" type="Node3D" parent="."]
+
+[node name="A" type="Marker3D" parent="Floaters"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.45, -0.3, -0.3)
+
+[node name="B" type="Marker3D" parent="Floaters"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.45, -0.3, -0.3)
+
+[node name="C" type="Marker3D" parent="Floaters"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.45, -0.3, 0.3)
+
+[node name="D" type="Marker3D" parent="Floaters"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.45, -0.3, 0.3)
+
+[node name="E" type="Marker3D" parent="Floaters"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.45, 0.1, -0.3)
+
+[node name="F" type="Marker3D" parent="Floaters"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.45, 0.1, -0.3)
+
+[node name="G" type="Marker3D" parent="Floaters"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.45, 0.1, 0.3)
+
+[node name="H" type="Marker3D" parent="Floaters"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.45, 0.1, 0.3)
+
+[node name="Sync" type="MultiplayerSynchronizer" parent="."]
+root_path = NodePath("..")
+replication_interval = 0.05
+replication_config = SubResource("Repl_crate")

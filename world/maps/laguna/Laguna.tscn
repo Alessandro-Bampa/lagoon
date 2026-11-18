@@ -1,0 +1,87 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/scripts/TerrainStreamer.cs" id="1_streamer"]
+[ext_resource type="PackedScene" path="res://water/scenes/Water.tscn" id="2_water"]
+[ext_resource type="Shader" path="res://world/shaders/far_terrain.gdshader" id="3_far"]
+[ext_resource type="Texture2D" path="res://world/maps/laguna/far/far_atlas.png" id="4_atlas"]
+[ext_resource type="Terrain3DAssets" path="res://world/maps/laguna/terrain_assets.tres" id="5_assets"]
+[ext_resource type="Script" path="res://world/scripts/WorldRenderSettings.cs" id="6_render"]
+
+[sub_resource type="SceneReplicationConfig" id="Repl_render"]
+properties/0/path = NodePath(".:SessionRenderDistance")
+properties/0/spawn = true
+properties/0/replication_mode = 1
+
+[sub_resource type="Terrain3DMaterial" id="Terrain3DMaterial_lag"]
+world_background = 0
+show_checkered = false
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_far"]
+render_priority = 0
+shader = ExtResource("3_far")
+shader_parameter/atlas = ExtResource("4_atlas")
+shader_parameter/world_rect = Vector4(-24576, -24576, 24576, 24576)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_far"]
+size = Vector2(49152, 49152)
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_lag"]
+ground_bottom_color = Color(0.6463, 0.6558, 0.6708, 1)
+ground_horizon_color = Color(0.6463, 0.6558, 0.6708, 1)
+
+[sub_resource type="Sky" id="Sky_lag"]
+sky_material = SubResource("ProceduralSkyMaterial_lag")
+
+[sub_resource type="Environment" id="Environment_lag"]
+background_mode = 2
+sky = SubResource("Sky_lag")
+ambient_light_source = 3
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.72, 0.78, 0.84, 1)
+fog_density = 0.00012
+fog_sky_affect = 0.3
+
+[node name="Laguna" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_lag")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.819152, 0.42625, -0.383798, 0, 0.669131, 0.743145, 0.573576, -0.608749, 0.54812, 0, 100, 0)
+shadow_enabled = true
+directional_shadow_max_distance = 250.0
+
+[node name="Terrain3D" type="Terrain3D" parent="."]
+region_size = 2048
+material = SubResource("Terrain3DMaterial_lag")
+assets = ExtResource("5_assets")
+cast_shadows = 0
+color_compress_mode = 0
+
+[node name="TerrainStreamer" type="Node" parent="."]
+script = ExtResource("1_streamer")
+
+[node name="WorldRenderSettings" type="Node" parent="."]
+script = ExtResource("6_render")
+
+[node name="Sync" type="MultiplayerSynchronizer" parent="WorldRenderSettings"]
+root_path = NodePath("..")
+replication_interval = 1.0
+replication_config = SubResource("Repl_render")
+
+[node name="FarTerrain" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
+cast_shadow = 0
+mesh = SubResource("PlaneMesh_far")
+material_override = SubResource("ShaderMaterial_far")
+
+[node name="Water" parent="." instance=ExtResource("2_water")]
+ExtentXZ = Vector2(200000, 200000)
+WaterMapDirectory = "res://world/maps/laguna/water"
+InitialSeaState = 1.0
+
+[node name="PreviewCamera" type="Camera3D" parent="."]
+transform = Transform3D(0.452651, -0.175547, 0.874237, 0, 0.98043, 0.19687, -0.891688, -0.0891134, 0.443792, -6600, 60, -7150)
+current = true
+far = 30000.0

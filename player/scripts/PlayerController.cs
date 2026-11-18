@@ -6,11 +6,15 @@ namespace Lagoon;
 /// Modalita' del giocatore. <c>OnFoot</c> copre anche lo stare su un ponte in movimento: quello non e'
 /// una modalita' a se', e' <c>OnFoot</c> con un'ancora attiva. Un ramo separato duplicherebbe gravita'
 /// e collisioni senza aggiungere nulla.
+///
+/// <c>Swimming</c> invece si' (cambia chi decide la verticale), ma come <c>Driving</c> non e' uno stato
+/// locale: si deduce da <see cref="CharacterMotor.SyncSwimming"/>, replicato, quindi vale su ogni peer.
 /// </summary>
 public enum PlayerMode
 {
     OnFoot,
     Driving,
+    Swimming,
 }
 
 /// <summary>
@@ -35,8 +39,29 @@ public partial class PlayerController : CharacterMotor
     /// Fattore di interpolazione per gli avatar remoti (piu' alto = piu' reattivo, meno morbido).
     [Export] public float InterpolationSpeed { get; set; } = 14.0f;
 
-    /// Quanto sotto la superficie dell'acqua si viene riportati al molo (nessun nuoto in questa fase).
-    [Export] public float WaterFallbackDepth { get; set; } = 2.0f;
+    /// <summary>
+    /// Profondita' dell'acqua sopra i piedi a cui si comincia a nuotare, in metri: il petto. Si
+    /// misura sulla superficie VERA (<see cref="WaterVolume.Sample"/>: marea e onde), non sul livello
+    /// medio: cadendo in un cavo d'onda si e' gia' in acqua.
+    /// </summary>
+    [Export] public float SwimEnterDepth { get; set; } = 1.3f;
+
+    /// <summary>
+    /// Profondita' sotto la quale, coi piedi sul fondo, si torna a camminare. Piu' bassa di
+    /// <see cref="SwimEnterDepth"/> (isteresi): con le onde la profondita' oscilla, e senza margine
+    /// sulla riva si passerebbe da nuoto a camminata a ogni onda.
+    /// </summary>
+    [Export] public float SwimExitDepth { get; set; } = 0.95f;
+
+    /// Tempo minimo in una modalita' (nuoto o a piedi) prima di poterla lasciare, in secondi.
+    [Export] public float SwimModeMinSeconds { get; set; } = 0.4f;
+
+    /// <summary>
+    /// Rete di sicurezza: sotto questa profondita' rispetto al livello dell'acqua si rientra al
+    /// <c>water_respawn</c>. Non e' piu' "chi cade in acqua torna al molo" (ora si nuota): serve
+    /// solo a chi esce dal bordo del livello e precipita nel vuoto.
+    /// </summary>
+    [Export] public float VoidFallbackDepth { get; set; } = 40.0f;
 
     // Stato replicato specifico del giocatore. Il resto (posizione, imbardata, velocita' locale,
     // crouch, contatto a terra, pitch di mira) sta in CharacterMotor, condiviso con gli NPC.
@@ -81,6 +106,16 @@ public partial class PlayerController : CharacterMotor
     private float _lastHelmHeading;
     private bool _hasHelmHeading;
 
+    /// <summary>
+    /// Barca su cui sta il bordo della manovra di parkour in corso (o null): la traiettoria la segue
+    /// (<see cref="CarryManeuver"/>). Serve soprattutto risalendo dall'acqua su uno scafo che beccheggia.
+    /// </summary>
+    private BoatController? _maneuverAnchor;
+    private Transform3D _lastManeuverFrame;
+
+    /// Secondi dall'ultimo cambio fra nuoto e piedi (vedi SwimModeMinSeconds).
+    private float _swimModeTime = 10f;
+
     // --- Su ogni peer: derivato dallo stato replicato della barca --------------------------
     private BoatController? _drivingBoat;
 
@@ -93,7 +128,9 @@ public partial class PlayerController : CharacterMotor
     /// <see cref="BoatController.PilotPeerId"/>, che e' host-autoritativo e replicato, quindi ogni peer
     /// arriva alla stessa conclusione senza scambiare nulla in piu'.
     /// </summary>
-    public PlayerMode Mode => _drivingBoat != null ? PlayerMode.Driving : PlayerMode.OnFoot;
+    public PlayerMode Mode => _drivingBoat != null
+        ? PlayerMode.Driving
+        : (SyncSwimming ? PlayerMode.Swimming : PlayerMode.OnFoot);
 
     /// Veicolo che questo giocatore sta pilotando (o null).
     public BoatController? DrivingBoat => _drivingBoat;
@@ -142,6 +179,12 @@ public partial class PlayerController : CharacterMotor
 
         // Evita che gli avatar remoti "saltino" dall'origine al primo update.
         SyncAnchorId = 0;
+
+        // Il proprietario muove il proprio avatar (Fase 1), ma lo spawner non gli porta la
+        // posizione scelta dall'host: senza questo un client nasceva all'origine del mondo. Il
+        // punto e' deterministico (GameWorld.SpawnPointFor), quindi coincide con quello dell'host.
+        if (IsMultiplayerAuthority() && GetTree().GetFirstNodeInGroup(GameWorld.GroupName) is GameWorld world)
+            GlobalPosition = world.SpawnPointFor(_ownerPeerId);
     }
 
     public override void _PhysicsProcess(double delta)
@@ -182,11 +225,17 @@ public partial class PlayerController : CharacterMotor
     {
         if (Mode == PlayerMode.Driving)
         {
+            // Si prende il timone da bordo, ma lo stato va comunque chiuso: al rilascio si riparte a piedi.
+            EndSwim();
             DrivingUpdate();
             return;
         }
 
-        CarryWithAnchor();
+        // Durante una manovra la segue il suo riferimento (CarryManeuver), non l'ancora dei piedi.
+        if (Vaulting)
+            CarryManeuver();
+        else
+            CarryWithAnchor();
 
         // WASD rispetto allo SGUARDO: avanti e' dove si guarda, sul piano orizzontale.
         Vector2 motion = _input.ReadMovement();
@@ -197,18 +246,42 @@ public partial class PlayerController : CharacterMotor
         if (worldDir.LengthSquared() > 1f)
             worldDir = worldDir.Normalized();
 
-        bool armed = _weapon is { IsArmed: true };
-        bool sighting = armed && _input.ReadAim();
-        bool sprinting = !SyncCrouching && !sighting && _input.ReadSprint();
-        float speed = SyncCrouching ? CrouchSpeed : (sprinting ? RunSpeed : WalkSpeed);
-        if (sighting && !SyncCrouching)
-            speed *= AimMoveFactor;
+        WaterSample? water = SampleWater();
+        UpdateSwimMode(water, delta);
 
-        // Accelerazione, pendenza, gradini, salto, gravita' e atterraggio: tutto nel motore condiviso.
-        StepMotion(worldDir, speed, _input.ReadJumpPressed(), _input.ReadCrouch(), delta);
+        bool armed = _weapon is { IsArmed: true };
+        bool swimming = SyncSwimming && water.HasValue;
+        bool sighting = armed && !swimming && _input.ReadAim();
+
+        if (swimming)
+        {
+            // Spazio contro un bordo basso (o una scaletta) = issarsi fuori; altrimenti, tenuto, risalire.
+            float surface = water!.Value.Height;
+            float speed = _input.ReadSprint() ? SwimSprintSpeed : SwimSpeed;
+            if (_input.ReadJumpPressed() && TryStartSwimClimb(worldDir, surface))
+            {
+                EndSwim();
+                _swimModeTime = 0f;
+            }
+            else
+            {
+                StepSwim(worldDir, speed, _input.ReadJumpHeld(), _input.ReadDiveHeld(),
+                    surface, water.Value.Velocity, delta);
+            }
+        }
+        else
+        {
+            bool sprinting = !SyncCrouching && !sighting && _input.ReadSprint();
+            float speed = SyncCrouching ? CrouchSpeed : (sprinting ? RunSpeed : WalkSpeed);
+            if (sighting && !SyncCrouching)
+                speed *= AimMoveFactor;
+
+            // Accelerazione, pendenza, gradini, salto, gravita' e atterraggio: tutto nel motore condiviso.
+            StepMotion(worldDir, speed, _input.ReadJumpPressed(), _input.ReadCrouch(), delta);
+        }
 
         RefreshAnchor();
-        CheckWaterFallback();
+        CheckFallOutOfWorld();
 
         // Pubblica lo stato che verra' replicato agli altri peer.
         PublishState();
@@ -238,6 +311,8 @@ public partial class PlayerController : CharacterMotor
         SyncAimYaw = _camera.LookYaw;
         SyncAimPitch = _camera.LookPitch;
 
+        // A nuoto il corpo segue lo sguardo come a piedi (sighting e' gia' falso: le mani nuotano):
+        // il verso delle bracciate rispetto al moto lo decide CharacterAnimator.
         if (Vaulting)
         {
             SyncAiming = false;
@@ -278,8 +353,87 @@ public partial class PlayerController : CharacterMotor
     protected override void OnLandTriggered(float impactSpeed) =>
         Rpc(MethodName.BroadcastLand, impactSpeed);
 
-    protected override void OnVaultTriggered(Vector3 ledgePoint, Vector3 wallNormal, float height) =>
+    protected override void OnVaultTriggered(Vector3 ledgePoint, Vector3 wallNormal, float height)
+    {
+        // Il riferimento della manovra e' il corpo su cui sta il BORDO, non quello sotto i piedi:
+        // dal ponte di una barca alla banchina la traiettoria e' ferma nel mondo; dall'acqua (o dal
+        // molo) sulla barca segue la barca. L'ancora dei piedi si riacquista a manovra finita.
+        _maneuverAnchor = FindOwningBoat(ManeuverLedgeCollider as Node);
+        if (_maneuverAnchor != null)
+            _lastManeuverFrame = _maneuverAnchor.GlobalTransform;
+        _anchor = null;
+        _hasAnchorFrame = false;
+
         Rpc(MethodName.BroadcastVault, ledgePoint, wallNormal, height);
+    }
+
+    /// <summary>
+    /// Trasporta la manovra in corso col suo riferimento: stesso delta di trasformata di
+    /// <see cref="CarryWithAnchor"/>, applicato ai punti della traiettoria invece che al corpo
+    /// (la posizione la riscrive comunque la traiettoria). Anche lo sguardo vira con la barca.
+    /// </summary>
+    private void CarryManeuver()
+    {
+        if (_maneuverAnchor == null || !GodotObject.IsInstanceValid(_maneuverAnchor))
+            return;
+
+        Transform3D now = _maneuverAnchor.GlobalTransform;
+        ShiftManeuver(now * _lastManeuverFrame.AffineInverse());
+        _camera.AddYaw(Mathf.AngleDifference(HeadingOf(_lastManeuverFrame), HeadingOf(now)));
+        _lastManeuverFrame = now;
+    }
+
+    // ====================================================================================
+    //  Acqua
+    // ====================================================================================
+
+    /// Superficie vera (marea + onde) sulla verticale del corpo, o null fuori dall'acqua del livello.
+    private WaterSample? SampleWater()
+    {
+        if (_water == null || !_water.Contains(GlobalPosition))
+            return null;
+        return _water.Sample(GlobalPosition);
+    }
+
+    /// <summary>
+    /// Decide fra nuoto e piedi, con isteresi di profondita' (<see cref="SwimEnterDepth"/> /
+    /// <see cref="SwimExitDepth"/>) e di tempo (<see cref="SwimModeMinSeconds"/>).
+    ///
+    /// Client-autoritativo come tutto il movimento (CLAUDE.md §3, eccezione dichiarata della Fase 1):
+    /// il peer proprietario decide e pubblica <see cref="CharacterMotor.SyncSwimming"/>, che viaggia
+    /// nello stesso pacchetto della posizione. Gli altri peer lo leggono e basta.
+    /// </summary>
+    private void UpdateSwimMode(WaterSample? water, double delta)
+    {
+        _swimModeTime += (float)delta;
+        if (Vaulting)
+            return;
+
+        float feetY = GlobalPosition.Y - StandHeight * 0.5f;
+
+        if (!SyncSwimming)
+        {
+            if (water is { } w && w.Height - feetY > SwimEnterDepth && _swimModeTime >= SwimModeMinSeconds)
+            {
+                BeginSwim();
+                _swimModeTime = 0f;
+
+                // In acqua non si e' trasportati da niente: l'ancora (un ponte) non vale piu'.
+                _anchor = null;
+                _hasAnchorFrame = false;
+            }
+            return;
+        }
+
+        // Fuori dall'area d'acqua si esce subito, senza attendere: sotto non c'e' piu' niente che regga.
+        bool leave = water == null
+            || (_swimModeTime >= SwimModeMinSeconds && IsOnFloor() && water.Value.Height - feetY < SwimExitDepth);
+        if (leave)
+        {
+            EndSwim();
+            _swimModeTime = 0f;
+        }
+    }
 
     /// <summary>
     /// Al timone: nessuna gravita' e nessun <c>MoveAndSlide</c>, quindi il pilota non produce alcuna
@@ -362,6 +516,17 @@ public partial class PlayerController : CharacterMotor
     /// </summary>
     private void RefreshAnchor()
     {
+        // A nuoto non si e' appoggiati a nulla; durante una manovra il riferimento e' quello del bordo.
+        if (SyncSwimming || Vaulting)
+        {
+            _anchor = null;
+            _hasAnchorFrame = false;
+            return;
+        }
+
+        // Manovra finita: il suo riferimento non serve piu', l'ancora la ritrova il GroundProbe.
+        _maneuverAnchor = null;
+
         _groundProbe.ForceRaycastUpdate();
         BoatController? found = _groundProbe.IsColliding()
             ? FindOwningBoat(_groundProbe.GetCollider() as Node)
@@ -409,18 +574,21 @@ public partial class PlayerController : CharacterMotor
     }
 
     /// <summary>
-    /// Rientro al molo per chi finisce in acqua: in questa fase non c'e' nuoto ne' annegamento. Il
-    /// fondale resta come pavimento di sicurezza (niente cade all'infinito), ma il rientro scatta prima
-    /// di toccarlo. Client-autoritativo come tutto il movimento della Fase 1.
+    /// Rete di sicurezza per chi esce dal bordo del livello: molto sotto il livello dell'acqua si
+    /// rientra al <c>water_respawn</c>. In acqua si nuota (vedi <see cref="UpdateSwimMode"/>), quindi
+    /// qui si arriva solo precipitando dove non c'e' ne' acqua ne' fondale. Client-autoritativo come
+    /// tutto il movimento della Fase 1.
     /// </summary>
-    private void CheckWaterFallback()
+    private void CheckFallOutOfWorld()
     {
-        if (_water == null || GlobalPosition.Y > _water.SurfaceY - WaterFallbackDepth)
+        if (_water == null || GlobalPosition.Y > _water.SurfaceY - VoidFallbackDepth)
             return;
 
         if (GetTree().GetFirstNodeInGroup("water_respawn") is not Node3D respawn)
             return;
 
+        EndSwim();
+        CancelParkour();
         GlobalPosition = respawn.GlobalPosition;
         Velocity = Vector3.Zero;
         _anchor = null;

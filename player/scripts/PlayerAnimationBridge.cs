@@ -53,6 +53,9 @@ public partial class PlayerAnimationBridge : Node
         _animator.RunSpeed = _controller.RunSpeed;
         _animator.CrouchSpeed = _controller.CrouchSpeed;
         _animator.HardLandingSpeed = _controller.HardLandingSpeed;
+        _animator.SwimSpeed = _controller.SwimSpeed;
+        // Le clip di nuoto hanno la superficie all'origine: la si porta dove il motore tiene l'acqua.
+        _animator.SwimBodyLift = _controller.EyeHeight - _controller.SwimEyeAboveSurface;
 
         if (!_controller.IsMultiplayerAuthority())
             return;
@@ -88,6 +91,7 @@ public partial class PlayerAnimationBridge : Node
         _animator.Crouching = _controller.SyncCrouching;
         _animator.Grounded = _controller.SyncGrounded;
         _animator.Vaulting = _controller.SyncVaulting;
+        _animator.Swimming = _controller.SyncSwimming;
         _animator.Aiming = _controller.SyncAiming;
         _animator.Reloading = reloading;
         _animator.Dead = _health?.IsDead ?? false;
@@ -107,7 +111,8 @@ public partial class PlayerAnimationBridge : Node
         _viewmodel.Crouching = _controller.SyncCrouching;
         _viewmodel.Aiming = _controller.SyncAiming;
         _viewmodel.Reloading = reloading;
-        _viewmodel.Lowered = _controller.SyncVaulting;
+        // A nuoto le mani nuotano: niente viewmodel di nuoto (lacuna), l'arma esce di vista.
+        _viewmodel.Lowered = _controller.SyncVaulting || _controller.SyncSwimming;
         _viewmodel.MagazineEmpty = _weapon is { IsArmed: true, MagazineAmmo: <= 0 };
     }
 

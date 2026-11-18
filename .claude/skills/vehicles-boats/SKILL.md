@@ -5,7 +5,7 @@ description: Veicoli e imbarcazioni. Carica quando tocchi vehicles/, oppure si p
 
 # Veicoli e imbarcazioni
 
-Una barca statica nel livello, galleggiamento per punti su acqua piatta, un pilota e passeggeri che
+Una barca statica nel livello, galleggiamento per punti sulle onde, un pilota e passeggeri che
 camminano sul ponte in movimento. `vehicles/` + la laguna in `TestLevel.tscn` + il trasporto in
 `PlayerController`.
 
@@ -76,10 +76,21 @@ nessun candidato → nessuno consuma. La decisione si memorizza (`_interactClaim
 
 ## 6. Acqua e laguna
 
+- L'acqua (onde, marea, `WaterVolume`, `Buoyancy`) è un sistema a sé: skill **`water-ocean`**.
+  La barca chiama `Buoyancy.Apply` sui 6 `Floaters` (prua, mezzo, poppa): spinta sulla superficie
+  con le onde, smorzamento `VerticalDampFactor` relativo all'acqua (3,0 = il vecchio 1,5 globale).
 - `WaterVolume` non ha corpo fisico: niente layer `water`, niente da escludere dalle maschere.
 - Galleggiamento auto-bilanciato (`Mass * g / floater * 2`): nessuna quota da ritarare.
 - Percorso senza scalini: `Floor 0 → Ramp (20°, piede interrato) → Dock 1.25 → Plank → Deck 1.25`.
-  `Seabed` a −4 è solo rete di sicurezza: sotto `SurfaceY − 2` si rientra al `Marker3D` `water_respawn`.
+  `Seabed` a −4 è il fondale su cui si cammina nel bacino; `water_respawn` resta solo come rete di
+  sicurezza contro il vuoto (sotto `SurfaceY − 40`): in acqua si nuota (skill `water-ocean` §8).
+- **Nuoto attorno alla barca**: lo scafo del `RigidBody` (layer 5) è fuori dalla maschera del
+  giocatore, quindi chi nuota gli passerebbe attraverso. Per questo `Deck` ha anche `HullSides`, la
+  stessa scatola dello scafo alta fino al ponte (1,05), sul layer 6. A sinistra, nel varco della
+  murata, c'è una scaletta (`Visual/BoardingLadder`, gruppo `swim_ladder`): da lì si sale a bordo con
+  Spazio. Se il bordo di una manovra di parkour è una barca, la traiettoria si sposta con lei
+  (`PlayerController.CarryManeuver`, `CharacterMotor.ShiftManeuver`) e l'ancora dei piedi si
+  riacquista a manovra finita.
 - `CollisionLayers.cs` è uno specchio: le scene scrivono i letterali.
 
 ## 7. Collaudo
@@ -90,6 +101,6 @@ al ponte; chiudendo la finestra del pilota la barca si arresta entro 0.5 s.
 
 ## 8. Lacune volute
 
-Una sola barca (nessuno spawner: NodePath identico su ogni peer). Niente onde, inerzia sul passeggero,
-nuoto, danno, HUD del veicolo, `ItemPickup` sul ponte (vivono a `y = 0` in mondo). **Nessun reparent** del
+Una sola barca (nessuno spawner: NodePath identico su ogni peer). Niente inerzia sul passeggero,
+danno, HUD del veicolo, `ItemPickup` sul ponte (vivono a `y = 0` in mondo). **Nessun reparent** del
 `Player` sotto la barca: romperebbe spawner e NodePath di RPC.

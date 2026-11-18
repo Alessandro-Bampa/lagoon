@@ -17,6 +17,12 @@ public partial class GameWorld : Node3D
     private const string PlayerScenePath = "res://player/scenes/Player.tscn";
     private const string PickupScenePath = "res://inventory/scenes/ItemPickup.tscn";
 
+    /// <summary>
+    /// Punto del mondo attorno a cui nascono gli avatar e gli oggetti di prova; Y = quota del suolo.
+    /// Zero nel livello di prova; sulla mappa vera (<c>MainLaguna.tscn</c>) e' Piazza San Marco.
+    /// </summary>
+    [Export] public Vector3 SpawnOrigin { get; set; } = Vector3.Zero;
+
     private PackedScene _playerScene = null!;
     private PackedScene _pickupScene = null!;
     private Node3D _players = null!;
@@ -78,7 +84,7 @@ public partial class GameWorld : Node3D
         // Il nome = id del peer: PlayerController lo usa per l'autorita' di rete e il MultiplayerSpawner
         // replica nome + istanza ai client.
         player.Name = peerId.ToString();
-        player.Position = GetSpawnPoint(_players.GetChildCount());
+        player.Position = SpawnPointFor(peerId);
         _players.AddChild(player, forceReadableName: true);
 
         // Kit iniziale (host-authoritative): gilet + zaino + qualche item, cosi' le griglie esistono
@@ -88,9 +94,18 @@ public partial class GameWorld : Node3D
         GD.Print($"[GameWorld] Avatar spawnato per il peer {peerId}.");
     }
 
-    private static Vector3 GetSpawnPoint(int index)
+    /// <summary>
+    /// Punto di nascita di un peer: una di quattro posizioni affiancate attorno a
+    /// <see cref="SpawnOrigin"/>, ricavata dall'id. E' deterministico di proposito: il movimento e'
+    /// del proprietario (Fase 1) e il <c>MultiplayerSpawner</c> non replica la posizione scelta
+    /// dall'host, quindi l'avatar di un client si colloca da se' (<see cref="PlayerController"/>)
+    /// con lo stesso calcolo, senza aspettare la rete. Due peer possono cadere sulla stessa
+    /// posizione: le capsule si scostano.
+    /// </summary>
+    public Vector3 SpawnPointFor(long peerId)
     {
-        return new Vector3((index - 1.5f) * 2.0f, 1.0f, 0f);
+        int slot = (int)(System.Math.Abs(peerId) % 4);
+        return SpawnOrigin + new Vector3((slot - 1.5f) * 2.0f, 1.0f, 0f);
     }
 
     /// <summary>
@@ -108,8 +123,8 @@ public partial class GameWorld : Node3D
     // ====================================================================================
 
     /// <summary>
-    /// Spawna un pickup nel mondo dal payload serializzato di un item (solo host). y forzata a 0 =
-    /// appoggiato sul pavimento. <paramref name="reuseUid"/> &gt; 0 riusa un uid esistente: serve a
+    /// Spawna un pickup nel mondo dal payload serializzato di un item (solo host), alla quota di
+    /// <paramref name="position"/> (il suolo: chi lascia un oggetto passa la posizione dei piedi). <paramref name="reuseUid"/> &gt; 0 riusa un uid esistente: serve a
     /// <see cref="ReplacePickupPayload"/> per mantenere stabile l'identita' del pickup.
     /// </summary>
     public void SpawnPickupFromPayload(GDDict payload, Vector3 position, int reuseUid = 0, bool anchored = false)
@@ -122,6 +137,7 @@ public partial class GameWorld : Node3D
             { "uid", reuseUid > 0 ? reuseUid : ++_pickupCounter },
             { "payload", payload },
             { "x", position.X },
+            { "y", position.Y },
             { "z", position.Z },
             { "anchored", anchored },
         };
@@ -204,7 +220,9 @@ public partial class GameWorld : Node3D
         pickup.Uid = uid;
         pickup.Payload = dict["payload"].AsGodotDictionary();
         pickup.Anchored = dict.TryGetValue("anchored", out Variant anchored) && anchored.AsBool();
-        pickup.Position = new Vector3(dict["x"].AsSingle(), 0f, dict["z"].AsSingle());
+        // La quota viaggia con i dati di spawn: sulla mappa vera il suolo non e' a 0 (isole a +1 m).
+        float y = dict.TryGetValue("y", out Variant yValue) ? yValue.AsSingle() : 0f;
+        pickup.Position = new Vector3(dict["x"].AsSingle(), y, dict["z"].AsSingle());
         return pickup;
     }
 
@@ -237,42 +255,44 @@ public partial class GameWorld : Node3D
 
         var db = GetNode<ItemDatabase>("/root/ItemDatabase");
         ItemInstance? Item(string id, int stack = 1) => ItemFactory.Create(db, id, stack);
+        // Posizioni relative al punto di spawn, sul suolo.
+        Vector3 At(float x, float z) => SpawnOrigin + new Vector3(x, 0f, z);
 
         // Oggetti di prova davanti allo spawn: coprono slot, blocchi, stack, caricatori e filtri.
-        SpawnPickup("helmet", 1, new Vector3(-4.5f, 0f, 3.0f));
-        SpawnPickup("headset", 1, new Vector3(-3.0f, 0f, 3.0f));
-        SpawnPickup("body_armor", 1, new Vector3(-1.5f, 0f, 3.0f));
-        SpawnPickup("backpack", 1, new Vector3(0.0f, 0f, 3.0f));
-        SpawnPickup("ammo_545", 45, new Vector3(1.5f, 0f, 3.0f));
-        SpawnPickup("medkit", 1, new Vector3(3.0f, 0f, 3.0f));
-        SpawnPickup("ammo_545_box", 1, new Vector3(4.5f, 0f, 3.0f));
+        SpawnPickup("helmet", 1, At(-4.5f, 3.0f));
+        SpawnPickup("headset", 1, At(-3.0f, 3.0f));
+        SpawnPickup("body_armor", 1, At(-1.5f, 3.0f));
+        SpawnPickup("backpack", 1, At(0.0f, 3.0f));
+        SpawnPickup("ammo_545", 45, At(1.5f, 3.0f));
+        SpawnPickup("medkit", 1, At(3.0f, 3.0f));
+        SpawnPickup("ammo_545_box", 1, At(4.5f, 3.0f));
 
-        SpawnPickup("armored_rig", 1, new Vector3(-4.5f, 0f, 5.0f));
-        SpawnPickup("knife", 1, new Vector3(-3.0f, 0f, 5.0f));
-        SpawnPickup("flashlight", 1, new Vector3(-1.5f, 0f, 5.0f));
-        SpawnPickup(ItemFactory.CreateWeapon(db, "rifle", "mag_545", "ammo_545"), new Vector3(0.5f, 0f, 5.0f));
-        SpawnPickup(ItemFactory.CreateWeapon(db, "pistol", "mag_9mm", "ammo_9mm"), new Vector3(2.5f, 0f, 5.0f));
-        SpawnPickup("ammo_case", 1, new Vector3(4.0f, 0f, 5.0f));
-        SpawnPickup("cash", 1500, new Vector3(-1.5f, 0f, 6.5f));
-        SpawnPickup("canned_food", 1, new Vector3(0.0f, 0f, 6.5f));
-        SpawnPickup("water_bottle", 1, new Vector3(1.5f, 0f, 6.5f));
-        SpawnPickup("baton", 1, new Vector3(3.0f, 0f, 6.5f));
+        SpawnPickup("armored_rig", 1, At(-4.5f, 5.0f));
+        SpawnPickup("knife", 1, At(-3.0f, 5.0f));
+        SpawnPickup("flashlight", 1, At(-1.5f, 5.0f));
+        SpawnPickup(ItemFactory.CreateWeapon(db, "rifle", "mag_545", "ammo_545"), At(0.5f, 5.0f));
+        SpawnPickup(ItemFactory.CreateWeapon(db, "pistol", "mag_9mm", "ammo_9mm"), At(2.5f, 5.0f));
+        SpawnPickup("ammo_case", 1, At(4.0f, 5.0f));
+        SpawnPickup("cash", 1500, At(-1.5f, 6.5f));
+        SpawnPickup("canned_food", 1, At(0.0f, 6.5f));
+        SpawnPickup("water_bottle", 1, At(1.5f, 6.5f));
+        SpawnPickup("baton", 1, At(3.0f, 6.5f));
 
         // Contenitori fissi: con F si aprono nel pannello destro (schermata di saccheggio).
-        SpawnWorldContainer("supply_crate", new Vector3(-6.0f, 0f, 4.0f),
+        SpawnWorldContainer("supply_crate", At(-6.0f, 4.0f),
             Item("ammo_545", 60), Item("ammo_9mm", 50), Item("ammo_545_box"),
             ItemFactory.CreateMagazine(db, "mag_545", "ammo_545", 30),
             ItemFactory.CreateMagazine(db, "mag_545", "ammo_545", 12),
             ItemFactory.CreateMagazine(db, "mag_9mm", "ammo_9mm", 12),
             Item("medkit"), Item("painkillers"), Item("syringe"));
 
-        SpawnWorldContainer("stash_box", new Vector3(6.5f, 0f, 4.5f),
+        SpawnWorldContainer("stash_box", At(6.5f, 4.5f),
             Item("helmet"), Item("cash", 5000), Item("cash", 800), Item("key"), Item("keycard"),
             Item("usb_drive"), Item("cell_phone"), Item("cigarettes"), Item("lighter"), Item("vape"),
             Item("nails"), Item("poison"), Item("pills_bottle"), Item("doughnut"), Item("pickles"),
             Item("canned_food"), Item("water_bottle"), Item("knife"), Item("flashlight"));
 
-        SpawnWorldContainer("cardboard_box", new Vector3(6.5f, 0f, 7.0f),
+        SpawnWorldContainer("cardboard_box", At(6.5f, 7.0f),
             Item("canned_food"), Item("doughnut"), Item("cigarettes"), Item("lighter"));
     }
 }

@@ -1,6 +1,6 @@
 ---
 name: ui-hud
-description: UI, HUD, menu, cursore e comandi. Carica quando tocchi ui/, la HUD, un pannello, un menu, un popup, la scala UI, risoluzione, volumi, fullscreen, VSync, sensibilità del mouse, la cattura del mouse, oppure quando assegni o cambi un tasto/azione di input (PauseMenu, MainMenu, SettingsService, InputBindings, PlayerHud, PlayerInput, FirstPersonCamera, HitMarkerOverlay, WeaponHudPanel).
+description: UI, HUD, menu, cursore e comandi. Carica quando tocchi ui/, la HUD, un pannello, un menu, un popup, la scala UI, risoluzione, volumi, fullscreen, VSync, distanza di visione, nebbia, sensibilità del mouse, la cattura del mouse, oppure quando assegni o cambi un tasto/azione di input (PauseMenu, MainMenu, SettingsService, InputBindings, PlayerHud, PlayerInput, FirstPersonCamera, HitMarkerOverlay, WeaponHudPanel).
 ---
 
 # UI, HUD e comandi
@@ -46,6 +46,13 @@ Ogni nuovo elemento di HUD va aggiunto a `PlayerHud._hudRoot` (eredita rect e re
 - **Mai `GetTree().Paused`**: fermerebbe solo il peer locale. Una UI modale alza
   `GameManager.UiModalOpen`, che sospende il solo input di gameplay.
 - "Esci dalla partita" chiude il processo: manca una disconnessione pulita (va con l'host migration).
+- **Distanza di visione e nebbia** (`[graphics]`: `render_distance` 0–3, `fog_density` 0–1).
+  `SettingsService` le tiene e basta: `ApplyAll` emette `GraphicsChanged` se sono cambiate, e le
+  applica `WorldRenderSettings` della mappa (`Laguna.tscn`; livelli, metri e misure nella skill
+  `venice-terrain` §5). La distanza è **dell'host**: replicata, il client usa il minimo fra la sua e
+  quella dell'host, e la colonna valore mostra "Host: N km" quando è l'host a limitarla. La nebbia è
+  solo locale; anche a 0 % copre metà del bordo del terreno caricato. Le voci dell'`OptionButton`
+  vengono da `WorldRenderSettings.Levels` (chiavi `UI_SETTINGS_RENDER_*`), rigenerate al cambio lingua.
 
 ## 5. Comandi predefiniti
 
@@ -55,7 +62,7 @@ Nel codice si usa sempre il **nome dell'azione**; nei testi `Loc.KeyFor("azione"
 |---|---|---|
 | sguardo | mouse | `FirstPersonCamera` |
 | `move_*` | WASD / frecce | `PlayerInput` — relative allo sguardo |
-| `jump` · `sprint` · `crouch` | Spazio · Shift · Ctrl | `PlayerInput` (crouch anche a interruttore) |
+| `jump` · `sprint` · `crouch` | Spazio · Shift · Ctrl | `PlayerInput` (crouch anche a interruttore). **A nuoto**: Spazio tenuto = risali, premuto contro un bordo = issati fuori; Ctrl tenuto = immergiti (sempre a pressione); Shift = nuoto veloce. Nessuna azione nuova |
 | `fire` | mouse sx | `WeaponInput` (auto in `_Process`, semiauto in `_UnhandledInput`) |
 | `aim` | mouse dx (tenuto o interruttore) | `PlayerInput.ReadAim` → zoom |
 | `reload` | **R** | `WeaponInput._UnhandledInput`, solo a inventario chiuso |

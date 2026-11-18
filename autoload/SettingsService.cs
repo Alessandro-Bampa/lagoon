@@ -23,6 +23,7 @@ public partial class SettingsService : Node
     private const string SectionLocale = "locale";
     private const string SectionGameplay = "gameplay";
     private const string SectionInput = "input";
+    private const string SectionGraphics = "graphics";
 
     /// Valore di <see cref="Language"/> che significa "segui la lingua del sistema operativo".
     public const string SystemLanguage = "system";
@@ -97,6 +98,39 @@ public partial class SettingsService : Node
         set => _mouseSensitivity = Mathf.Clamp(value, MinMouseSensitivity, MaxMouseSensitivity);
     }
 
+    /// Emesso da <see cref="ApplyAll"/> quando distanza di visione o nebbia sono cambiate. Lo
+    /// ascolta <see cref="WorldRenderSettings"/> della mappa caricata, che le applica al mondo.
+    [Signal]
+    public delegate void GraphicsChangedEventHandler();
+
+    private int _renderDistance = WorldRenderSettings.DefaultLevel;
+
+    /// <summary>
+    /// Distanza di visione PREFERITA da questo giocatore, indice in <see cref="WorldRenderSettings.Levels"/>.
+    /// Se si ospita la partita vale per tutta la sessione; da client puo' solo abbassare quella
+    /// dell'host (vedi <see cref="WorldRenderSettings"/>). Il setter NON applica nulla.
+    /// </summary>
+    public int RenderDistance
+    {
+        get => _renderDistance;
+        set => _renderDistance = Mathf.Clamp(value, 0, WorldRenderSettings.Levels.Length - 1);
+    }
+
+    private float _fogDensity = 0.3f;
+
+    /// <summary>
+    /// Nebbia di distanza, 0..1, sempre locale. 0 = la minima che copre ancora il bordo delle region
+    /// caricate, 1 = la piu' fitta: la traduzione in densita' sta in <see cref="WorldRenderSettings"/>.
+    /// </summary>
+    public float FogDensity
+    {
+        get => _fogDensity;
+        set => _fogDensity = Mathf.Clamp(value, 0f, 1f);
+    }
+
+    private int _appliedRenderDistance = -1;
+    private float _appliedFogDensity = -1f;
+
     /// <summary>
     /// Comandi riassegnati dal giocatore: azione -> evento in forma testuale
     /// (<see cref="InputBindings.Serialize"/>). Contiene SOLO gli scostamenti dai binding di progetto,
@@ -136,6 +170,21 @@ public partial class SettingsService : Node
         ApplyWindow();
         ApplyVolumes();
         ApplyBindings();
+        ApplyGraphics();
+    }
+
+    /// <summary>
+    /// Distanza di visione e nebbia non toccano un server globale: dipendono dalla mappa caricata
+    /// (e dall'host). Qui si avvisa soltanto chi le applica, e solo se sono cambiate davvero.
+    /// </summary>
+    private void ApplyGraphics()
+    {
+        if (_appliedRenderDistance == _renderDistance && Mathf.IsEqualApprox(_appliedFogDensity, _fogDensity))
+            return;
+
+        _appliedRenderDistance = _renderDistance;
+        _appliedFogDensity = _fogDensity;
+        EmitSignal(SignalName.GraphicsChanged);
     }
 
     /// <summary>
@@ -261,6 +310,9 @@ public partial class SettingsService : Node
         Fullscreen = (bool)config.GetValue(SectionDisplay, "fullscreen", Fullscreen);
         VSyncEnabled = (bool)config.GetValue(SectionDisplay, "vsync", VSyncEnabled);
 
+        RenderDistance = (int)config.GetValue(SectionGraphics, "render_distance", _renderDistance);
+        FogDensity = (float)config.GetValue(SectionGraphics, "fog_density", _fogDensity);
+
         MasterVolume = (float)config.GetValue(SectionAudio, "master", MasterVolume);
         MusicVolume = (float)config.GetValue(SectionAudio, "music", MusicVolume);
         SfxVolume = (float)config.GetValue(SectionAudio, "sfx", SfxVolume);
@@ -283,6 +335,9 @@ public partial class SettingsService : Node
         config.SetValue(SectionDisplay, "ui_scale", UiScale);
         config.SetValue(SectionDisplay, "fullscreen", Fullscreen);
         config.SetValue(SectionDisplay, "vsync", VSyncEnabled);
+
+        config.SetValue(SectionGraphics, "render_distance", RenderDistance);
+        config.SetValue(SectionGraphics, "fog_density", FogDensity);
 
         config.SetValue(SectionAudio, "master", MasterVolume);
         config.SetValue(SectionAudio, "music", MusicVolume);

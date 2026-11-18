@@ -1,0 +1,31 @@
+{
+  "name": "laguna",
+  "description": "Mappa open world: laguna di Venezia da Chioggia a Cortellazzo (poligono WGS84 da coordinates_maps.csv, 1260 km2).",
+  "polygon_lonlat": [
+    [12.337303, 45.154201],
+    [12.199974, 45.194619],
+    [12.123413, 45.255555],
+    [12.135429, 45.395316],
+    [12.199974, 45.443994],
+    [12.232246, 45.479633],
+    [12.421074, 45.570073],
+    [12.551537, 45.582809],
+    [12.622604, 45.548438],
+    [12.713585, 45.538580],
+    [12.731438, 45.522706]
+  ],
+  "georef": {
+    "projection": "local_tm",
+    "lon0": 12.4274,
+    "lat0": 45.3685,
+    "note": "Trasversa di Mercatore locale (WGS84, scala 1) centrata sul riquadro del poligono: origine Godot = (lon0, lat0), X verso est, Z verso sud, 1 unita' = 1 m."
+  },
+  "region_size": 2048,
+  "vertex_spacing": 1.0,
+  "dirs": {
+    "osm": "osm",
+    "terrain": "terrain",
+    "classes": "classes",
+    "build": "build"
+  }
+}

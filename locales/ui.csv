@@ -34,6 +34,16 @@ UI_SETTINGS_CROUCH_TOGGLE,Crouch as toggle,Toggle Accovacciato
 UI_SETTINGS_MOUSE_SENSITIVITY,Mouse sensitivity,Sensibilità mouse
 UI_SETTINGS_BINDINGS,Key bindings,Comandi
 UI_SETTINGS_BACK,Back,Indietro
+UI_SETTINGS_RENDER_DISTANCE,Render distance,Distanza di visione
+UI_SETTINGS_RENDER_DISTANCE_TIP,"How much detailed terrain is loaded around you. In multiplayer the host's value applies: you can only lower it.","Quanto terreno dettagliato si carica attorno a te. In multigiocatore vale quella dell'host: puoi solo abbassarla."
+UI_SETTINGS_RENDER_LOW,Low,Bassa
+UI_SETTINGS_RENDER_MEDIUM,Medium,Media
+UI_SETTINGS_RENDER_HIGH,High,Alta
+UI_SETTINGS_RENDER_VERY_HIGH,Very high,Molto alta
+UI_SETTINGS_RENDER_KM,{0} km,{0} km
+UI_SETTINGS_RENDER_HOST_LIMIT,Host: {0} km,Host: {0} km
+UI_SETTINGS_FOG,Fog,Nebbia
+UI_SETTINGS_FOG_TIP,"Distance haze. Even at 0% it hides the edge of the loaded terrain, and it thickens as the render distance drops.","Foschia in lontananza. Anche a 0% nasconde il bordo del terreno caricato, e si infittisce se abbassi la distanza di visione."
 UI_BIND_TITLE,KEY BINDINGS,COMANDI
 UI_BIND_HINT,Click a command and press the new key. Esc cancels.,Clicca un comando e premi il nuovo tasto. Esc annulla.
 UI_BIND_PRESS,Press a key…,Premi un tasto…

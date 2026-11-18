@@ -66,7 +66,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\check-i18n.ps1
 ```
 
 Segnala LETTERALI, chiavi MANCANTI, righe INCOMPLETE/duplicate/mai referenziate. Le segnalazioni sotto
-`demo/` sono di scene di terze parti: ignorarle. Una nuova famiglia di chiavi costruite a runtime va
+`demo/` (se ricompare: scene di terze parti) vanno ignorate. Una nuova famiglia di chiavi costruite a runtime va
 aggiunta a `$conventionPrefixes`. Lo script è ASCII puro di proposito (PowerShell 5.1).
 
 ## 6. Lacune volute

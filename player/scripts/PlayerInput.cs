@@ -133,5 +133,17 @@ public partial class PlayerInput : Node
         return !Blocked() && Input.IsActionJustPressed("jump");
     }
 
+    /// <summary>
+    /// A nuoto: salto TENUTO = risalire (in superficie: emergere un po' di piu'). La pressione resta
+    /// un evento a parte (<see cref="ReadJumpPressed"/>): e' quella che chiede di issarsi su un bordo.
+    /// </summary>
+    public bool ReadJumpHeld() => ReadHeld("jump");
+
+    /// <summary>
+    /// A nuoto: accovacciarsi TENUTO = immergersi. Sempre a pressione mantenuta, anche con
+    /// l'accovacciamento a interruttore: un'immersione "agganciata" porterebbe a fondo senza volerlo.
+    /// </summary>
+    public bool ReadDiveHeld() => ReadHeld("crouch");
+
     private bool ReadHeld(string action) => !Blocked() && Input.IsActionPressed(action);
 }

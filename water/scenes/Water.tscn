@@ -1,0 +1,90 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://water/scripts/WaterVolume.cs" id="1_volume"]
+[ext_resource type="Script" path="res://water/scripts/WaterSurface.cs" id="2_surface"]
+[ext_resource type="Shader" path="res://water/shaders/water.gdshader" id="3_water"]
+[ext_resource type="Shader" path="res://water/shaders/underwater.gdshader" id="4_under"]
+[ext_resource type="Script" path="res://water/scripts/WaterPalette.cs" id="5_palette"]
+[ext_resource type="Resource" path="res://resources/water/mare.tres" id="6_mare"]
+[ext_resource type="Resource" path="res://resources/water/laguna.tres" id="7_laguna"]
+[ext_resource type="Resource" path="res://resources/water/acqua_bassa.tres" id="8_bassa"]
+[ext_resource type="Resource" path="res://resources/water/valle.tres" id="9_valle"]
+[ext_resource type="Resource" path="res://resources/water/rio.tres" id="10_rio"]
+
+[sub_resource type="SceneReplicationConfig" id="Repl_water"]
+properties/0/path = NodePath(".:SyncWaveTime")
+properties/0/spawn = true
+properties/0/replication_mode = 1
+properties/1/path = NodePath(".:SyncSeaState")
+properties/1/spawn = true
+properties/1/replication_mode = 1
+properties/2/path = NodePath(".:SyncWaterLevel")
+properties/2/spawn = true
+properties/2/replication_mode = 1
+
+[sub_resource type="FastNoiseLite" id="Noise_ripple"]
+noise_type = 1
+frequency = 0.025
+fractal_octaves = 4
+
+[sub_resource type="NoiseTexture2D" id="Tex_ripple"]
+width = 512
+height = 512
+seamless = true
+as_normal_map = true
+bump_strength = 4.0
+noise = SubResource("Noise_ripple")
+
+[sub_resource type="FastNoiseLite" id="Noise_chop"]
+noise_type = 1
+seed = 7
+frequency = 0.012
+fractal_octaves = 3
+
+[sub_resource type="NoiseTexture2D" id="Tex_chop"]
+width = 512
+height = 512
+seamless = true
+as_normal_map = true
+bump_strength = 3.0
+noise = SubResource("Noise_chop")
+
+[sub_resource type="FastNoiseLite" id="Noise_foam"]
+noise_type = 2
+seed = 3
+frequency = 0.03
+fractal_type = 1
+fractal_octaves = 2
+cellular_return_type = 1
+
+[sub_resource type="NoiseTexture2D" id="Tex_foam"]
+width = 256
+height = 256
+seamless = true
+noise = SubResource("Noise_foam")
+
+[sub_resource type="ShaderMaterial" id="Mat_surface"]
+render_priority = 0
+shader = ExtResource("3_water")
+shader_parameter/detail_a = SubResource("Tex_ripple")
+shader_parameter/detail_b = SubResource("Tex_chop")
+shader_parameter/foam_tex = SubResource("Tex_foam")
+
+[sub_resource type="ShaderMaterial" id="Mat_under"]
+render_priority = 100
+shader = ExtResource("4_under")
+
+[node name="Water" type="Node3D"]
+script = ExtResource("1_volume")
+
+[node name="Sync" type="MultiplayerSynchronizer" parent="."]
+root_path = NodePath("..")
+replication_interval = 0.25
+replication_config = SubResource("Repl_water")
+
+[node name="Surface" type="Node3D" parent="."]
+script = ExtResource("2_surface")
+SurfaceMaterial = SubResource("Mat_surface")
+UnderwaterMaterial = SubResource("Mat_under")
+Palettes = Array[ExtResource("5_palette")]([ExtResource("6_mare"), ExtResource("7_laguna"), ExtResource("8_bassa"), ExtResource("9_valle"), ExtResource("10_rio")])
+DefaultPalette = ExtResource("7_laguna")

@@ -19,8 +19,9 @@ namespace Lagoon;
 /// <code>
 /// Move (Idle/Walk/Jog/Sprint per velocita') ─ MoveScale ─┐
 /// Crouch (Crouch_Idle/Crouch_Fwd) ─ CrouchScale ─────────┴ Stance ─┐
-/// Jump (posa di volo) ─────────────────────────────────────────────┴ Air ─ Land ─ Hit ─┐
-/// Death01 ─────────────────────────────────────────────────────────────────────────────┴ Life
+/// Jump (posa di volo) ─────────────────────────────────────────────┴ Air ─┐
+/// Swim (Swim_Idle/Swim_Fwd per velocita') ─ SwimScale ────────────────────┴ SwimBlend ─ Land ─ Hit ─┐
+/// Death01 ──────────────────────────────────────────────────────────────────────────────────────────┴ Life
 /// </code>
 /// Scavalcamento e arrampicata non hanno clip: li compongono delle curve sul tempo (vedi
 /// <see cref="StepManeuver"/>).
@@ -42,6 +43,11 @@ public partial class CharacterAnimator : Node3D
     private const string ClipHitHead = "Hit_Head";
     private const string ClipDeath = "Death01";
 
+    // Clip di nuoto della libreria: la superficie dell'acqua e' all'ORIGINE della clip (la testa sta
+    // a ~0,27 m in Swim_Idle, a ~0 in Swim_Fwd, corpo orizzontale con la testa 0,54 m avanti).
+    private const string ClipSwimIdle = "Swim_Idle";
+    private const string ClipSwimMove = "Swim_Fwd";
+
     // Parametri dell'albero.
     private const string MovePosition = "parameters/Move/blend_position";
     private const string MoveScale = "parameters/MoveScale/scale";
@@ -49,6 +55,9 @@ public partial class CharacterAnimator : Node3D
     private const string CrouchScale = "parameters/CrouchScale/scale";
     private const string StanceAmount = "parameters/Stance/blend_amount";
     private const string AirAmount = "parameters/Air/blend_amount";
+    private const string SwimPosition = "parameters/Swim/blend_position";
+    private const string SwimScale = "parameters/SwimScale/scale";
+    private const string SwimAmount = "parameters/SwimBlend/blend_amount";
     private const string LandRequest = "parameters/Land/request";
     private const string HitRequest = "parameters/Hit/request";
     private const string HitPoseRequest = "parameters/HitPose/transition_request";
@@ -76,6 +85,27 @@ public partial class CharacterAnimator : Node3D
     /// Rotazione massima del bacino verso la direzione del moto, in gradi.
     [Export] public float MaxHipSwivelDegrees { get; set; } = 65.0f;
 
+    /// Velocita' a nuoto a cui <c>Swim_Fwd</c> e' a pieno peso, in m/s (la riallinea il bridge).
+    [Export] public float SwimSpeed { get; set; } = 1.6f;
+
+    /// <summary>
+    /// Di quanto si alza il corpo a nuoto, in metri: porta l'origine delle clip di nuoto (la
+    /// superficie) dai piedi nominali alla quota dell'acqua. Il bridge la ricava dal motore:
+    /// <c>EyeHeight - SwimEyeAboveSurface</c>.
+    /// </summary>
+    [Export] public float SwimBodyLift { get; set; } = 1.42f;
+
+    /// <summary>
+    /// Arretramento del corpo nelle bracciate, in metri: in <c>Swim_Fwd</c> la testa sta 0,54 m
+    /// avanti all'origine, e la camera (cioe' gli occhi nominali) sta sulla verticale della capsula.
+    /// </summary>
+    [Export] public float SwimForwardShift { get; set; } = 0.5f;
+
+    /// Rotazione massima del corpo verso il moto a nuoto, in gradi (di lato si nuota "di traverso").
+    [Export] public float MaxSwimSwivelDegrees { get; set; } = 80.0f;
+
+    [Export] public float SwimBlendSpeed { get; set; } = 5.0f;
+
     [Export] public float BlendSpeed { get; set; } = 10.0f;
     [Export] public float VelocitySmoothing { get; set; } = 14.0f;
     [Export] public float AirBlendSpeed { get; set; } = 12.0f;
@@ -92,6 +122,9 @@ public partial class CharacterAnimator : Node3D
 
     /// Scavalcamento o arrampicata in corso: arma riposta, posa di <see cref="TriggerVault"/>.
     public bool Vaulting { get; set; }
+
+    /// A nuoto: clip di nuoto, corpo alzato alla superficie e girato verso il moto, arma riposta.
+    public bool Swimming { get; set; }
 
     /// Arma all'occhio (mira col tasto destro).
     public bool Aiming { get; set; }
@@ -133,6 +166,12 @@ public partial class CharacterAnimator : Node3D
     private float _hipYaw;
     private bool _backward;
     private bool _wasDead;
+
+    // Nuoto: peso del ramo, peso delle bracciate (orizzontale) e rotazione del corpo verso il moto.
+    private float _swimWeight;
+    private float _swimStroke;
+    private float _swimYaw;
+    private bool _swimBackward;
 
     /// Manovra di parkour in corso: le pose le danno delle curve sul tempo, non una clip.
     private enum Maneuver
@@ -208,7 +247,7 @@ public partial class CharacterAnimator : Node3D
         foreach (string clip in new[]
         {
             ClipIdle, ClipWalk, ClipJog, ClipSprint, ClipCrouchIdle, ClipCrouchMove, ClipAir,
-            ClipLand, ClipHitChest, ClipHitHead, ClipDeath,
+            ClipLand, ClipHitChest, ClipHitHead, ClipDeath, ClipSwimIdle, ClipSwimMove,
         })
         {
             if (!_tree.HasAnimation(clip))
@@ -260,9 +299,20 @@ public partial class CharacterAnimator : Node3D
         tree.ConnectNode("Air", 0, "Stance");
         tree.ConnectNode("Air", 1, "AirPose");
 
+        // Nuoto: sopra a tutta la locomozione a piedi (in acqua non ci si accovaccia ne' si vola).
+        var swim = new AnimationNodeBlendSpace1D { MinSpace = 0f, MaxSpace = SwimSpeed, SyncMode = AnimationNodeBlendSpace1D.SyncModeEnum.Independent };
+        swim.AddBlendPoint(Clip(ClipSwimIdle), 0f, name: ClipSwimIdle);
+        swim.AddBlendPoint(Clip(ClipSwimMove), SwimSpeed, name: ClipSwimMove);
+        tree.AddNode("Swim", swim);
+        tree.AddNode("SwimScale", new AnimationNodeTimeScale());
+        tree.ConnectNode("SwimScale", 0, "Swim");
+        tree.AddNode("SwimBlend", new AnimationNodeBlend2());
+        tree.ConnectNode("SwimBlend", 0, "Air");
+        tree.ConnectNode("SwimBlend", 1, "SwimScale");
+
         tree.AddNode("LandPose", Clip(ClipLand));
         tree.AddNode("Land", new AnimationNodeOneShot { FadeInTime = 0.08f, FadeOutTime = 0.3f });
-        tree.ConnectNode("Land", 0, "Air");
+        tree.ConnectNode("Land", 0, "SwimBlend");
         tree.ConnectNode("Land", 1, "LandPose");
 
         // Reazione al colpo: solo busto e braccia, le gambe continuano a camminare.
@@ -321,10 +371,11 @@ public partial class CharacterAnimator : Node3D
             _airWeight = Mathf.Lerp(_airWeight, Grounded && !Vaulting ? 0f : 1f, SkeletonMath.Damp(AirBlendSpeed, dt));
 
         UpdateSwivel(speed, dt);
+        UpdateSwim(speed, dt);
         UpdateWeapon(speed, dt);
 
         if (_bodyNode != null)
-            _bodyNode.Position = new Vector3(0f, -maneuver.Drop, 0f);
+            _bodyNode.Transform = BodyOffset(maneuver.Drop);
 
         if (_tree == null)
             return;
@@ -336,6 +387,11 @@ public partial class CharacterAnimator : Node3D
         _tree.Set(CrouchScale, direction);
         _tree.Set(StanceAmount, Mathf.Max(_crouchWeight, maneuver.Tuck));
         _tree.Set(AirAmount, _airWeight);
+
+        // Oltre SwimSpeed (nuoto veloce) le bracciate accelerano invece di uscire dallo spazio di blend.
+        _tree.Set(SwimPosition, Mathf.Min(speed, SwimSpeed));
+        _tree.Set(SwimScale, (_swimBackward ? -1f : 1f) * Mathf.Max(1f, speed / Mathf.Max(SwimSpeed, 0.1f)));
+        _tree.Set(SwimAmount, _swimWeight);
 
         if (Dead != _wasDead)
         {
@@ -351,7 +407,9 @@ public partial class CharacterAnimator : Node3D
         float alive = Dead ? 0f : 1f;
         if (_bodyAim != null)
         {
-            _bodyAim.Influence = alive;
+            // A nuoto il busto non segue lo sguardo: sul corpo orizzontale di Swim_Fwd le rotazioni
+            // "attorno alla verticale" dello scheletro diventerebbero un rollio. Gira il corpo intero.
+            _bodyAim.Influence = alive * (1f - _swimWeight);
             _bodyAim.HipYaw = -_hipYaw * (1f - _airWeight) * (inManeuver ? 0f : 1f);
             _bodyAim.LookYaw = relativeYaw;
             _bodyAim.LookPitch = LookPitch;
@@ -485,6 +543,54 @@ public partial class CharacterAnimator : Node3D
         _hipYaw = Mathf.Lerp(_hipYaw, target, SkeletonMath.Damp(10f, dt));
     }
 
+    /// <summary>
+    /// Nuoto: peso del ramo, peso delle bracciate e verso del corpo. Le clip sono solo in avanti come
+    /// la locomozione: di lato si gira il corpo INTERO verso il moto (non il bacino: Swim_Fwd e'
+    /// orizzontale), all'indietro le bracciate vanno al contrario, con la stessa isteresi.
+    /// </summary>
+    private void UpdateSwim(float speed, float dt)
+    {
+        _swimWeight = Mathf.Lerp(_swimWeight, Swimming && !Dead ? 1f : 0f, SkeletonMath.Damp(SwimBlendSpeed, dt));
+        _swimStroke = Mathf.Lerp(_swimStroke, Swimming ? Mathf.Clamp(speed / Mathf.Max(SwimSpeed, 0.1f), 0f, 1f) : 0f,
+            SkeletonMath.Damp(SwimBlendSpeed, dt));
+
+        float target = 0f;
+        if (Swimming && speed > 0.2f)
+        {
+            float angle = Mathf.Atan2(_velocity.X, _velocity.Y);
+            float abs = Mathf.Abs(angle);
+            if (_swimBackward ? abs < Mathf.DegToRad(80f) : abs > Mathf.DegToRad(110f))
+                _swimBackward = !_swimBackward;
+
+            target = _swimBackward ? angle - Mathf.Sign(angle) * Mathf.Pi : angle;
+            float max = Mathf.DegToRad(MaxSwimSwivelDegrees);
+            target = Mathf.Clamp(target, -max, max);
+        }
+        else if (!Swimming)
+        {
+            _swimBackward = false;
+        }
+
+        _swimYaw = Mathf.Lerp(_swimYaw, target, SkeletonMath.Damp(4f, dt));
+    }
+
+    /// <summary>
+    /// Trasformata del nodo <c>Body</c>: abbassamento della manovra di parkour e, a nuoto, il corpo
+    /// alzato alla superficie, girato verso il moto e arretrato perche' la testa delle bracciate
+    /// resti sulla verticale degli occhi nominali.
+    /// </summary>
+    private Transform3D BodyOffset(float drop)
+    {
+        if (_swimWeight <= 0.001f)
+            return new Transform3D(Basis.Identity, new Vector3(0f, -drop, 0f));
+
+        // Yaw positivo = verso +X dello scheletro, cioe' la SUA sinistra: il moto a destra va negato.
+        var basis = new Basis(Vector3.Up, -_swimYaw * _swimWeight);
+        Vector3 back = basis * new Vector3(0f, 0f, -SwimForwardShift * _swimStroke);
+        Vector3 lift = new(0f, SwimBodyLift * _swimWeight - drop, 0f);
+        return new Transform3D(basis, lift + back * _swimWeight);
+    }
+
     private void UpdateWeapon(float speed, float dt)
     {
         WeaponAnimationSet? weapon = Dead ? null : Weapon;
@@ -492,7 +598,7 @@ public partial class CharacterAnimator : Node3D
         Hold.ShadowOnly = FirstPersonOwner;
 
         bool sprinting = Grounded && !Aiming && speed > WalkSpeed * 1.15f;
-        bool stowed = Vaulting || _maneuver != Maneuver.None;
+        bool stowed = Vaulting || _maneuver != Maneuver.None || Swimming;
         Hold.UpdateState(dt, Aiming, sprinting, Reloading, stowed);
     }
 

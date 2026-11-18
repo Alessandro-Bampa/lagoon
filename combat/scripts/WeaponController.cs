@@ -440,7 +440,8 @@ public partial class WeaponController : Node
     /// mano. Il rinfodero implicito del parkour resta quello che era, cioe' puramente visivo
     /// (skill character-animation §8): slot e caricatore non si toccano.
     /// </summary>
-    private bool HandsFree() => !_player.SyncVaulting;
+    /// Lo stesso vale per il nuoto (<see cref="CharacterMotor.SyncSwimming"/>): le mani nuotano.
+    private bool HandsFree() => !_player.SyncVaulting && !_player.SyncSwimming;
 
     private void Holster()
     {

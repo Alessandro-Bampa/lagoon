@@ -6,8 +6,10 @@ extends Node3D
 ## segnaposto (OsmPlaceholder) e ne genera gli asset col kit dei palazzi.
 ##
 ## Flusso:
-##   1. "Scarica da Overpass": lancia tools/osm_extract.py sul riquadro `bbox` e
-##      riscrive `osm_json` (in coordinate mondo della mappa).
+##   1. "Scarica da Overpass": lancia tools/osm_extract.py. Con `map_json` (mappa
+##      vera, es. world/maps/laguna) riscarica tutta la mappa (`--map`, a tasselli con
+##      cache) e riscrive i livelli in <mappa>/osm/layers; senza, scarica il riquadro
+##      `bbox` in `osm_json`. In ogni caso le coordinate sono quelle del mondo della mappa.
 ##   2. "Importa i segnaposto": un cilindretto per ogni edificio del JSON non
 ##      ancora importato (riconosciuto dall'id OSM).
 ##   3. Selezionare uno o piu' segnaposto, scegliere kit e colore nell'ispettore,
@@ -36,12 +38,14 @@ const EXTRACTOR := "res://addons/venice_builder/tools/osm_extract.py"
 ## Tipi di `building=*` che non sono palazzi: restano senza segnaposto.
 const SKIPPED_KINDS: PackedStringArray = ["roof", "column", "bridge", "ruins", "construction"]
 
-## JSON prodotto da osm_extract.py.
-@export_file("*.json") var osm_json := "res://demo/venice/venice_osm.json"
-## Riquadro da scaricare: sud,ovest,nord,est in gradi (come in overpass-turbo).
-@export var bbox := "45.4270,12.3330,45.4365,12.3460"
+## map.json della mappa vera: georeferenziazione e poligono da scaricare.
+@export_file("*.json") var map_json := "res://world/maps/laguna/map.json"
+## JSON degli edifici prodotto da osm_extract.py (con --map: <mappa>/osm/layers/buildings.json).
+@export_file("*.json") var osm_json := "res://world/maps/laguna/osm/layers/buildings.json"
+## Solo senza `map_json`: riquadro da scaricare, sud,ovest,nord,est in gradi.
+@export var bbox := ""
 ## Cartella delle region di Terrain3D da cui leggere la quota d'appoggio.
-@export_dir var terrain_directory := "res://demo/data/terrain_polished"
+@export_dir var terrain_directory := "res://world/maps/laguna/terrain"
 ## Dove salvare gli edifici generati (una scena .scn per edificio).
 @export_dir var output_directory := "res://world/generated/buildings"
 ## Oltre questa distanza solai, scale e tramezzi non si disegnano (0 = sempre).
@@ -76,8 +80,14 @@ var _generator: Generator
 ## Scarica il riquadro da Overpass e riscrive `osm_json`. All'esterno parte solo
 ## il riquadro geografico.
 func download_osm() -> void:
-	var args := PackedStringArray([ProjectSettings.globalize_path(EXTRACTOR), "--bbox", bbox,
-		"--out", ProjectSettings.globalize_path(osm_json)])
+	var args := PackedStringArray([ProjectSettings.globalize_path(EXTRACTOR)])
+	if not map_json.is_empty():
+		args.append_array(["--map", ProjectSettings.globalize_path(map_json)])
+	elif not bbox.is_empty():
+		args.append_array(["--bbox", bbox, "--out", ProjectSettings.globalize_path(osm_json)])
+	else:
+		push_error("[venice_builder] Serve map_json oppure bbox per scaricare.")
+		return
 	print("[venice_builder] %s %s" % [python_command, " ".join(args)])
 	var output: Array = []
 	var code := OS.execute(python_command, args, output, true)

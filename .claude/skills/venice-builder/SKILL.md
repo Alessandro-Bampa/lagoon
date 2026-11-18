@@ -15,9 +15,10 @@ da replicare in rete.
 ## 1. Flusso d'uso (editor)
 
 1. Nella scena della mappa aggiungere un nodo **`OsmLayer`** (trasformata identità).
-2. **"1. Scarica da Overpass"**: lancia `tools/osm_extract.py --bbox <sud,ovest,nord,est>` e
-   riscrive `osm_json`. Serve Python nel PATH. In alternativa un export di overpass-turbo si
-   converte a mano con `--input` (vedi la testata dello script).
+2. **"1. Scarica da Overpass"**: con `map_json` (default `world/maps/laguna/map.json`) lancia
+   `tools/osm_extract.py --map` e riscrive tutti i livelli della mappa in `<mappa>/osm/layers`
+   (a tasselli, con cache: rilanciare riprende); senza, scarica `bbox` in `osm_json`. Serve
+   Python nel PATH. Un export di overpass-turbo si converte a mano con `--input`.
 3. **"2. Importa i segnaposto"**: un `OsmPlaceholder` (cilindro arancione nel baricentro) per ogni
    edificio non ancora importato. La chiave è `osm_id`: rilanciare non duplica nulla.
 4. Selezionare uno o più segnaposto → nel gruppo *Generazione* dell'ispettore scegliere **kit**
@@ -67,9 +68,10 @@ le sei texture `facade_<colore>` (+ `_base` per il piano terra) e il generatore 
 | `floor_planner.gd` | griglia delle celle, scelta della scala, pianta di ogni piano (stanze, muri, porte). Solo dati, nessuna geometria (§3b) |
 | `kit_library.gd` | moduli del kit come liste di triangoli + **materiali condivisi** |
 | `polygon_tools.gd` | semplificazione, triangolazione con buchi, restringimento, intersezioni |
-| `terrain_sampler.gd` | quota d'appoggio letta dalle region Terrain3D su disco |
+| `terrain_sampler.gd` | quota d'appoggio letta dalle region Terrain3D su disco (`terrain_directory`, default `world/maps/laguna/terrain`). Terra = sopra quota 0: è il terreno generato da OSM, skill `venice-terrain` |
 | `plugin.gd` | registra il gizmo, la barra "Genera edifici / Rimuovi / Modifica blocchi", il menu di sostituzione |
-| `tools/osm_extract.py` | Overpass → JSON a livelli in coordinate mondo (costanti di georeferenziazione in testa) |
+| `tools/osm_extract.py` | Overpass → JSON a livelli in coordinate mondo (costanti di georeferenziazione in testa). Con `--landcover` scarica solo coperture e acque, a tasselli: è la sorgente del terreno |
+| `tools/osm_terrain.py`, `tools/terrain_import.gd` | terreno dai dati OSM → region di Terrain3D: skill `venice-terrain` |
 
 Collaudo senza editor: uno script `extends SceneTree` che crea `osm_layer.gd`, chiama
 `import_placeholders()` e `generate_placeholders(lista)` — funziona headless, anche fuori dall'albero.
@@ -249,8 +251,12 @@ coordinate locali del settore). Sono **dati, non nodi**:
   `backface_collision` spento e ferma solo chi arriva dalla faccia frontale.
 - Dopo aver rigenerato il kit da Blender gli edifici già generati tengono la collisione vecchia
   (è cotta nella scena): *Rigenera tutti quelli già generati*.
-- `demo/` è ignorata da git. La scena di prova è `demo/test_map_ve_kit.tscn` (mappa
-  `venice_map_nobuildings.scn`, prodotta da `build_map_scene.gd -- --no-buildings`, più l'`OsmLayer`).
+- La mappa vera è `world/maps/laguna/` (skill `venice-terrain`): i suoi edifici stanno in
+  `osm/layers/buildings.json` (63.000 impronte su 1260 km²), che è il default di `osm_json`.
+  La vecchia scena di prova in `demo/` (coordinate UTM 32) non esiste più: gli edifici generati
+  lì non combaciano con la georeferenziazione nuova e vanno rigenerati.
+- Con 63.000 edifici non si importano tutti i segnaposto insieme: la generazione per settori
+  e lo streaming delle loro scene sono ancora da fare (§6).
 
 ## 6. Lacune volute
 

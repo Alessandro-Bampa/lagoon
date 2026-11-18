@@ -77,6 +77,12 @@ public static class ObstacleProbe
 
         /// Falso se la sommita' e' troppo stretta per starci in piedi (rilevante per il mantle).
         public bool TopStandable { get; init; }
+
+        /// <summary>
+        /// Il corpo su cui sta il bordo. Non e' una misura ma serve a chi la usa: se il bordo e' il
+        /// ponte di una barca, la traiettoria va seguita nel riferimento della barca, non del mondo.
+        /// </summary>
+        public GodotObject? LedgeCollider { get; init; }
     }
 
     /// <summary>
@@ -142,7 +148,7 @@ public static class ObstacleProbe
         Vector3 above = wallPoint - wallNormal * 0.08f;
         above.Y = feet.Y + maxHeight + 0.3f;
         if (!Cast(space, exclude, above, above + Vector3.Down * (maxHeight + 0.4f),
-                out Vector3 ledgeTop, out _))
+                out Vector3 ledgeTop, out _, out GodotObject? ledgeCollider))
             return default; // niente bordo entro l'altezza cercata: e' un muro, non un ostacolo.
 
         float height = ledgeTop.Y - feet.Y;
@@ -173,6 +179,7 @@ public static class ObstacleProbe
             WallNormal = wallNormal,
             LandingClear = landingFound && IsClear(space, exclude, landing, landingShape),
             TopStandable = IsClear(space, exclude, ledge - wallNormal * Mathf.Min(depth * 0.5f, 0.4f), landingShape),
+            LedgeCollider = ledgeCollider,
         };
     }
 
@@ -256,7 +263,12 @@ public static class ObstacleProbe
 
     /// Raycast sulla maschera della sonda. Restituisce falso se non colpisce nulla.
     private static bool Cast(PhysicsDirectSpaceState3D space, Godot.Collections.Array<Rid> exclude,
-        Vector3 from, Vector3 to, out Vector3 position, out Vector3 normal)
+        Vector3 from, Vector3 to, out Vector3 position, out Vector3 normal) =>
+        Cast(space, exclude, from, to, out position, out normal, out _);
+
+    /// Come sopra, restituendo anche il corpo colpito.
+    private static bool Cast(PhysicsDirectSpaceState3D space, Godot.Collections.Array<Rid> exclude,
+        Vector3 from, Vector3 to, out Vector3 position, out Vector3 normal, out GodotObject? collider)
     {
         var query = PhysicsRayQueryParameters3D.Create(from, to, ProbeMask);
         query.Exclude = exclude;
@@ -266,11 +278,13 @@ public static class ObstacleProbe
         {
             position = Vector3.Zero;
             normal = Vector3.Zero;
+            collider = null;
             return false;
         }
 
         position = (Vector3)hit["position"];
         normal = (Vector3)hit["normal"];
+        collider = hit["collider"].AsGodotObject();
         return true;
     }
 }

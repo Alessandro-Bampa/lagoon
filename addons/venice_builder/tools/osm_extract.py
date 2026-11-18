@@ -6,6 +6,8 @@ quello che OSM sa di un riquadro lat/lon, lo proietta nello stesso sistema del
 DEM (UTM 32N) e lo riscrive in coordinate mondo Godot, diviso per livelli:
 
     land        isole: il bordo preciso terra/acqua (anelli interni della laguna)
+    lagoon      la laguna come area: esterno + buchi (isole) vicini al riquadro
+    coast       linea di costa verso il mare (natural=coastline): terra a SINISTRA
     water       specchi d'acqua mappati come area (canali, darsene, bacini)
     waterways   assi dei canali (nome, larghezza, navigabilita')
     buildings   impronte con cortili interni, altezza, materiali, tetto
@@ -35,9 +37,15 @@ USO
   con la query stampata da --print-query, "Esporta > dati grezzi OSM"):
       python osm_extract.py --input venice_osm.raw.json --bbox ...
 
-  Poi, da Godot (vedi i due script):
-      polish_terrain.gd      rifinisce la riva del terreno con il livello land
-      build_map_scene.gd     genera venice_map.scn
+  Solo copertura del suolo e acque (niente edifici, strade, negozi), scaricata
+  a tasselli: e' la sorgente del terreno (osm_terrain.py) su riquadri grandi,
+  dove la query completa sarebbe enorme:
+      python osm_extract.py --landcover --bbox 45.418,12.300,45.512,12.470 --out lagoon_osm.json
+
+  Poi:
+      osm_terrain.py         quote e classi del terreno dai livelli land/lagoon/coast/water/areas
+      terrain_import.gd      region di Terrain3D da quei tile
+      build_map_scene.gd     genera venice_map.scn (POC in demo/venice)
 
 DA DOVE VENGONO LE COSTANTI DI GEOREFERENZIAZIONE
   - Il DEM sorgente (w50075_s10.tif, TINITALY) e' in EPSG:32632 con origine
@@ -87,6 +95,9 @@ PARTS_COVER_RATIO = 0.7
 LAND_MARGIN = 300.0
 
 OVERPASS_URLS = (
+    # l'istanza usata dall'interfaccia di overpass-turbo.eu: il 17/11/2026 rispondeva in un
+    # secondo mentre overpass-api.de, private.coffee e mail.ru davano solo 502/504
+    "https://api.overpass-turbo.eu/interpreter",
     "https://overpass-api.de/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
 )
@@ -111,9 +122,10 @@ _ALPHA = (
 )
 
 
-def lonlat_to_utm32(lon_deg, lat_deg):
+def transverse_mercator(lon_deg, lat_deg, lon0_rad, k0):
+    """(est dal meridiano centrale, nord dall'equatore) in metri, ellissoide WGS84."""
     lat = math.radians(lat_deg)
-    dlon = math.radians(lon_deg) - _LON0
+    dlon = math.radians(lon_deg) - lon0_rad
     c = 2.0 * math.sqrt(_N) / (1.0 + _N)
     t = math.sinh(math.atanh(math.sin(lat)) - c * math.atanh(c * math.sin(lat)))
     xi = math.atan2(t, math.cos(dlon))
@@ -122,11 +134,34 @@ def lonlat_to_utm32(lon_deg, lat_deg):
     for j, a in enumerate(_ALPHA, start=1):
         e += a * math.cos(2 * j * xi) * math.sinh(2 * j * eta)
         n += a * math.sin(2 * j * xi) * math.cosh(2 * j * eta)
-    return 500000.0 + _K0 * _AA * e, _K0 * _AA * n
+    return k0 * _AA * e, k0 * _AA * n
+
+
+def lonlat_to_utm32(lon_deg, lat_deg):
+    e, n = transverse_mercator(lon_deg, lat_deg, _LON0, _K0)
+    return 500000.0 + e, n
+
+
+# Georeferenziazione attiva. Di default quella del vecchio POC (UTM 32 + scostamento
+# del DEM); una mappa vera la sostituisce con configure_georef() leggendo il suo
+# map.json: trasversa di Mercatore LOCALE centrata sulla mappa, origine Godot nel
+# centro, X verso est e Z verso sud, scala 1 (niente convergenza al centro).
+_GEOREF = {"mode": "legacy"}
+
+
+def configure_georef(georef):
+    """georef = {"lon0": gradi, "lat0": gradi} dal map.json della mappa."""
+    lon0 = math.radians(georef["lon0"])
+    e0, n0 = transverse_mercator(georef["lon0"], georef["lat0"], lon0, 1.0)
+    _GEOREF.clear()
+    _GEOREF.update(mode="local_tm", lon0=lon0, e0=e0, n0=n0)
 
 
 def to_xz(lon_deg, lat_deg):
     """(lon, lat) WGS84 -> [X, Z] mondo Godot, al centimetro. Y la mette il terreno."""
+    if _GEOREF["mode"] == "local_tm":
+        e, n = transverse_mercator(lon_deg, lat_deg, _GEOREF["lon0"], 1.0)
+        return [round(e - _GEOREF["e0"], 2), round(_GEOREF["n0"] - n, 2)]
     e, n = lonlat_to_utm32(lon_deg, lat_deg)
     return [
         round((e - DEM_ORIGIN_E) / METERS_PER_PIXEL + WORLD_OFFSET, 2),
@@ -152,19 +187,81 @@ def build_query(bbox):
     )
 
 
-def fetch_overpass(query):
+def build_landcover_query(bbox, relations=True, ways=True):
+    """Solo cio' che serve al terreno: coperture, acque, costa, bricole.
+
+    Le relazioni (la laguna e' UN multipoligono con migliaia di buchi) si
+    chiedono una volta sola per tutto il riquadro; way e nodi a tasselli.
+    """
+    s, w, n, e = bbox
+    box = f"{s},{w},{n},{e}"
+    parts = []
+    if ways:
+        parts.append(f'  way({box})[~"^(natural|landuse|wetland|water|waterway|leisure|tidal)$"~"."];')
+        parts.append(f'  node({box})[~"^(man_made|seamark:type)$"~"^(dolphin|pile)$"];')
+    if relations:
+        parts.append(f'  relation({box})[type=multipolygon][~"^(natural|landuse|wetland|water|leisure)$"~"."];')
+    return "[out:json][timeout:180];\n(\n" + "\n".join(parts) + "\n);\nout geom;\n"
+
+
+def fetch_landcover(bbox, tile_deg, cache_dir):
+    """Scarica a tasselli e unisce per (tipo, id): un elemento a cavallo di due
+    tasselli arriva due volte, identico.
+
+    Ogni risposta finisce in cache_dir: Overpass e' spesso sovraccarico e un
+    tassello che fallisce non deve far ripartire da zero. Rilanciare lo stesso
+    comando riprende da dove si era fermato; per riscaricare, cancellare la cartella."""
+    s, w, n, e = bbox
+    os.makedirs(cache_dir, exist_ok=True)
+    merged = {}
+
+    def cached(name, query):
+        path = os.path.join(cache_dir, name + ".json")
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        doc = fetch_overpass(query, attempts=8)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(doc, f)
+        return doc
+
+    def add(doc):
+        for el in doc.get("elements", []):
+            merged[(el["type"], el["id"])] = el
+
+    print("  relazioni (tutto il riquadro)...")
+    add(cached("relations", build_landcover_query(bbox, relations=True, ways=False)))
+    step = tile_deg if tile_deg > 0 else max(n - s, e - w)
+    lats = [s + i * step for i in range(math.ceil((n - s) / step - 1e-9))] or [s]
+    lons = [w + i * step for i in range(math.ceil((e - w) / step - 1e-9))] or [w]
+    for i, la in enumerate(lats):
+        for j, lo in enumerate(lons):
+            tile = [round(la, 5), round(lo, 5), round(min(la + step, n), 5), round(min(lo + step, e), 5)]
+            print(f"  tassello {i * len(lons) + j + 1}/{len(lats) * len(lons)} {tile}")
+            add(cached("ways_" + "_".join(f"{v:.5f}" for v in tile), build_landcover_query(tile, relations=False, ways=True)))
+    return {"version": 0.6, "generator": "osm_extract.py --landcover", "elements": list(merged.values())}
+
+
+def fetch_overpass(query, attempts=4):
     data = urllib.parse.urlencode({"data": query}).encode("utf-8")
     last_error = None
-    for attempt in range(4):
+    for attempt in range(attempts):
         url = OVERPASS_URLS[attempt % len(OVERPASS_URLS)]
         try:
             req = urllib.request.Request(url, data=data, headers={"User-Agent": "osm-map-poc/0.1"})
             with urllib.request.urlopen(req, timeout=240) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+                doc = json.loads(resp.read().decode("utf-8"))
+            # Un timeout lato server arriva come 200 con dati TRONCATI e un "remark":
+            # va trattato come un errore, non come una risposta.
+            if "error" in doc.get("remark", "").lower():
+                raise ValueError(doc["remark"])
+            return doc
+        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
             last_error = exc
-            print(f"  {url}: {exc} - riprovo")
-            time.sleep(8)
+            # attesa crescente: i server pubblici rispondono 502/504 quando sono pieni
+            wait = min(8 * 2 ** (attempt // len(OVERPASS_URLS)), 120)
+            print(f"  {url}: {exc} - riprovo fra {wait} s", flush=True)
+            time.sleep(wait)
     raise SystemExit(f"Overpass non risponde: {last_error}")
 
 
@@ -330,14 +427,18 @@ def point_kind(tags):
 
 
 # ------------------- ESTRAZIONE -------------------
-def extract(doc, bbox):
+def extract(doc, bbox, data_ring_lonlat=None):
     elements = doc["elements"]
     out = {name: [] for name in (
-        "land", "water", "waterways", "buildings", "parts", "paths", "areas",
+        "land", "lagoon", "coast", "water", "waterways", "buildings", "parts", "paths", "areas",
         "bridges", "piers", "barriers", "tree_rows", "points", "other")}
 
     s, w, n, e = bbox
-    bbox_ring = [to_xz(w, n), to_xz(e, n), to_xz(e, s), to_xz(w, s)]
+    if data_ring_lonlat:
+        # mappa vera: i dati coprono il poligono, non il riquadro che lo contiene
+        bbox_ring = [to_xz(lon, lat) for lon, lat in data_ring_lonlat]
+    else:
+        bbox_ring = [to_xz(w, n), to_xz(e, n), to_xz(e, s), to_xz(w, s)]
     bx0, bz0, bx1, bz1 = bounds(bbox_ring)
 
     def near_bbox(ring):
@@ -394,7 +495,12 @@ def extract(doc, bbox):
             out["bridges"].append({"id": fid, "rings": [ring], "tags": ctags})
             used = True
         if tags.get("natural") == "water" and ring:
-            out["water"].append({"id": fid, "kind": tags.get("water", "water"), "name": tags.get("name"), "rings": [ring]})
+            out["water"].append({"id": fid, "kind": tags.get("water", "water"), "name": tags.get("name"), "rings": [ring], "tags": ctags})
+            if tags.get("water") == "lagoon":
+                out["lagoon"].append({"id": fid, "rings": [ring]})
+            used = True
+        if tags.get("natural") == "coastline":
+            out["coast"].append({"id": fid, "pts": pts})
             used = True
         if "waterway" in tags:
             out["waterways"].append({"id": fid, "kind": tags["waterway"], "name": tags.get("name"), "w": width, "pts": pts, "tags": ctags})
@@ -436,11 +542,23 @@ def extract(doc, bbox):
         if tags.get("natural") == "water" and tags.get("water") == "lagoon":
             # La laguna e' UN poligono enorme; le isole sono i suoi buchi. Sono
             # loro il bordo preciso terra/acqua che al DEM a 10 m manca.
-            inners = [lonlat_ring(m["geometry"]) for m in el["members"]
-                      if m.get("type") == "way" and m.get("role") == "inner" and "geometry" in m]
+            members = [m for m in el["members"] if m.get("type") == "way" and "geometry" in m]
+            inners = [lonlat_ring(m["geometry"]) for m in members if m.get("role") == "inner"]
+            holes = []
             for i, ring in enumerate(r for r in (project_ring(r) for r in join_ways(inners)) if r):
                 if near_bbox(ring):
                     out["land"].append({"id": f"{fid}#{i}", "rings": [ring]})
+                    holes.append(ring)
+            # La stessa laguna come area (esterno + i soli buchi vicini al
+            # riquadro): fuori dall'esterno e' terraferma o mare, non laguna.
+            # Niente multipolygon_polygons: con migliaia di buchi contro un
+            # esterno di decine di migliaia di vertici il test punto-in-anello
+            # costerebbe minuti; con un solo esterno non serve proprio.
+            outers = [r for r in (project_ring(r) for r in join_ways(
+                [lonlat_ring(m["geometry"]) for m in members if m.get("role") != "inner"])) if r and near_bbox(r)]
+            for i, outer in enumerate(outers):
+                own = holes if len(outers) == 1 else [h for h in holes if point_in_ring(h[0], outer)]
+                out["lagoon"].append({"id": f"{fid}#{i}", "rings": [outer] + own})
             continue
         for i, rings in enumerate(multipolygon_polygons(el)):
             pid = f"{fid}#{i}"
@@ -492,29 +610,104 @@ def extract(doc, bbox):
             del b[key]
 
     out["meta"] = {
-        "crs": "EPSG:32632",
-        "dem_origin": [DEM_ORIGIN_E, DEM_ORIGIN_N],
-        "world_offset": WORLD_OFFSET,
         "bbox_lonlat_swne": bbox,
-        # il riquadro in coordinate Godot (NO, NE, SE, SO): fuori da qui i dati sono incompleti
+        # il riquadro (o il poligono della mappa) in coordinate Godot: fuori i dati sono incompleti
         "bbox_ring": bbox_ring,
         "default_height": default_h,
     }
+    if _GEOREF["mode"] == "local_tm":
+        out["meta"]["georef"] = {"projection": "local_tm", "lon0": math.degrees(_GEOREF["lon0"])}
+    else:
+        out["meta"].update(crs="EPSG:32632", dem_origin=[DEM_ORIGIN_E, DEM_ORIGIN_N], world_offset=WORLD_OFFSET)
     return out
+
+
+# ------------------- MAPPA VERA (map.json) -------------------
+def poly_filter(ring_lonlat):
+    return 'poly:"' + " ".join(f"{lat} {lon}" for lon, lat in ring_lonlat) + '"'
+
+
+def fetch_map(ring_lonlat, bbox, tile_deg, cache_dir):
+    """TUTTO cio' che OSM sa dentro il poligono: nodi con tag, ogni way, le relazioni
+    di geometria (come build_query), a tasselli e con la cache compressa in cache_dir.
+    Rilanciare riprende dai tasselli gia' scaricati; cancellare la cartella per rifare."""
+    import gzip
+    os.makedirs(cache_dir, exist_ok=True)
+    poly = poly_filter(ring_lonlat)
+    merged = {}
+
+    def cached(name, query):
+        path = os.path.join(cache_dir, name + ".json.gz")
+        if os.path.exists(path):
+            with gzip.open(path, "rt", encoding="utf-8") as f:
+                return json.load(f)
+        doc = fetch_overpass(query, attempts=8)
+        with gzip.open(path + ".part", "wt", encoding="utf-8") as f:
+            json.dump(doc, f)
+        os.replace(path + ".part", path)
+        time.sleep(1.0)                          # gentilezza verso il server pubblico
+        return doc
+
+    def add(doc):
+        for el in doc.get("elements", []):
+            merged[(el["type"], el["id"])] = el
+
+    print("  relazioni (tutto il poligono)...", flush=True)
+    add(cached("relations", (
+        "[out:json][timeout:600][maxsize:2000000000];\n"
+        f'relation({poly})[type!~"^(boundary|route|route_master|network|superroute|restriction|public_transport)$"];\n'
+        "out geom;\n")))
+    s, w, n, e = bbox
+    lats = [s + i * tile_deg for i in range(math.ceil((n - s) / tile_deg - 1e-9))]
+    lons = [w + i * tile_deg for i in range(math.ceil((e - w) / tile_deg - 1e-9))]
+    total = len(lats) * len(lons)
+    for i, la in enumerate(lats):
+        for j, lo in enumerate(lons):
+            tile = [round(la, 5), round(lo, 5), round(min(la + tile_deg, n), 5), round(min(lo + tile_deg, e), 5)]
+            box = ",".join(f"{v:.5f}" for v in tile)
+            print(f"  tassello {i * len(lons) + j + 1}/{total} {tile}", flush=True)
+            add(cached("tile_" + box.replace(",", "_"), (
+                "[out:json][timeout:600][maxsize:2000000000];\n(\n"
+                f"  node({poly})({box})(if:count_tags() > 0);\n"
+                f"  way({poly})({box});\n"
+                ");\nout geom;\n")))
+    print(f"  {len(merged)} elementi unici", flush=True)
+    return {"version": 0.6, "generator": "osm_extract.py --map", "elements": list(merged.values())}
+
+
+def write_layers(out, layers_dir):
+    """Un file per livello ({"<livello>": [...], "meta": {...}}): chi serve un solo
+    livello (il terreno, gli edifici di un settore) non deve leggere tutto."""
+    os.makedirs(layers_dir, exist_ok=True)
+    for name, items in out.items():
+        if name == "meta":
+            continue
+        with open(os.path.join(layers_dir, name + ".json"), "w", encoding="utf-8") as f:
+            json.dump({name: items, "meta": out["meta"]}, f, ensure_ascii=False, separators=(",", ":"))
+    with open(os.path.join(layers_dir, "meta.json"), "w", encoding="utf-8") as f:
+        json.dump(out["meta"], f, ensure_ascii=False, indent=1)
 
 
 # ------------------- MAIN -------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--bbox", required=True, help="sud,ovest,nord,est in gradi")
+    ap.add_argument("--map", help="map.json di una mappa vera: poligono, georeferenziazione e cartelle (ignora --bbox/--out)")
+    ap.add_argument("--bbox", help="sud,ovest,nord,est in gradi")
     ap.add_argument("--input", help="risposta grezza gia' scaricata (venice_osm.raw.json o export di overpass-turbo)")
     ap.add_argument("--out", default=os.path.join(HERE, "venice_osm.json"))
     ap.add_argument("--print-query", action="store_true", help="stampa la query da incollare in overpass-turbo ed esce")
+    ap.add_argument("--landcover", action="store_true",
+                    help="solo coperture del suolo, acque, costa e bricole (sorgente di osm_terrain.py), a tasselli")
+    ap.add_argument("--tile", type=float, default=None, help="lato dei tasselli in gradi (default 0.03 con --landcover, 0.05 con --map; 0 = uno solo)")
     args = ap.parse_args()
 
+    if args.map:
+        return main_map(args)
+    if not args.bbox:
+        ap.error("serve --bbox (oppure --map)")
     bbox = [float(v) for v in args.bbox.split(",")]
     if args.print_query:
-        print(build_query(bbox))
+        print(build_landcover_query(bbox) if args.landcover else build_query(bbox))
         return
 
     if args.input:
@@ -522,7 +715,7 @@ def main():
             doc = json.load(f)
     else:
         print(f"Scarico da Overpass il riquadro {bbox} ...")
-        doc = fetch_overpass(build_query(bbox))
+        doc = fetch_landcover(bbox, 0.03 if args.tile is None else args.tile, os.path.splitext(args.out)[0] + ".cache") if args.landcover else fetch_overpass(build_query(bbox))
         raw_path = os.path.splitext(args.out)[0] + ".raw.json"
         with open(raw_path, "w", encoding="utf-8") as f:
             json.dump(doc, f)
@@ -533,7 +726,35 @@ def main():
     out = extract(doc, bbox)
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
+    report(out)
+    print(f"Scritto {args.out} ({os.path.getsize(args.out) / 1e6:.1f} MB)")
 
+
+def main_map(args):
+    """Mappa vera: <mappa>/osm/raw (tasselli grezzi compressi, lo snapshot) e
+    <mappa>/osm/layers (un JSON per livello in coordinate Godot della mappa)."""
+    map_dir = os.path.dirname(os.path.abspath(args.map))
+    with open(args.map, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+    configure_georef(cfg["georef"])
+    ring = cfg["polygon_lonlat"]
+    lons, lats = [p[0] for p in ring], [p[1] for p in ring]
+    bbox = [min(lats), min(lons), max(lats), max(lons)]
+    osm_dir = os.path.join(map_dir, cfg["dirs"]["osm"])
+    os.makedirs(osm_dir, exist_ok=True)
+    # .gdignore: l'editor non scandisce ne' importa centinaia di MB di JSON (FileAccess li legge lo stesso)
+    open(os.path.join(osm_dir, ".gdignore"), "w").close()
+    tile = args.tile or 0.05
+    print(f"Mappa {cfg['name']}: poligono di {len(ring)} vertici, riquadro {bbox}, tasselli da {tile} gradi", flush=True)
+    doc = fetch_map(ring, bbox, tile, os.path.join(osm_dir, "raw"))
+    out = extract(doc, bbox, data_ring_lonlat=ring)
+    out["meta"]["map"] = cfg["name"]
+    write_layers(out, os.path.join(osm_dir, "layers"))
+    report(out)
+    print(f"Livelli scritti in {os.path.join(osm_dir, 'layers')}")
+
+
+def report(out):
     print("Livelli estratti:")
     for name, items in out.items():
         if name == "meta":
@@ -552,9 +773,8 @@ def main():
                      f"{sum(1 for b in items if len(b['rings']) > 1)} con cortili)"
         elif name == "paths":
             detail = f"  ({sum(1 for p in items if p['bridge'])} tratti di ponte, {sum(1 for p in items if p['tunnel'])} in galleria/sottoportego)"
-        print(f"  {name:10s} {len(items):5d}{detail}")
+        print(f"  {name:10s} {len(items):6d}{detail}")
     print(f"Altezza di default (mediana degli edifici che la dichiarano): {out['meta']['default_height']} m")
-    print(f"Scritto {args.out} ({os.path.getsize(args.out) / 1e6:.1f} MB)")
 
 
 if __name__ == "__main__":

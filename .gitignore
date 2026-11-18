@@ -23,3 +23,15 @@ __pycache__/
 *.pyc
 
 demo/*
+
+# Mappe di gioco: i dati generati non si versionano, si rigenerano con la pipeline
+# di addons/venice_builder/tools (skill venice-terrain). In git: map.json, scena, script.
+world/maps/*/osm/
+world/maps/*/terrain/
+world/maps/*/classes/
+world/maps/*/build/
+world/maps/*/far/
+world/maps/*/water/
+
+# log della pipeline
+world/maps/*/*.log
