@@ -186,6 +186,10 @@ SLOT_SPECIAL2,Special 2,Speciale 2
 SLOT_SPECIAL3,Special 3,Speciale 3
 SLOT_BACKPACK,Backpack,Zaino
 SLOT_SECURECONTAINER,Pouch,Pouch
+SLOT_TOP,Top,Busto
+SLOT_LEGS,Legs,Gambe
+SLOT_FOOTWEAR,Footwear,Calzature
+SLOT_GLOVES,Gloves,Guanti
 CATEGORY_GENERIC,Generic,Generico
 CATEGORY_EQUIPMENT,Equipment,Equipaggiamento
 CATEGORY_CONTAINER,Container,Contenitore
@@ -217,6 +221,10 @@ CATEGORY_MONEY,Money,Denaro
 CATEGORY_BARTER,Barter item,Oggetto di scambio
 CATEGORY_INFO,Information,Informazioni
 CATEGORY_SPECIALITEM,Special tool,Strumento speciale
+CATEGORY_TOP,Top,Busto
+CATEGORY_LEGS,Trousers,Pantaloni
+CATEGORY_FOOTWEAR,Footwear,Calzature
+CATEGORY_GLOVES,Gloves,Guanti
 UI_DEBUG_SEA,"Sea: {0} ({1})  ·  level {2} m  ·  {3}     [{4}/{5}] sea state   [{6}] lagoon/open sea","Mare: {0} ({1})  ·  livello {2} m  ·  {3}     [{4}/{5}] stato del mare   [{6}] laguna/mare aperto"
 UI_DEBUG_SEA_LAGOON,lagoon (sheltered),laguna (riparata)
 UI_DEBUG_SEA_OPEN,open sea,mare aperto
@@ -232,4 +240,4 @@ UI_ACTION_VEHICLE_THRUSTER_LEFT,Bow thruster to port,Elica di prua a sinistra
 UI_ACTION_VEHICLE_THRUSTER_RIGHT,Bow thruster to starboard,Elica di prua a dritta
 UI_ACTION_VEHICLE_CAMERA_TOGGLE,Helm camera: first/third person,Visuale al timone: prima/terza persona
 UI_ACTION_VEHICLE_CAMERA_RESET,Helm camera: look at the bow,Visuale al timone: verso la prua
-UI_DEBUG_BOAT,"Boat: {0} kn  ·  {1} rpm  ·  gear {2}  ·  trim {3}°  ·  pitch {4}°  ·  heel {5}°     [{6}/{7}] trim   [{8}/{9}] bow thruster","Barca: {0} nodi  ·  {1} giri/min  ·  marcia {2}  ·  trim {3}°  ·  assetto {4}°  ·  sbandamento {5}°     [{6}/{7}] trim   [{8}/{9}] elica di prua"
+UI_DEBUG_BOAT,"Boat: {0} kn  ·  {1} rpm  ·  throttle {2}  ·  trim {3}°  ·  pitch {4}°  ·  heel {5}°     [{10}/{11}] throttle   [{6}/{7}] trim   [{8}/{9}] bow thruster","Barca: {0} nodi  ·  {1} giri/min  ·  manetta {2}  ·  trim {3}°  ·  assetto {4}°  ·  sbandamento {5}°     [{10}/{11}] manetta   [{6}/{7}] trim   [{8}/{9}] elica di prua"

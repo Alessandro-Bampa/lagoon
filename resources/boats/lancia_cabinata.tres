@@ -1,0 +1,94 @@
+[gd_resource type="Resource" script_class="BoatConfig" format=3]
+
+[ext_resource type="Script" uid="uid://bsgfu4kps7q8c" path="res://vehicles/scripts/BoatConfig.cs" id="1"]
+[ext_resource type="PackedScene" path="res://assets/models/boats/Lancia_Cabinata.glb" id="2"]
+[ext_resource type="Resource" path="res://resources/boats/accessory_ladder.tres" id="5"]
+[ext_resource type="Script" uid="uid://cy4vin6px0eks" path="res://vehicles/scripts/Propulsion/EngineDefinition.cs" id="6"]
+[ext_resource type="Script" uid="uid://d1p2n2jykwij" path="res://vehicles/scripts/Propulsion/GearboxDefinition.cs" id="7"]
+[ext_resource type="Script" uid="uid://cfrnswtwlvfyc" path="res://vehicles/scripts/Propulsion/PropellerDefinition.cs" id="8"]
+[ext_resource type="Script" uid="uid://5c1r86wn5nmo" path="res://vehicles/scripts/Propulsion/FoilDefinition.cs" id="9"]
+[ext_resource type="Script" uid="uid://d241n372inmjy" path="res://vehicles/scripts/Propulsion/InboardDefinition.cs" id="10"]
+[ext_resource type="Script" uid="uid://btpa80e32w62h" path="res://vehicles/scripts/Hydro/HydroCoefficients.cs" id="11"]
+
+[sub_resource type="Resource" id="Keel"]
+script = ExtResource("9")
+Kind = 2
+Mount = "Mount_Keel"
+Area = 0.9
+Span = 0.3
+StallDegrees = 25.0
+DragCoefficient = 0.02
+ChordSegments = 3
+Chord = 4.5
+
+[sub_resource type="Resource" id="Hydro"]
+script = ExtResource("11")
+Hull = 0
+FormFactorK = 0.3
+PressureQuadratic = 0.15
+SuctionQuadratic = 0.1
+ReferenceSpeed = 3.5
+LateralPressureScale = 4.0
+WaveResistanceScale = 1.0
+SlamMaxG = 4.0
+AddedMass = Vector3(0.08, 0.8, 0.8)
+AddedInertia = Vector3(0.4, 0.8, 0.7)
+SafetyLinear = Vector3(0, 0.3, 1.5)
+SafetyAngular = Vector3(1.6, 1.5, 0.4)
+
+[sub_resource type="Resource" id="Engine"]
+script = ExtResource("6")
+Type = 1
+MaxPowerKw = 55.0
+RatedRpm = 3400.0
+IdleRpm = 800.0
+LimiterRpm = 3600.0
+InertiaKgm2 = 0.4
+ThrottleTimeConstant = 0.6
+BsfcGPerKwh = 220.0
+Mass = 450.0
+
+[sub_resource type="Resource" id="Gearbox"]
+script = ExtResource("7")
+RatioForward = 2.5
+RatioReverse = 2.5
+ShiftSeconds = 0.5
+MaxShiftRpm = 1100.0
+
+[sub_resource type="Resource" id="Propeller"]
+script = ExtResource("8")
+Diameter = 0.5
+Pitch = 0.38
+Kt0 = 0.32
+Kq0 = 0.03
+WakeFraction = 0.25
+ThrustDeduction = 0.18
+PropWalkAhead = 0.04
+PropWalkAstern = 0.12
+PropWalkSpeed = 1.5
+InertiaKgm2 = 0.08
+
+[sub_resource type="Resource" id="Rudder"]
+script = ExtResource("9")
+Area = 0.32
+AspectRatioMultiplier = 1.6
+StallDegrees = 35.0
+
+[sub_resource type="Resource" id="Inboard"]
+script = ExtResource("10")
+Engine = SubResource("Engine")
+Propeller = SubResource("Propeller")
+Gearbox = SubResource("Gearbox")
+Rudder = SubResource("Rudder")
+
+[resource]
+script = ExtResource("1")
+Hull = ExtResource("2")
+HullMass = 8550.4
+HullCenterOfMass = Vector3(0, 0.162, 0.447)
+Helm = 1
+Hydro = SubResource("Hydro")
+Inboard = SubResource("Inboard")
+FixedFoils = [SubResource("Keel")]
+WheelTurnsLockToLock = 2.0
+Accessories = [ExtResource("5")]

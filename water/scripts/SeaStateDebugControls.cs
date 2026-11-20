@@ -72,7 +72,10 @@ public partial class SeaStateDebugControls : Node
         float pitch = Mathf.RadToDeg(Mathf.Asin(Mathf.Clamp(-b.Z.Y, -1f, 1f)));
         float heel = Mathf.RadToDeg(Mathf.Asin(Mathf.Clamp(-b.X.Y, -1f, 1f)));
         float knots = new Vector2(boat.SyncLinearVelocity.X, boat.SyncLinearVelocity.Z).Length() / 0.514444f;
-        string gear = boat.SyncPropRpm > 1f ? "F" : boat.SyncPropRpm < -1f ? "R" : "N"; // i18n-ignore
+        // Tacca della manetta dalla leva replicata; tra parentesi il verso dell'elica, che durante il
+        // cambio resta in folle.
+        string prop = boat.SyncPropRpm > 1f ? "F" : boat.SyncPropRpm < -1f ? "R" : "N"; // i18n-ignore
+        string gear = ThrottleNotches.Label(ThrottleNotches.FromLever(boat.SyncThrottle)) + " (" + prop + ")"; // i18n-ignore
         return Loc.T("UI_DEBUG_BOAT",
             Loc.Num(knots, "0.0"),
             Loc.Num(boat.SyncEngineRpm, "0"),
@@ -83,7 +86,9 @@ public partial class SeaStateDebugControls : Node
             Loc.KeyFor("vehicle_trim_down"),
             Loc.KeyFor("vehicle_trim_up"),
             Loc.KeyFor("vehicle_thruster_left"),
-            Loc.KeyFor("vehicle_thruster_right")) + "\n";
+            Loc.KeyFor("vehicle_thruster_right"),
+            Loc.KeyFor("move_down"),
+            Loc.KeyFor("move_up")) + "\n";
     }
 
     public override void _Process(double delta)

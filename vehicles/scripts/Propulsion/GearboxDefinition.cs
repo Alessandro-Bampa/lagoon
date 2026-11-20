@@ -4,8 +4,8 @@ namespace Lagoon;
 
 /// <summary>
 /// Invertitore e riduzione (solo dati). La leva unica ha una zona di folle (±10% della corsa); il cambio
-/// di marcia passa sempre dal folle, con un ritardo, e si rifiuta sopra <see cref="MaxShiftRpm"/>
-/// (il regime viene prima riportato al minimo).
+/// di marcia passa sempre dal folle e innesta dopo <see cref="ShiftSeconds"/>, senza aspettare che il
+/// motore cali: all'innesto la frizione riporta il regime a <see cref="MaxShiftRpm"/> se e' piu' alto.
 /// </summary>
 [GlobalClass, Tool]
 public partial class GearboxDefinition : Resource
@@ -14,10 +14,11 @@ public partial class GearboxDefinition : Resource
     [Export] public float RatioForward { get; set; } = 2.0f;
     [Export] public float RatioReverse { get; set; } = 2.0f;
     [Export] public float Efficiency { get; set; } = 0.96f;
-    /// Tempo d'innesto (s): fuoribordo 0,2-0,5; invertitore idraulico marino 1-2.
+    /// <summary>
+    /// Tempo d'innesto (s) contato da quando si lascia la marcia precedente: il passaggio dal folle con
+    /// la manetta a tacche ne consuma gia' una parte. Fuoribordo 0,2-0,3; invertitore marino 0,5-0,8.
+    /// </summary>
     [Export] public float ShiftSeconds { get; set; } = 0.3f;
-    /// Permanenza minima in folle fra avanti e indietro (s).
-    [Export] public float NeutralDwellSeconds { get; set; } = 0.4f;
-    /// Sopra questo regime il cambio aspetta che il motore cali.
+    /// Regime massimo all'innesto: sopra, la frizione dell'invertitore lo riporta qui.
     [Export] public float MaxShiftRpm { get; set; } = 1500f;
 }

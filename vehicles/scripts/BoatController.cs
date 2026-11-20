@@ -637,7 +637,8 @@ public partial class BoatController : RigidBody3D
 
     /// <summary>
     /// Intento di guida: leva, governo, trim (−1 giu' / +1 su / 0) ed elica di prua, tutti −1..1 e
-    /// relativi al veicolo.
+    /// relativi al veicolo. La leva e' la POSIZIONE della manetta (al timone viene dalle tacche di
+    /// <see cref="ThrottleNotches"/>), non un tasto tenuto.
     /// </summary>
     public void SubmitControls(float throttle, float steer, float trim, float thruster)
     {

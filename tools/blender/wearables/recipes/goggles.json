@@ -1,0 +1,85 @@
+{
+  "item_id": "goggles",
+  "slot": "Eyewear",
+  "layer": 2,
+  "notes": "Occhiali protettivi con montatura in plastica grigio-verde, lenti fume, elastico nero.",
+  "colors": {
+    "frame": "#4b5048",
+    "lens": "#1b2224",
+    "strap": "#151515"
+  },
+  "texture_size": 128,
+  "ground": "stand",
+  "covers": [],
+  "parts": [
+    {
+      "type": "cup",
+      "name": "eye_l",
+      "center": [
+        0.034,
+        "eye-0.004",
+        "eye"
+      ],
+      "axis": [
+        0,
+        -1,
+        0
+      ],
+      "radius": 0.022,
+      "depth": 0.02,
+      "scale": [
+        1.3,
+        1.0
+      ],
+      "segments": 10,
+      "region": "Face",
+      "material": "plastic",
+      "color": "frame",
+      "mirror": true
+    },
+    {
+      "type": "band",
+      "name": "strap",
+      "z": "eye+0.005",
+      "center_bone": "Head",
+      "width": 0.022,
+      "offset": 0.008,
+      "segments": 16,
+      "regions": [
+        "Scalp",
+        "Face"
+      ],
+      "search_radius": 0.16,
+      "rigid_bone": "Head",
+      "rigidity": 1.0,
+      "material": "nylon",
+      "color": "strap",
+      "tilt": 15
+    }
+  ],
+  "details": [
+    {
+      "kind": "rect",
+      "at": [
+        0.034,
+        "eye"
+      ],
+      "size": [
+        0.05,
+        0.034
+      ],
+      "mirror": true,
+      "face": "front",
+      "color": "lens",
+      "parts": [
+        0
+      ]
+    }
+  ],
+  "item": {
+    "width": 1,
+    "height": 1,
+    "weight": 0.2
+  },
+  "wear": 0.3
+}

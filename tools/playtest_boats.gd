@@ -246,9 +246,9 @@ func _run() -> void:
 	level.add_child(chase)
 
 	var moorings := {}
-	for n in ["BarchinoTiller", "BarchinoConsole", "Gozzo", "Peschereccio", "Vaporetto"]:
+	for n in ["BarchinoTiller", "BarchinoConsole", "Gozzo", "Peschereccio", "Vaporetto", "LanciaCabinata"]:
 		moorings[n] = (level.get_node(n) as Node3D).global_transform
-	for boat_name in ["BarchinoTiller", "BarchinoConsole", "Gozzo", "Peschereccio", "Vaporetto"]:
+	for boat_name in ["BarchinoTiller", "BarchinoConsole", "Gozzo", "Peschereccio", "Vaporetto", "LanciaCabinata"]:
 		if not only.is_empty() and not boat_name in only:
 			continue
 		var boat: RigidBody3D = level.get_node(boat_name)

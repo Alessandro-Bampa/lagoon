@@ -1,0 +1,178 @@
+{
+  "item_id": "work_jacket",
+  "slot": "Top",
+  "layer": 2,
+  "references": [],
+  "notes": "Giacca da lavoro in tela cachi-marrone, cerniera centrale, due tasche al petto con patta, colletto rialzato, polsini con bordo. Sopra i pantaloni (strato 2).",
+  "colors": {
+    "base": "#6b5b3f",
+    "dark": "#3e3424",
+    "trim": "#4a3f2c",
+    "zip": "#8d887c"
+  },
+  "texture_size": 512,
+  "ground": "lay",
+  "parts": [
+    {
+      "type": "shell",
+      "name": "body",
+      "regions": [
+        "Chest",
+        "Abdomen",
+        "UpperArm",
+        "Forearm",
+        "Pelvis",
+        "Neck",
+        "Thigh"
+      ],
+      "clip": [
+        {
+          "axis": "z",
+          "min": "pelvis-0.09"
+        },
+        {
+          "axis": "z",
+          "max": "neck_01+0.025"
+        },
+        {
+          "axis": "x_abs",
+          "max": "hand_l.x"
+        }
+      ],
+      "offset": 0.017,
+      "smooth": 1,
+      "material": "canvas",
+      "color": "base"
+    },
+    {
+      "type": "band",
+      "name": "collar",
+      "z": "neck_01+0.035",
+      "center_bone": "neck_01",
+      "width": 0.055,
+      "offset": 0.016,
+      "segments": 14,
+      "regions": [
+        "Neck"
+      ],
+      "search_radius": 0.11,
+      "thickness": 0.006,
+      "tilt": -12,
+      "material": "canvas",
+      "color": "trim"
+    },
+    {
+      "type": "band",
+      "name": "cuff_l",
+      "bone": "lowerarm_l",
+      "at": 0.95,
+      "width": 0.045,
+      "offset": 0.021,
+      "segments": 10,
+      "regions": [
+        "Forearm"
+      ],
+      "search_radius": 0.09,
+      "material": "canvas",
+      "color": "trim",
+      "mirror": true
+    },
+    {
+      "type": "box",
+      "name": "pocket_l",
+      "face": "front",
+      "at": [
+        0.095,
+        "spine_03+0.13"
+      ],
+      "size": [
+        0.11,
+        0.12,
+        0.018
+      ],
+      "offset": 0.017,
+      "bevel": 0.25,
+      "follow": 0.7,
+      "material": "canvas",
+      "color": "base",
+      "mirror": true
+    }
+  ],
+  "details": [
+    {
+      "kind": "line",
+      "axis": "x",
+      "at": 0.0,
+      "width": 0.012,
+      "color": "dark",
+      "parts": [
+        0
+      ],
+      "face": "front"
+    },
+    {
+      "kind": "line",
+      "axis": "x",
+      "at": 0.0,
+      "width": 0.004,
+      "color": "zip",
+      "parts": [
+        0
+      ],
+      "face": "front",
+      "dashed": true
+    },
+    {
+      "kind": "line",
+      "axis": "x",
+      "at": "upperarm_l.x-0.01",
+      "mirror": true,
+      "width": 0.005,
+      "color": "dark",
+      "dashed": true,
+      "parts": [
+        0
+      ]
+    },
+    {
+      "kind": "rect",
+      "at": [
+        0.095,
+        "spine_03+0.175"
+      ],
+      "size": [
+        0.12,
+        0.035
+      ],
+      "mirror": true,
+      "face": "front",
+      "color": "trim",
+      "parts": [
+        3
+      ]
+    },
+    {
+      "kind": "line",
+      "axis": "z",
+      "at": "spine_01+0.02",
+      "width": 0.006,
+      "color": "dark",
+      "parts": [
+        0
+      ],
+      "dashed": true
+    }
+  ],
+  "item": {
+    "width": 3,
+    "height": 3,
+    "weight": 1.3
+  },
+  "wear": 0.6,
+  "covers": [
+    "Chest",
+    "Abdomen",
+    "UpperArm",
+    "Forearm"
+  ]
+}

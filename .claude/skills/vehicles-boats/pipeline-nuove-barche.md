@@ -159,9 +159,8 @@ prova dice di toccare. Tutti T salvo `Hull`.
 |---|---|---|---|
 | `RatioForward` / `RatioReverse` | – | S | dalla scheda (es. fuoribordo 2,00 / 2,08; Yanmar KM2P-1 2,21 o 2,62 avanti, 3,06 indietro) |
 | `Efficiency` | – | · | 0,96 |
-| `ShiftSeconds` | s | · | fuoribordo 0,2-0,5; idraulico marino 1-2 |
-| `NeutralDwellSeconds` | s | · | 0,4 fuoribordo; 0,5-1 diesel |
-| `MaxShiftRpm` | giri/min | · | ~1,4-1,8 × minimo (preset: 1500/850, 1100/800, 900/600) |
+| `ShiftSeconds` | s | · | contati da quando si lascia la marcia (il passaggio dal folle conta): fuoribordo 0,2-0,3; entrobordo 0,5-0,8 (preset 0,5 / 0,7 / 0,8). Piu' lungo e la manetta a tacche "non risponde" |
+| `MaxShiftRpm` | giri/min | · | regime massimo all'innesto: sopra, la frizione lo riporta qui (non si aspetta). ~1,4-1,8 × minimo (preset: 1500/850, 1100/800, 900/600) |
 
 #### Elica — `PropellerDefinition`
 

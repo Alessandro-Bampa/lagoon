@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="WearableDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://inventory/scripts/data/WearableDefinition.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+ItemId = "rubber_boots"
+Width = 2
+Height = 2
+Weight = 1.8
+Category = 33
+Layer = 2
+CoversRegions = 12288

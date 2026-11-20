@@ -1,0 +1,165 @@
+{
+  "item_id": "body_armor",
+  "slot": "BodyArmor",
+  "layer": 3,
+  "notes": "Corpetto porta-piastre in cordura coyote: piastra davanti e dietro, spallacci, fascia addominale.",
+  "colors": {
+    "base": "#6e6248",
+    "dark": "#4a412f",
+    "webbing": "#57503c"
+  },
+  "texture_size": 256,
+  "ground": "lay",
+  "covers": [],
+  "parts": [
+    {
+      "type": "panel",
+      "name": "front",
+      "face": "front",
+      "center": [
+        0.0,
+        "spine_03+0.05"
+      ],
+      "size": [
+        0.29,
+        0.33
+      ],
+      "depth": 0.022,
+      "offset": 0.024,
+      "res": [
+        6,
+        7
+      ],
+      "corner": 0.18,
+      "curve": 0.45,
+      "rigid_bone": "spine_03",
+      "rigidity": 0.5,
+      "material": "cordura",
+      "color": "base"
+    },
+    {
+      "type": "panel",
+      "name": "back",
+      "face": "back",
+      "center": [
+        0.0,
+        "spine_03+0.06"
+      ],
+      "size": [
+        0.3,
+        0.35
+      ],
+      "depth": 0.022,
+      "offset": 0.024,
+      "res": [
+        6,
+        7
+      ],
+      "corner": 0.15,
+      "curve": 0.45,
+      "rigid_bone": "spine_03",
+      "rigidity": 0.5,
+      "material": "cordura",
+      "color": "base"
+    },
+    {
+      "type": "strap",
+      "name": "shoulder_l",
+      "points": [
+        [
+          0.085,
+          "spine_03+0.2",
+          "front"
+        ],
+        [
+          0.11,
+          0.0,
+          "neck_01-0.02"
+        ],
+        [
+          0.085,
+          "spine_03+0.22",
+          "back"
+        ]
+      ],
+      "width": 0.05,
+      "thickness": 0.01,
+      "offset": 0.026,
+      "samples": 5,
+      "material": "cordura",
+      "color": "base",
+      "mirror": true
+    },
+    {
+      "type": "band",
+      "name": "cummerbund",
+      "z": "spine_01+0.02",
+      "width": 0.12,
+      "offset": 0.026,
+      "segments": 16,
+      "regions": [
+        "Abdomen",
+        "Pelvis"
+      ],
+      "search_radius": 0.25,
+      "thickness": 0.008,
+      "rigid_bone": "spine_01",
+      "rigidity": 0.3,
+      "material": "cordura",
+      "color": "webbing"
+    }
+  ],
+  "details": [
+    {
+      "kind": "line",
+      "axis": "z",
+      "at": "spine_03+0.02",
+      "width": 0.025,
+      "color": "webbing",
+      "parts": [
+        0,
+        1
+      ]
+    },
+    {
+      "kind": "line",
+      "axis": "z",
+      "at": "spine_03-0.03",
+      "width": 0.025,
+      "color": "webbing",
+      "parts": [
+        0,
+        1
+      ]
+    },
+    {
+      "kind": "line",
+      "axis": "z",
+      "at": "spine_03-0.08",
+      "width": 0.025,
+      "color": "webbing",
+      "parts": [
+        0,
+        1
+      ]
+    },
+    {
+      "kind": "line",
+      "axis": "z",
+      "at": "spine_01+0.02",
+      "width": 0.01,
+      "color": "dark",
+      "parts": [
+        3
+      ],
+      "dashed": true
+    }
+  ],
+  "item": {
+    "width": 3,
+    "height": 3,
+    "weight": 5.0
+  },
+  "wear": 0.6,
+  "first_person": false
+}

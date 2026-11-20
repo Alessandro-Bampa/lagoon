@@ -28,6 +28,16 @@ public partial class VehicleInput : Node
     private GameManager _game = null!;
     private float _sinceLastSend;
 
+    /// <summary>
+    /// Tacca della manetta (<see cref="ThrottleNotches"/>): W/S la spostano di una, e resta li' finche'
+    /// non la si muove (anche a inventario aperto). Torna in folle a ogni cambio di timone.
+    /// </summary>
+    private int _notch;
+    private BoatController? _notchBoat;
+
+    /// Tacca corrente della manetta del pilota locale (per la resa locale).
+    public int Notch => _notch;
+
     /// Visuale in terza persona al timone (solo sull'avatar locale).
     private BoatChaseCamera? _chaseCamera;
 
@@ -59,7 +69,15 @@ public partial class VehicleInput : Node
         if (boat == null || !GodotObject.IsInstanceValid(boat))
         {
             _sinceLastSend = SendIntervalSeconds; // il prossimo intento parte subito
+            _notch = 0;
+            _notchBoat = null;
             return;
+        }
+        if (boat != _notchBoat)
+        {
+            // Timone appena preso: si parte in folle (l'host ha appena azzerato i comandi).
+            _notch = 0;
+            _notchBoat = boat;
         }
 
         _sinceLastSend += (float)delta;
@@ -76,7 +94,8 @@ public partial class VehicleInput : Node
         // camera come si fa per il camminare. Al timone ci si puo' guardare attorno, e il timone
         // non deve cambiare significato mentre lo si fa. Il trim e' una velocita' (tenuto = si muove
         // a 2-4°/s); toccarlo toglie il trim all'assistenza finche' non si lascia il timone.
-        _player.DrivingBoat?.SubmitControls(-motion.Y, motion.X, trim, thruster);
+        // La leva e' la posizione della manetta a tacche (W/S in _UnhandledInput), non W/S tenuti.
+        _player.DrivingBoat?.SubmitControls(ThrottleNotches.Lever(_notch), motion.X, trim, thruster);
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -96,6 +115,20 @@ public partial class VehicleInput : Node
             if (@event.IsActionPressed("vehicle_camera_reset"))
             {
                 _chaseCamera.ResetView();
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+        }
+
+        // Manetta a tacche: una pressione = una tacca (niente ripetizione tenendo premuto). Il pilota
+        // non cammina, quindi W/S al timone sono liberi; lo sterzo (A/D) resta a pressione.
+        if (_player.DrivingBoat != null)
+        {
+            int step = @event.IsActionPressed("move_up") ? 1 : @event.IsActionPressed("move_down") ? -1 : 0;
+            if (step != 0)
+            {
+                _notch = Mathf.Clamp(_notch + step, ThrottleNotches.MinNotch, ThrottleNotches.MaxNotch);
+                _sinceLastSend = SendIntervalSeconds; // la nuova tacca parte al prossimo passo
                 GetViewport().SetInputAsHandled();
                 return;
             }

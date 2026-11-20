@@ -1,0 +1,56 @@
+{
+  "item_id": "balaclava",
+  "slot": "FaceCover",
+  "layer": 1,
+  "notes": "Passamontagna di lana nera a coste con apertura per gli occhi, scende sul collo.",
+  "colors": {
+    "base": "#1e1e20"
+  },
+  "texture_size": 256,
+  "ground": "lay",
+  "parts": [
+    {
+      "type": "shell",
+      "name": "hood",
+      "regions": [
+        "Scalp",
+        "Face",
+        "Jaw",
+        "Neck",
+        "Chest"
+      ],
+      "clip": [
+        {
+          "axis": "z",
+          "min": "neck_01-0.02"
+        }
+      ],
+      "offset": 0.005,
+      "smooth": 1,
+      "material": "knit",
+      "color": "base",
+      "holes": [
+        {
+          "x": 0.062,
+          "z": [
+            "eye-0.024",
+            "eye+0.024"
+          ],
+          "y_max": "eye+0.07"
+        }
+      ],
+      "hem_snap": 0.06
+    }
+  ],
+  "details": [],
+  "item": {
+    "width": 1,
+    "height": 1,
+    "weight": 0.1
+  },
+  "wear": 0.4,
+  "covers": [
+    "Scalp",
+    "Jaw"
+  ]
+}

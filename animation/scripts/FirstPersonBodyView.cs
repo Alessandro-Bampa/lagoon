@@ -29,6 +29,36 @@ public static class FirstPersonBodyView
 {
     private const string ViewSuffix = "FirstPerson";
     private const string SeatedSuffix = "FirstPersonSeated";
+    private const string BackOffsetMeta = "first_person_back_offset";
+
+    /// Meta da mettere su una mesh skinnata (i vestiti di <c>CharacterOutfit</c>) perche' nella copia
+    /// le parti nascoste vengano tolte invece che collassate.
+    public const string CullMeta = "first_person_cull";
+
+    /// Copia di un capo interamente nascosto (elmetto, zaino): nessuna superficie.
+    private static readonly ArrayMesh EmptyMesh = new();
+
+    /// Copie gia' calcolate per mesh sorgente (normale, seduti): i capi si rimettono spesso.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ArrayMesh, ArrayMesh?[]> Cache = new();
+
+    /// True se <see cref="Build"/> e' stato chiamato su questo scheletro (avatar locale).
+    public static bool IsBuilt(Skeleton3D skeleton) => skeleton.HasMeta(BackOffsetMeta);
+
+    /// <summary>
+    /// Rifa le copie dopo che sono cambiate le mesh skinnate (vestiti indossati o tolti). Non fa nulla
+    /// se il corpo non e' mai stato sdoppiato. Dopo, chi la chiama rimette la vista con <see cref="SetView"/>.
+    /// </summary>
+    public static void Rebuild(Node root, Skeleton3D skeleton)
+    {
+        if (!IsBuilt(skeleton))
+            return;
+        foreach (Node node in root.FindChildren("*" + ViewSuffix + "*", nameof(MeshInstance3D), true, false))
+        {
+            node.GetParent().RemoveChild(node);
+            node.QueueFree();
+        }
+        Build(root, skeleton, (float)skeleton.GetMeta(BackOffsetMeta));
+    }
 
     /// <summary>
     /// Sdoppia ogni mesh skinnata su <paramref name="skeleton"/> sotto <paramref name="root"/>.
@@ -43,17 +73,34 @@ public static class FirstPersonBodyView
             GD.PushWarning($"[FirstPersonBodyView] osso '{HumanoidBones.Spine}' assente: il corpo resta intero.");
             return;
         }
+        skeleton.SetMeta(BackOffsetMeta, backOffset);
 
         foreach (Node node in root.FindChildren("*", nameof(MeshInstance3D), true, false))
         {
             if (node is not MeshInstance3D source
                 || source.Mesh is not ArrayMesh mesh
+                || source.Name.ToString().Contains(ViewSuffix)
+                || source.IsQueuedForDeletion()
                 || source.GetNodeOrNull(source.Skeleton) != skeleton)
                 continue;
 
-            ArrayMesh? collapsed = BuildCollapsed(mesh, source.Skin, skeleton, bone);
-            if (collapsed == null)
-                continue;
+            // Un capo (CullMeta) non si collassa: i suoi triangoli nascosti si TOLGONO. Una giacca
+            // collassata sulla spina diventerebbe un sacco davanti alle gambe; tolta, ne resta l'orlo.
+            bool cull = source.HasMeta(CullMeta);
+            if (!Cache.TryGetValue(mesh, out ArrayMesh?[]? copies))
+            {
+                copies = new[]
+                {
+                    BuildCollapsed(mesh, source.Skin, skeleton, bone, null, cull),
+                    neck >= 0 ? BuildCollapsed(mesh, source.Skin, skeleton, bone, SeatedPivots(skeleton), cull) : null,
+                };
+                Cache.Add(mesh, copies);
+            }
+            // Una mesh senza nulla da collassare (stivali, pantaloni) si copia comunque: deve
+            // arretrare come il resto del corpo, o starebbe davanti ai piedi.
+            ArrayMesh collapsed = copies[0] ?? mesh;
+            // La maschera delle regioni coperte dai vestiti (CharacterOutfit) vale anche per le copie.
+            Variant hidden = source.GetInstanceShaderParameter(CharacterOutfit.HiddenRegionsParam);
 
             var view = new MeshInstance3D
             {
@@ -68,12 +115,14 @@ public static class FirstPersonBodyView
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
             };
             source.GetParent().AddChild(view);
+            if (hidden.VariantType != Variant.Type.Nil)
+                view.SetInstanceShaderParameter(CharacterOutfit.HiddenRegionsParam, hidden);
             source.CastShadow = GeometryInstance3D.ShadowCastingSetting.ShadowsOnly;
 
-            ArrayMesh? seated = neck >= 0 ? BuildCollapsed(mesh, source.Skin, skeleton, bone, SeatedPivots(skeleton)) : null;
+            ArrayMesh? seated = neck >= 0 ? copies[1] ?? mesh : null;
             if (seated != null)
             {
-                source.GetParent().AddChild(new MeshInstance3D
+                var seatedView = new MeshInstance3D
                 {
                     Name = source.Name + SeatedSuffix,
                     Mesh = seated,
@@ -84,7 +133,10 @@ public static class FirstPersonBodyView
                     MaterialOverride = source.MaterialOverride,
                     CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
                     Visible = false,
-                });
+                };
+                source.GetParent().AddChild(seatedView);
+                if (hidden.VariantType != Variant.Type.Nil)
+                    seatedView.SetInstanceShaderParameter(CharacterOutfit.HiddenRegionsParam, hidden);
             }
         }
     }
@@ -155,7 +207,7 @@ public static class FirstPersonBodyView
     /// null se non c'e' nulla da collassare.
     /// </summary>
     private static ArrayMesh? BuildCollapsed(ArrayMesh source, Skin? skin, Skeleton3D skeleton, int bone,
-        System.Func<int, int>? pivotFor = null)
+        System.Func<int, int>? pivotFor = null, bool cull = false)
     {
         if (source.GetBlendShapeCount() > 0)
         {
@@ -179,6 +231,7 @@ public static class FirstPersonBodyView
 
             // 4 oppure 8 influenze per vertice: lo dice la lunghezza dell'array.
             int perVertex = vertices.Length > 0 ? bones.Length / vertices.Length : 0;
+            var gone = new bool[vertices.Length];
             for (int v = 0; v < vertices.Length && perVertex > 0; v++)
             {
                 // Il vertice va TUTTO sul pivot dell'influenza nascosta piu' pesante: con una media,
@@ -222,18 +275,38 @@ public static class FirstPersonBodyView
                 }
 
                 vertices[v] = vertices[v].Lerp(target, Mathf.Min(weight, 1f));
+                gone[v] = weight >= 0.5f;
                 changed = true;
             }
 
             arrays[(int)Mesh.ArrayType.Vertex] = vertices;
             arrays[(int)Mesh.ArrayType.Bones] = bones;
 
+            if (cull && arrays[(int)Mesh.ArrayType.Index].VariantType != Variant.Type.Nil)
+            {
+                int[] index = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+                var kept = new System.Collections.Generic.List<int>(index.Length);
+                for (int t = 0; t + 2 < index.Length; t += 3)
+                {
+                    if (gone[index[t]] || gone[index[t + 1]] || gone[index[t + 2]])
+                        continue;
+                    kept.Add(index[t]);
+                    kept.Add(index[t + 1]);
+                    kept.Add(index[t + 2]);
+                }
+                if (kept.Count == 0)
+                    continue;          // tutto nascosto: niente superficie
+                arrays[(int)Mesh.ArrayType.Index] = kept.ToArray();
+            }
+
             // I LOD dell'import non si copiano: questa mesh la guarda solo chi ci sta dentro.
             Mesh.ArrayFormat flags = source.SurfaceGetFormat(s) & Mesh.ArrayFormat.FlagUse8BoneWeights;
             result.AddSurfaceFromArrays(source.SurfaceGetPrimitiveType(s), arrays, flags: flags);
-            result.SurfaceSetMaterial(s, source.SurfaceGetMaterial(s));
+            result.SurfaceSetMaterial(result.GetSurfaceCount() - 1, source.SurfaceGetMaterial(s));
         }
 
+        if (cull && changed && result.GetSurfaceCount() == 0)
+            return EmptyMesh;
         return changed ? result : null;
     }
 

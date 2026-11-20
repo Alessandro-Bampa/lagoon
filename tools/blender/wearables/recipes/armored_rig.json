@@ -1,0 +1,179 @@
+{
+  "item_id": "armored_rig",
+  "slot": "ArmoredRig",
+  "layer": 4,
+  "notes": "Gilet corazzato nero-verde: piastre davanti e dietro, tre tasche frontali, spallacci imbottiti.",
+  "colors": {
+    "base": "#383d31",
+    "dark": "#22251d",
+    "flap": "#2f3329"
+  },
+  "texture_size": 256,
+  "ground": "lay",
+  "covers": [],
+  "parts": [
+    {
+      "type": "panel",
+      "name": "front",
+      "face": "front",
+      "center": [
+        0.0,
+        "spine_03+0.0"
+      ],
+      "size": [
+        0.31,
+        0.38
+      ],
+      "depth": 0.026,
+      "offset": 0.026,
+      "res": [
+        6,
+        8
+      ],
+      "corner": 0.15,
+      "curve": 0.45,
+      "rigid_bone": "spine_03",
+      "rigidity": 0.5,
+      "material": "cordura",
+      "color": "base"
+    },
+    {
+      "type": "panel",
+      "name": "back",
+      "face": "back",
+      "center": [
+        0.0,
+        "spine_03+0.04"
+      ],
+      "size": [
+        0.31,
+        0.38
+      ],
+      "depth": 0.026,
+      "offset": 0.026,
+      "res": [
+        6,
+        8
+      ],
+      "corner": 0.15,
+      "curve": 0.45,
+      "rigid_bone": "spine_03",
+      "rigidity": 0.5,
+      "material": "cordura",
+      "color": "base"
+    },
+    {
+      "type": "box",
+      "name": "pouch",
+      "face": "front",
+      "at": [
+        0.0,
+        "spine_02+0.0"
+      ],
+      "size": [
+        0.08,
+        0.13,
+        0.04
+      ],
+      "offset": 0.052,
+      "bevel": 0.25,
+      "follow": 0.2,
+      "rigid_bone": "spine_02",
+      "rigidity": 0.7,
+      "material": "cordura",
+      "color": "base"
+    },
+    {
+      "type": "box",
+      "name": "pouch_side",
+      "face": "front",
+      "at": [
+        0.092,
+        "spine_02+0.0"
+      ],
+      "size": [
+        0.08,
+        0.13,
+        0.04
+      ],
+      "offset": 0.052,
+      "bevel": 0.25,
+      "follow": 0.2,
+      "rigid_bone": "spine_02",
+      "rigidity": 0.7,
+      "material": "cordura",
+      "color": "base",
+      "mirror": true
+    },
+    {
+      "type": "strap",
+      "name": "shoulder_l",
+      "points": [
+        [
+          0.09,
+          "spine_03+0.18",
+          "front"
+        ],
+        [
+          0.11,
+          0.0,
+          "neck_01-0.02"
+        ],
+        [
+          0.09,
+          "spine_03+0.2",
+          "back"
+        ]
+      ],
+      "width": 0.06,
+      "thickness": 0.014,
+      "offset": 0.028,
+      "samples": 5,
+      "material": "cordura",
+      "color": "dark",
+      "mirror": true
+    }
+  ],
+  "details": [
+    {
+      "kind": "rect",
+      "at": [
+        0.0,
+        "spine_02+0.05"
+      ],
+      "size": [
+        0.085,
+        0.04
+      ],
+      "face": "front",
+      "color": "flap",
+      "parts": [
+        2
+      ]
+    },
+    {
+      "kind": "rect",
+      "at": [
+        0.092,
+        "spine_02+0.05"
+      ],
+      "size": [
+        0.085,
+        0.04
+      ],
+      "mirror": true,
+      "face": "front",
+      "color": "flap",
+      "parts": [
+        3
+      ]
+    }
+  ],
+  "item": {
+    "width": 3,
+    "height": 3,
+    "weight": 6.5
+  },
+  "wear": 0.6,
+  "first_person": false
+}

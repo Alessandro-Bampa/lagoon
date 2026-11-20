@@ -1,0 +1,30 @@
+{
+  "item_id": "vest",
+  "slot": "ChestRig",
+  "layer": 4,
+  "notes": "Rig tattico verde oliva: pannello sul petto con quattro tasche porta-caricatori, bretelle incrociate sulla schiena. Sta sopra un eventuale corpetto.",
+  "colors": {"base": "#4d5236", "dark": "#33371f", "flap": "#42472d"},
+  "texture_size": 256,
+  "ground": "lay",
+  "covers": [],
+  "parts": [
+    {"type": "panel", "name": "panel", "face": "front", "center": [0.0, "spine_02+0.04"], "size": [0.31, 0.2],
+     "depth": 0.018, "offset": 0.05, "res": [6, 4], "corner": 0.12, "curve": 0.5,
+     "rigid_bone": "spine_02", "rigidity": 0.6, "material": "nylon", "color": "base"},
+    {"type": "box", "name": "pouch_a", "face": "front", "at": [0.04, "spine_02+0.07"], "size": [0.066, 0.12, 0.035],
+     "offset": 0.068, "bevel": 0.25, "follow": 0.2, "rigid_bone": "spine_02", "rigidity": 0.7,
+     "material": "nylon", "color": "base", "mirror": true},
+    {"type": "box", "name": "pouch_b", "face": "front", "at": [0.112, "spine_02+0.07"], "size": [0.066, 0.12, 0.035],
+     "offset": 0.068, "bevel": 0.25, "follow": 0.2, "rigid_bone": "spine_02", "rigidity": 0.7,
+     "material": "nylon", "color": "base", "mirror": true},
+    {"type": "strap", "name": "harness_l", "points": [[0.1, "spine_02+0.1", "front"], [0.105, 0.0, "neck_01-0.02"],
+     [0.06, "spine_03+0.08", "back"], [-0.13, "spine_01+0.02", "back"]], "width": 0.04, "thickness": 0.006,
+     "offset": 0.045, "samples": 5, "material": "nylon", "color": "dark", "mirror": true}
+  ],
+  "details": [
+    {"kind": "rect", "at": [0.04, "spine_02+0.115"], "size": [0.07, 0.04], "mirror": true, "face": "front", "color": "flap", "parts": [1]},
+    {"kind": "rect", "at": [0.112, "spine_02+0.115"], "size": [0.07, 0.04], "mirror": true, "face": "front", "color": "flap", "parts": [2]}
+  ],
+  "item": {"width": 3, "height": 3, "weight": 1.7},
+  "wear": 0.6
+}

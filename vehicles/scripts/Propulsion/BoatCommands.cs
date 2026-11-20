@@ -6,7 +6,7 @@ namespace Lagoon;
 /// </summary>
 public struct BoatCommands
 {
-    /// Leva unica −1..1 (±10% = folle).
+    /// Leva unica −1..1 (±10% = folle), posizione della manetta (vedi ThrottleNotches).
     public float Throttle;
     /// Sterzo/timone −1..1: positivo = vira a dritta.
     public float Steer;

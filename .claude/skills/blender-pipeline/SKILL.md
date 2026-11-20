@@ -9,7 +9,9 @@ Tutti gli asset di `assets/models/` vengono da due pack liberi (vedi `assets/mod
 
 | File | Da | Come |
 |---|---|---|
-| `characters/Mannequin.glb` | Universal Animation Library [Standard] (Quaternius, CC0) | copia di `Unreal-Godot/UAL1_Standard.glb` + BoneMap nell'import |
+| `characters/Character_Base.glb` | corpo MakeHuman (CC0) sullo scheletro UAL, con le 43 clip | `tools/blender/build_character_base.py` (skill `character-wearables`) |
+| `characters/Mannequin.glb` | Universal Animation Library [Standard] (Quaternius, CC0) | copia di `Unreal-Godot/UAL1_Standard.glb`: oggi **solo sorgente** di scheletro e clip per `build_character_base.py`, nessuna scena lo usa |
+| `wearables/*.glb`, `wearables/fp/*.glb` | capi indossabili | `tools/blender/wearables/build_wearable.py` (skill `character-wearables`) |
 | `weapons/VM_<Arma>.glb`, `weapons/W_<Arma>.glb` | Retro Weapon Pack | `tools/blender/build_weapon_viewmodels.py` |
 
 I pack **non stanno nel repo** (gli FBX delle animazioni pesano fino a 65 MB l'uno): si riscaricano e
@@ -52,10 +54,11 @@ serializzabile). L'I/O su file è permesso.
   sopravvive). **Dopo aver aperto un `.blend` del pack la scena è in centimetri** (`scale_length`
   0.01): ripartire sempre da una scena vuota in metri prima di importare.
 
-## 2. Il corpo: Mannequin.glb
+## 2. Il corpo: Character_Base.glb (scheletro e clip di Mannequin.glb)
 
-Nessun passaggio da Blender. Si copia il `.glb` e si segue `Godot_Setup.png` del pack, cioè nel
-`.import`:
+Il corpo lo genera `build_character_base.py` (skill `character-wearables` §1); scheletro e clip
+vengono dal manichino UAL, di cui valgono le regole qui sotto. Nel `.import` (anche di ogni capo
+indossato: lo scrive la pipeline dei capi):
 
 ```
 _subresources={"nodes": {"PATH:Armature/Skeleton3D": {
@@ -129,4 +132,6 @@ Lo script stampa per ogni arma le clip (frame, braccia/arma), i marcatori e il c
 
 - Dal pack sono convertiti solo fucile e pistola: SMG e fucile a pompa ci sono ma non sono in `WEAPONS`.
 - Gli effetti del pack (`FX/`: vampa, fumo, detriti) e i proiettili non sono importati.
-- Nessun corpo "vero": il manichino UAL è il corpo di prova per giocatori e NPC.
+- La mesh delle braccia del pack (`FPS_Arms_Mesh`) e' ancora nei `VM_*.glb` ma a runtime si nasconde:
+  al suo posto `ViewmodelOutfit` mette braccia e capi del corpo (skill `character-wearables`). Il pack
+  non e' nel repo, quindi i `VM_*.glb` non sono stati rigenerati.

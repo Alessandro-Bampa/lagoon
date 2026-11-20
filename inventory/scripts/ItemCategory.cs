@@ -43,6 +43,10 @@ public enum ItemCategory
     Barter = 28,
     Info = 29,
     SpecialItem = 30,
+    Top = 31,
+    Legs = 32,
+    Footwear = 33,
+    Gloves = 34,
 }
 
 /// Albero delle categorie e ordinamento. Dato statico di progetto, identico su ogni peer.
@@ -58,6 +62,7 @@ public static class ItemCategories
         ItemCategory.Headwear or ItemCategory.Earpiece or ItemCategory.FaceCover or ItemCategory.Eyewear
             or ItemCategory.Armband or ItemCategory.BodyArmor or ItemCategory.ChestRig
             or ItemCategory.Backpack or ItemCategory.SecureContainer or ItemCategory.Pockets
+            or ItemCategory.Top or ItemCategory.Legs or ItemCategory.Footwear or ItemCategory.Gloves
             => ItemCategory.Equipment,
         ItemCategory.ArmoredRig => ItemCategory.ChestRig,
         ItemCategory.Meds or ItemCategory.Food => ItemCategory.Consumable,

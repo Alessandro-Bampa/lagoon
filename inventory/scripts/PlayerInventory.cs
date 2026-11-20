@@ -80,6 +80,10 @@ public partial class PlayerInventory : Node
         }
 
         Give(ItemFactory.Create(_db, InventoryConfig.Current.PocketsItemId));
+        // Vestiti (solo estetici): vanno da soli negli slot Busto, Gambe, Calzature.
+        Give(ItemFactory.Create(_db, "work_jacket"));
+        Give(ItemFactory.Create(_db, "cargo_pants"));
+        Give(ItemFactory.Create(_db, "rubber_boots"));
         Give(ItemFactory.Create(_db, "vest"));
         Give(ItemFactory.Create(_db, "backpack"));
         Give(ItemFactory.Create(_db, "secure_container"));
@@ -99,6 +103,26 @@ public partial class PlayerInventory : Node
 
     /// Per i sistemi host-side che mutano l'inventario dall'esterno (ricarica dell'arma).
     public void HostPushState() => PushState();
+
+    /// <summary>
+    /// Solo host: crea un oggetto e lo sistema dove entrerebbe raccogliendolo (slot libero
+    /// compatibile prima, poi le griglie). Per collaudi e strumenti di sviluppo (es.
+    /// <c>tools/playtest_outfit.gd</c>), non e' un intento di rete. Ritorna true se ha trovato posto.
+    /// </summary>
+    public bool HostGiveItem(string itemId)
+    {
+        if (!IsMultiplayerAuthority())
+            return false;
+        InventoryOps.Session? s = OpenSession();
+        ItemInstance? item = ItemFactory.Create(_db, itemId);
+        if (s == null || item == null)
+            return false;
+        bool ok = InventoryOps.Acquire(s, item, ItemAddress.PlayerSpace) == InvError.Ok;
+        if (ok)
+            s.Commit();
+        PushState();
+        return ok;
+    }
 
     /// Sessione di operazioni per questo giocatore. Null se il mondo non c'e' (scena in chiusura).
     public InventoryOps.Session? OpenSession()

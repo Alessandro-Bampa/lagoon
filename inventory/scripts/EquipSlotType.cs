@@ -29,4 +29,9 @@ public enum EquipSlotType
     Special1 = 17,
     Special2 = 18,
     Special3 = 19,
+    // Abbigliamento: solo estetico, senza griglie (colonna a destra degli slot in InventoryScreen).
+    Top = 20,
+    Legs = 21,
+    Footwear = 22,
+    Gloves = 23,
 }

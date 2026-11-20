@@ -13,7 +13,7 @@ Gli asset vengono da `blender-pipeline`, il movimento da `CharacterMotor`, il ti
 | | Corpo (terza persona) | Viewmodel (prima persona) |
 |---|---|---|
 | Animatore | `CharacterAnimator` su `CharacterRig.tscn` | `ViewmodelAnimator`, figlio di `PlayerCamera` |
-| Modello | `Mannequin.glb` (Universal Animation Library, 43 clip) | `VM_<arma>.glb` (Retro Weapon Pack: braccia + arma, clip autoriali) |
+| Modello | `Character_Base.glb` (uomo 1,80 m sullo scheletro UAL, 43 clip) + capi di `CharacterOutfit` | `VM_<arma>.glb` (Retro Weapon Pack: scheletro, arma, clip autoriali); braccia e maniche del corpo da `ViewmodelOutfit` |
 | Chi lo vede | gli altri giocatori; il locale ne vede **gambe e ombra** | solo il giocatore locale |
 | Esiste | su ogni peer, anche per gli NPC | solo sul peer proprietario (sui remoti `FirstPersonCamera` lo libera) |
 | Arma | `WeaponHoldRig` + IK delle mani | parte del modello, osso `Gun` |
@@ -153,6 +153,12 @@ Aim (idle_aim/walk_aim) ──────────────────�
   con tutto da `Spine` in su collassato è l'unica visibile → guardando in basso si vedono le gambe.
   **Non nascondere parti agendo sullo scheletro**: sparirebbero anche dall'ombra. Chi cambia
   materiale o visibilità della mesh del corpo a runtime deve farlo su entrambe.
+- Le copie includono i **capi indossati**: a ogni cambio d'abito `CharacterOutfit` chiama
+  `CharacterAnimator.RefreshFirstPersonBody()` (`FirstPersonBodyView.Rebuild` + `SetView`). Sui capi
+  (meta `FirstPersonBodyView.CullMeta`) le parti alte si TOLGONO invece di collassare (una giacca
+  collassata diventa un sacco davanti alle gambe); le mesh senza nulla da nascondere si copiano
+  comunque, perche' arretrino col corpo. La maschera delle regioni passa alle copie. Dettagli nella
+  skill `character-wearables`.
 - **Il giocatore locale visto da fuori** (`CharacterAnimator.ThirdPersonView`): lo alza
   `PlayerAnimationBridge` quando `PlayerCamera` non è la camera corrente (visuale esterna al timone,
   `BoatChaseCamera`, o la camera di un collaudo). `SetView` nasconde le copie e rimette l'originale

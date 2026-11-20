@@ -195,6 +195,18 @@ public partial class CharacterAnimator : Node3D
 
     public Skeleton3D? Skeleton { get; private set; }
 
+    /// <summary>
+    /// Sono cambiate le mesh skinnate (vestiti, <c>CharacterOutfit</c>): sull'avatar locale si rifanno
+    /// le copie di <see cref="FirstPersonBodyView"/> e si rimette la vista corrente. Altrove non fa nulla.
+    /// </summary>
+    public void RefreshFirstPersonBody()
+    {
+        if (Skeleton == null || !FirstPersonBodyView.IsBuilt(Skeleton))
+            return;
+        FirstPersonBodyView.Rebuild(this, Skeleton);
+        FirstPersonBodyView.SetView(this, _seatedView, _thirdPersonView);
+    }
+
     private AnimationTree? _tree;
     private BodyAimModifier? _bodyAim;
     private ArmIkModifier? _armIk;

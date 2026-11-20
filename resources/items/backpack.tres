@@ -1,6 +1,6 @@
-[gd_resource type="Resource" script_class="ItemDefinition" load_steps=6 format=3]
+[gd_resource type="Resource" script_class="WearableDefinition" load_steps=6 format=3]
 
-[ext_resource type="Script" path="res://inventory/scripts/ItemDefinition.cs" id="1"]
+[ext_resource type="Script" path="res://inventory/scripts/data/WearableDefinition.cs" id="1"]
 [ext_resource type="Script" path="res://inventory/scripts/data/ItemGridDef.cs" id="2"]
 
 [sub_resource type="Resource" id="grid_0"]
@@ -29,3 +29,5 @@ Height = 5
 Weight = 1.8
 Category = 21
 Grids = Array[ExtResource("2")]([SubResource("grid_0"), SubResource("grid_1"), SubResource("grid_2")])
+Layer = 4
+CoversRegions = 0

@@ -5,6 +5,7 @@
 [ext_resource type="Script" path="res://ai/scripts/NpcAnimationBridge.cs" id="3"]
 [ext_resource type="Script" path="res://combat/scripts/HealthComponent.cs" id="4"]
 [ext_resource type="Script" path="res://combat/scripts/HitboxComponent.cs" id="5"]
+[ext_resource type="Script" path="res://wearables/scripts/CharacterAppearance.cs" id="6"]
 
 [sub_resource type="CapsuleShape3D" id="Shape_Body"]
 radius = 0.35
@@ -49,6 +50,11 @@ properties/1/replication_mode = 1
 properties/2/path = NodePath(".:IsDead")
 properties/2/spawn = true
 properties/2/replication_mode = 1
+
+[sub_resource type="SceneReplicationConfig" id="Repl_Appearance"]
+properties/0/path = NodePath(".:WornItemIds")
+properties/0/spawn = true
+properties/0/replication_mode = 2
 
 ; NPC umano: stesso corpo, stesso rig e stesse animazioni del giocatore.
 ; collision_layer 4 = "enemies", collision_mask 1 = mondo statico.
@@ -95,3 +101,11 @@ shape = SubResource("Shape_Body")
 [node name="AnimationBridge" type="Node" parent="."]
 script = ExtResource("3")
 
+; Vestiti dell'NPC: li pubblica l'host, li veste CharacterOutfit su ogni peer.
+[node name="Appearance" type="Node" parent="."]
+script = ExtResource("6")
+DefaultWornItemIds = PackedStringArray("work_jacket", "cargo_pants", "rubber_boots")
+
+[node name="Sync" type="MultiplayerSynchronizer" parent="Appearance"]
+root_path = NodePath("..")
+replication_config = SubResource("Repl_Appearance")

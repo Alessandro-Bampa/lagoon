@@ -1,0 +1,17 @@
+{
+  "item_id": "helmet",
+  "slot": "Headwear",
+  "layer": 4,
+  "notes": "Elmetto rigido in acciaio verniciato verde oliva, bordo ribattuto, piu' basso sulla nuca.",
+  "colors": {"base": "#4a5240"},
+  "texture_size": 256,
+  "ground": "stand",
+  "covers": [],
+  "parts": [
+    {"type": "cap", "name": "shell", "offset": 0.028, "rim_front": "eye+0.045", "rim_back": "eye-0.035",
+     "rings": 6, "segments": 18, "lip": 0.012, "material": "paint", "color": "base"}
+  ],
+  "details": [],
+  "item": {"width": 2, "height": 2, "weight": 1.2},
+  "wear": 0.7
+}

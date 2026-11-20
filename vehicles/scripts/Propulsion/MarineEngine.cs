@@ -31,8 +31,8 @@ public sealed class MarineEngine
 
     private int _requestedGear;
     private float _demand;
-    private float _neutralTime;
-    private int _lastEngagedGear;
+    /// Tempo dall'ultimo disinnesto (in folle si accumula: passare dal folle conta per il cambio).
+    private float _neutralTime = float.MaxValue;
     private float _governorIntegral;
     private float _idleIntegral;
     private float _targetThrottle;
@@ -43,10 +43,24 @@ public sealed class MarineEngine
         Gearbox = gearbox;
     }
 
+    /// Corsa della leva (per lato) che resta in folle.
+    public const float NeutralBand = 0.1f;
+
     /// <summary>
-    /// Leva unica −1..1: ±10% di corsa = folle, poi marcia innestata al minimo, poi farfalla. Il
-    /// cambio passa sempre dal folle, aspetta <see cref="GearboxDefinition.ShiftSeconds"/> (piu' la
-    /// permanenza se si inverte) e un regime sotto <see cref="GearboxDefinition.MaxShiftRpm"/>.
+    /// Leva per una marcia (+1/−1) e una richiesta al motore 0..1 (0 = minimo in marcia). Inversa
+    /// esatta di <see cref="Command"/>: con richiesta 0 la leva vale esattamente <see cref="NeutralBand"/>,
+    /// che e' gia' fuori dal folle.
+    /// </summary>
+    public static float LeverFor(int gear, float demand) =>
+        gear == 0 ? 0f : Mathf.Sign(gear) * (NeutralBand + (1f - NeutralBand) * Mathf.Clamp(demand, 0f, 1f));
+
+    /// <summary>
+    /// Leva unica −1..1: ±<see cref="NeutralBand"/> di corsa = folle, poi marcia innestata al minimo,
+    /// poi farfalla. Il cambio passa sempre dal folle e innesta <see cref="GearboxDefinition.ShiftSeconds"/>
+    /// dopo aver lasciato la marcia precedente: il tempo passato in folle conta, e NON si aspetta che
+    /// il motore cali di giri. Se all'innesto il regime supera <see cref="GearboxDefinition.MaxShiftRpm"/>,
+    /// la frizione dell'invertitore lo riporta li' (energia dissipata dai dischi): dalla crociera alla
+    /// retromarcia l'elica gira subito all'indietro, dal minimo.
     /// </summary>
     public void Command(float lever, bool running, float dt)
     {
@@ -55,25 +69,26 @@ public sealed class MarineEngine
         Running = running;
 
         float a = Mathf.Abs(lever);
-        _requestedGear = !running || a < 0.1f ? 0 : (lever > 0f ? 1 : -1);
-        _demand = _requestedGear == 0 ? 0f : Mathf.Clamp((a - 0.1f) / 0.9f, 0f, 1f);
+        _requestedGear = !running || a < NeutralBand ? 0 : (lever > 0f ? 1 : -1);
+        _demand = _requestedGear == 0 ? 0f : Mathf.Clamp((a - NeutralBand) / (1f - NeutralBand), 0f, 1f);
 
         if (_requestedGear != Gear)
         {
             if (Gear != 0)
             {
-                _lastEngagedGear = Gear;
                 Gear = 0;
                 _neutralTime = 0f;
             }
             else
             {
                 _neutralTime += dt;
-                float wait = Gearbox.ShiftSeconds;
-                if (_lastEngagedGear != 0 && _lastEngagedGear != _requestedGear)
-                    wait += Gearbox.NeutralDwellSeconds;
-                if (_requestedGear != 0 && _neutralTime >= wait && Rpm <= Gearbox.MaxShiftRpm)
+                if (_requestedGear != 0 && _neutralTime >= Gearbox.ShiftSeconds)
+                {
                     Gear = _requestedGear;
+                    float maxOmega = Gearbox.MaxShiftRpm * Mathf.Tau / 60f;
+                    if (Omega > maxOmega)
+                        Omega = maxOmega;
+                }
             }
             // Mentre si cambia la farfalla resta al minimo.
             _demand = 0f;

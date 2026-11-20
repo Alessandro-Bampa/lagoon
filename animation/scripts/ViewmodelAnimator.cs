@@ -142,6 +142,13 @@ public partial class ViewmodelAnimator : Node3D
 
     public override void _Ready() => _rng.Randomize();
 
+    /// Modello del viewmodel appena istanziato (o tolto): chi lo riveste (<c>ViewmodelOutfit</c>)
+    /// ci riaggancia braccia e capi.
+    [Signal] public delegate void ModelSwappedEventHandler();
+
+    /// Scheletro del viewmodel corrente (braccia + arma), null se disarmati.
+    public Skeleton3D? ArmsSkeleton => _skeleton;
+
     /// Cambia l'arma: quella in mano viene riposta, poi si estrae la nuova. Null = disarmato.
     public void SetWeapon(WeaponAnimationSet? weapon)
     {
@@ -348,6 +355,7 @@ public partial class ViewmodelAnimator : Node3D
         _skeleton = _model.FindChild("Skeleton3D", true, false) as Skeleton3D;
         _cameraBone = _skeleton?.FindBone("camera") ?? -1;
         _muzzle = _model.FindChild("Muzzle", true, false) as Node3D;
+        EmitSignal(SignalName.ModelSwapped);
 
         if (_model.FindChild("AnimationPlayer", true, false) is not AnimationPlayer player)
         {

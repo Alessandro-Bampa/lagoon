@@ -15,12 +15,16 @@ public partial class NpcAnimationBridge : Node
 {
     private NpcController _controller = null!;
     private CharacterAnimator _animator = null!;
+    private CharacterOutfit? _outfit;
+    private CharacterAppearance? _appearance;
     private HealthComponent? _health;
 
     public override void _Ready()
     {
         _controller = GetParent<NpcController>();
         _animator = GetNode<CharacterAnimator>("../Visual/CharacterRig");
+        _outfit = _animator.GetNodeOrNull<CharacterOutfit>("Outfit");
+        _appearance = GetParent().GetNodeOrNull<CharacterAppearance>("Appearance");
 
         _controller.Jumped += OnJumped;
         _controller.Landed += OnLanded;
@@ -51,6 +55,10 @@ public partial class NpcAnimationBridge : Node
 
     public override void _Process(double delta)
     {
+        // Vestiti: stato replicato dall'host (CharacterAppearance), resa locale (CharacterOutfit).
+        if (_outfit != null && _appearance != null)
+            _outfit.Worn = _appearance.WornItemIds;
+
         _animator.LocalVelocity = _controller.SyncLocalVelocity;
         _animator.Crouching = _controller.SyncCrouching;
         _animator.Grounded = _controller.SyncGrounded;

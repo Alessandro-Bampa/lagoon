@@ -1,0 +1,96 @@
+{
+  "item_id": "rubber_boots",
+  "slot": "Footwear",
+  "layer": 2,
+  "notes": "Stivali di gomma verde scuro alti sotto il ginocchio, suola nera spessa, bordo superiore rinforzato. Sopra i pantaloni.",
+  "colors": {
+    "base": "#2f3b2b",
+    "sole": "#151515",
+    "rim": "#232c20"
+  },
+  "texture_size": 256,
+  "ground": "stand",
+  "parts": [
+    {
+      "type": "shell",
+      "name": "boot",
+      "regions": [
+        "Foot",
+        "Ankle",
+        "Calf",
+        "Thigh"
+      ],
+      "clip": [
+        {
+          "axis": "z",
+          "max": "calf_l-0.08"
+        }
+      ],
+      "offset": 0.013,
+      "loosen": [
+        {
+          "bone": "calf_l",
+          "z_from": "foot_l+0.10",
+          "z_to": "calf_l-0.08",
+          "amount": 0.022
+        },
+        {
+          "bone": "calf_r",
+          "z_from": "foot_r+0.10",
+          "z_to": "calf_r-0.08",
+          "amount": 0.022
+        }
+      ],
+      "smooth": 1,
+      "material": "rubber",
+      "color": "base"
+    },
+    {
+      "type": "sole",
+      "name": "sole",
+      "thickness": 0.022,
+      "grow": 0.006,
+      "height": 0.035,
+      "material": "rubber",
+      "color": "sole"
+    },
+    {
+      "type": "band",
+      "name": "rim_l",
+      "bone": "calf_l",
+      "at": 0.185,
+      "width": 0.03,
+      "offset": 0.036,
+      "segments": 12,
+      "regions": [
+        "Calf"
+      ],
+      "search_radius": 0.1,
+      "material": "rubber",
+      "color": "rim",
+      "mirror": true
+    }
+  ],
+  "details": [
+    {
+      "kind": "line",
+      "axis": "z",
+      "at": 0.035,
+      "width": 0.012,
+      "color": "sole",
+      "parts": [
+        0
+      ]
+    }
+  ],
+  "item": {
+    "width": 2,
+    "height": 2,
+    "weight": 1.8
+  },
+  "wear": 0.7,
+  "covers": [
+    "Foot",
+    "Ankle"
+  ]
+}

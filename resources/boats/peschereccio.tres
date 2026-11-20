@@ -55,8 +55,7 @@ Mass = 3500.0
 script = ExtResource("7")
 RatioForward = 5.0
 RatioReverse = 5.0
-ShiftSeconds = 1.5
-NeutralDwellSeconds = 1.0
+ShiftSeconds = 0.8
 MaxShiftRpm = 900.0
 
 [sub_resource type="Resource" id="Propeller"]

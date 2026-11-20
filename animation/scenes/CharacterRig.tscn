@@ -1,9 +1,13 @@
 [gd_scene format=3 uid="uid://csgvakdfxnyuu"]
 
-[ext_resource type="PackedScene" path="res://assets/models/characters/Mannequin.glb" id="1"]
+[ext_resource type="PackedScene" uid="uid://dtolwdxg6tlxa" path="res://assets/models/characters/Character_Base.glb" id="1"]
 [ext_resource type="Script" uid="uid://xfvi81bg4fdp" path="res://animation/scripts/CharacterAnimator.cs" id="2"]
+[ext_resource type="Script" path="res://wearables/scripts/CharacterOutfit.cs" id="3"]
 
 [node name="CharacterRig" type="Node3D"]
 script = ExtResource("2")
 
 [node name="Body" parent="." instance=ExtResource("1")]
+
+[node name="Outfit" type="Node" parent="."]
+script = ExtResource("3")

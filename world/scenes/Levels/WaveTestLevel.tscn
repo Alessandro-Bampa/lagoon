@@ -8,6 +8,7 @@
 [ext_resource type="PackedScene" path="res://vehicles/scenes/boats/Gozzo.tscn" id="boat_Gozzo"]
 [ext_resource type="PackedScene" path="res://vehicles/scenes/boats/Peschereccio.tscn" id="boat_Peschereccio"]
 [ext_resource type="PackedScene" path="res://vehicles/scenes/boats/Vaporetto.tscn" id="boat_Vaporetto"]
+[ext_resource type="PackedScene" path="res://vehicles/scenes/boats/LanciaCabinata.tscn" id="boat_LanciaCabinata"]
 
 [sub_resource type="ProceduralSkyMaterial" id="Sky_mat"]
 ground_bottom_color = Color(0.6463, 0.6558, 0.6708, 1)
@@ -124,6 +125,10 @@ VehicleId = 14
 [node name="Vaporetto" parent="." unique_id=1996097346 instance=ExtResource("boat_Vaporetto")]
 transform = Transform3D(-0.025388427, 0, -0.9996777, 0, 1, 0, 0.9996777, 0, -0.025388427, -3.9964442, 0, 14.813644)
 VehicleId = 15
+
+[node name="LanciaCabinata" parent="." instance=ExtResource("boat_LanciaCabinata")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10.5, 0, 6)
+VehicleId = 16
 
 [node name="CrateA" parent="." unique_id=673257268 instance=ExtResource("5")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.4, 3)

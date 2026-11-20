@@ -18,6 +18,7 @@ public static class EquipRules
         EquipSlotType.TacticalRig, EquipSlotType.Pockets,
         EquipSlotType.Special1, EquipSlotType.Special2, EquipSlotType.Special3,
         EquipSlotType.Backpack, EquipSlotType.SecureContainer,
+        EquipSlotType.Top, EquipSlotType.Legs, EquipSlotType.Footwear, EquipSlotType.Gloves,
     };
 
     public static bool IsSpecial(EquipSlotType slot)
@@ -53,6 +54,10 @@ public static class EquipRules
                 return c == ItemCategory.SpecialItem;
             case EquipSlotType.Backpack: return c == ItemCategory.Backpack;
             case EquipSlotType.SecureContainer: return c == ItemCategory.SecureContainer;
+            case EquipSlotType.Top: return c == ItemCategory.Top;
+            case EquipSlotType.Legs: return c == ItemCategory.Legs;
+            case EquipSlotType.Footwear: return c == ItemCategory.Footwear;
+            case EquipSlotType.Gloves: return c == ItemCategory.Gloves;
             default: return false;
         }
     }

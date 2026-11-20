@@ -1,0 +1,22 @@
+{
+  "item_id": "headset",
+  "slot": "Earpiece",
+  "layer": 2,
+  "notes": "Cuffie di protezione attive: padiglioni grandi verde oliva, archetto nero sopra la testa.",
+  "colors": {"cup": "#3f4636", "band": "#141414"},
+  "texture_size": 128,
+  "ground": "stand",
+  "covers": [],
+  "parts": [
+    {"type": "cup", "name": "cup_l", "center": [0.072, "Head.y+0.005", "eye-0.035"], "axis": [1, 0, 0],
+     "radius": 0.042, "depth": 0.032, "scale": [1.0, 1.25], "segments": 12, "region": "Scalp",
+     "material": "plastic", "color": "cup", "mirror": true},
+    {"type": "strap", "name": "arc", "points": [[0.085, "Head.y+0.005", "eye+0.0"], [0.06, "Head.y+0.005", "eye+0.08"],
+     [0.0, "Head.y+0.005", "eye+0.125"], [-0.06, "Head.y+0.005", "eye+0.08"], [-0.085, "Head.y+0.005", "eye+0.0"]],
+     "width": 0.03, "thickness": 0.008, "offset": 0.012, "samples": 4, "rigid_bone": "Head", "rigidity": 1.0,
+     "material": "plastic", "color": "band"}
+  ],
+  "details": [],
+  "item": {"width": 2, "height": 2, "weight": 0.4},
+  "wear": 0.3
+}

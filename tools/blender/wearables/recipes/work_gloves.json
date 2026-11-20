@@ -1,0 +1,54 @@
+{
+  "item_id": "work_gloves",
+  "slot": "Gloves",
+  "layer": 1,
+  "notes": "Guanti da lavoro in cuoio marrone consumato, polsino corto.",
+  "colors": {
+    "base": "#5c4330",
+    "cuff": "#3d2c20"
+  },
+  "texture_size": 256,
+  "ground": "lay",
+  "parts": [
+    {
+      "type": "shell",
+      "name": "glove",
+      "regions": [
+        "Hand",
+        "Forearm"
+      ],
+      "clip": [
+        {
+          "axis": "x_abs",
+          "min": "hand_l.x-0.055"
+        }
+      ],
+      "offset": 0.005,
+      "hem_snap": 0.02,
+      "material": "leather",
+      "color": "base"
+    }
+  ],
+  "details": [
+    {
+      "kind": "line",
+      "axis": "x",
+      "at": "hand_l.x-0.035",
+      "mirror": true,
+      "width": 0.03,
+      "color": "cuff",
+      "parts": [
+        0
+      ]
+    }
+  ],
+  "item": {
+    "width": 1,
+    "height": 1,
+    "weight": 0.15
+  },
+  "wear": 0.6,
+  "covers": [
+    "Hand"
+  ]
+}

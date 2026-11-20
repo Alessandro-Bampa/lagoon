@@ -12,6 +12,7 @@
 [ext_resource type="Script" uid="uid://b5a1itucnyqqo" path="res://vehicles/scripts/VehicleInput.cs" id="12"]
 [ext_resource type="PackedScene" uid="uid://csgvakdfxnyuu" path="res://animation/scenes/CharacterRig.tscn" id="13"]
 [ext_resource type="Script" uid="uid://cxa1xl5rry6tp" path="res://player/scripts/PlayerAnimationBridge.cs" id="14"]
+[ext_resource type="Script" path="res://wearables/scripts/CharacterAppearance.cs" id="15"]
 
 [sub_resource type="CapsuleShape3D" id="Shape_1"]
 radius = 0.35
@@ -83,6 +84,11 @@ properties/4/path = NodePath(".:Reloading")
 properties/4/spawn = true
 properties/4/replication_mode = 1
 
+[sub_resource type="SceneReplicationConfig" id="Repl_4"]
+properties/0/path = NodePath(".:WornItemIds")
+properties/0/spawn = true
+properties/0/replication_mode = 2
+
 [node name="Player" type="CharacterBody3D" unique_id=487784520]
 collision_layer = 2
 collision_mask = 39
@@ -149,3 +155,9 @@ script = ExtResource("12")
 
 [node name="AnimationBridge" type="Node" parent="." unique_id=924659811]
 script = ExtResource("14")
+
+[node name="Appearance" type="Node" parent="."]
+script = ExtResource("15")
+
+[node name="Sync" type="MultiplayerSynchronizer" parent="Appearance"]
+replication_config = SubResource("Repl_4")

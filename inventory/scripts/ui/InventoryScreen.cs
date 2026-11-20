@@ -310,22 +310,37 @@ public partial class InventoryScreen : Control
         int gap = InvTheme.Gap;
         float wide = (6f * cell + 2f * gap) / cell; // larghezza di tre slot quadrati affiancati
 
-        _gear.AddChild(SlotRow(gap,
+        // Equipaggiamento a sinistra, abbigliamento (solo estetico, senza griglie) in una colonna a
+        // destra, uno slot sotto l'altro.
+        var split = new HBoxContainer();
+        split.AddThemeConstantOverride("separation", gap * 3);
+        _gear.AddChild(split);
+        var gear = new VBoxContainer();
+        gear.AddThemeConstantOverride("separation", _gear.GetThemeConstant("separation"));
+        split.AddChild(gear);
+        var clothing = new VBoxContainer();
+        clothing.AddThemeConstantOverride("separation", _gear.GetThemeConstant("separation"));
+        split.AddChild(clothing);
+
+        gear.AddChild(SlotRow(gap,
             (EquipSlotType.Earpiece, new Vector2(2, 2)),
             (EquipSlotType.Headwear, new Vector2(2, 2)),
             (EquipSlotType.FaceCover, new Vector2(2, 2))));
-        _gear.AddChild(SlotRow(gap,
+        gear.AddChild(SlotRow(gap,
             (EquipSlotType.Armband, new Vector2(2, 2)),
             (EquipSlotType.BodyArmor, new Vector2(2, 2)),
             (EquipSlotType.Eyewear, new Vector2(2, 2))));
-        _gear.AddChild(SlotBox(EquipSlotType.OnSling, new Vector2(wide, 2)));
-        _gear.AddChild(SlotBox(EquipSlotType.OnBack, new Vector2(wide, 2)));
+        gear.AddChild(SlotBox(EquipSlotType.OnSling, new Vector2(wide, 2)));
+        gear.AddChild(SlotBox(EquipSlotType.OnBack, new Vector2(wide, 2)));
 
         float holster = (wide * cell - gap) * 0.58f / cell;
         float scabbard = (wide * cell - gap) * 0.42f / cell;
-        _gear.AddChild(SlotRow(gap,
+        gear.AddChild(SlotRow(gap,
             (EquipSlotType.Holster, new Vector2(holster, 2)),
             (EquipSlotType.Scabbard, new Vector2(scabbard, 2))));
+
+        foreach (EquipSlotType slot in new[] { EquipSlotType.Top, EquipSlotType.Legs, EquipSlotType.Footwear, EquipSlotType.Gloves })
+            clothing.AddChild(SlotBox(slot, new Vector2(2, 2)));
 
         _weight = new WeightIndicator();
         _weight.SetWeight(Model.TotalWeight());

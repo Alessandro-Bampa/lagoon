@@ -1,0 +1,37 @@
+{
+  "item_id": "cargo_pants",
+  "slot": "Legs",
+  "layer": 1,
+  "references": [],
+  "notes": "Pantaloni da lavoro in tela verde oliva sbiadito, tasche laterali a soffietto sulle cosce, cintura in vita, orlo largo sopra la caviglia.",
+  "colors": {"base": "#5b5a43", "dark": "#3b3a2b", "belt": "#2a2520", "buckle": "#8a8478", "stitch": "#7a7658"},
+  "texture_size": 256,
+  "ground": "lay",
+  "parts": [
+    {"type": "shell", "name": "legs", "regions": ["Pelvis", "Thigh", "Calf", "Abdomen", "Ankle"],
+     "clip": [{"axis": "z", "max": "pelvis+0.10"}, {"axis": "z", "min": "foot_l+0.05"}],
+     "offset": 0.008,
+     "loosen": [{"bone": "calf_l", "z_from": "calf_l+0.05", "z_to": "foot_l+0.05", "amount": 0.016},
+                {"bone": "calf_r", "z_from": "calf_r+0.05", "z_to": "foot_r+0.05", "amount": 0.016},
+                {"bone": "thigh_l", "z_from": "thigh_l-0.05", "z_to": "calf_l", "amount": 0.008},
+                {"bone": "thigh_r", "z_from": "thigh_r-0.05", "z_to": "calf_r", "amount": 0.008}],
+     "smooth": 1, "material": "canvas", "color": "base"},
+    {"type": "band", "name": "belt", "z": "pelvis+0.085", "width": 0.04, "offset": 0.014,
+     "segments": 16, "regions": ["Pelvis", "Abdomen"], "search_radius": 0.25, "thickness": 0.005,
+     "material": "leather", "color": "belt"},
+    {"type": "box", "name": "pocket_l", "face": "left", "at": [0.0, "calf_l+0.24"], "size": [0.15, 0.17, 0.035],
+     "offset": 0.01, "bevel": 0.3, "follow": 0.6, "material": "canvas", "color": "base", "mirror": true}
+  ],
+  "details": [
+    {"kind": "line", "axis": "x", "at": 0.0, "width": 0.006, "color": "dark", "parts": [0], "face": "front",
+     "range": ["pelvis-0.12", "pelvis+0.08"]},
+    {"kind": "line", "axis": "x", "at": "thigh_l.x+0.075", "mirror": true, "width": 0.004, "color": "stitch",
+     "dashed": true, "parts": [0], "range": ["foot_l+0.06", "pelvis+0.08"]},
+    {"kind": "rect", "at": [0.0, "pelvis+0.085"], "size": [0.05, 0.035], "face": "front", "color": "buckle", "parts": [1]},
+    {"kind": "line", "axis": "z", "at": "foot_l+0.07", "width": 0.012, "color": "dark", "parts": [0]},
+    {"kind": "line", "axis": "z", "at": "calf_l+0.33", "width": 0.01, "color": "dark", "parts": [2], "alpha": 0.7}
+  ],
+  "item": {"width": 2, "height": 3, "weight": 0.8},
+  "names": {"name": ["Cargo trousers", "Pantaloni cargo"]},
+  "wear": 0.55
+}

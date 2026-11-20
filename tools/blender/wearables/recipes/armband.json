@@ -1,0 +1,18 @@
+{
+  "item_id": "armband",
+  "slot": "Armband",
+  "layer": 3,
+  "notes": "Fascia di stoffa rossa legata al braccio sinistro, sopra la manica.",
+  "colors": {"base": "#9a3328", "dark": "#5e1f18"},
+  "texture_size": 128,
+  "ground": "lay",
+  "covers": [],
+  "parts": [
+    {"type": "band", "name": "band", "bone": "upperarm_l", "at": 0.45, "width": 0.065, "offset": 0.03,
+     "segments": 12, "regions": ["UpperArm"], "search_radius": 0.1, "thickness": 0.004,
+     "material": "cotton", "color": "base"}
+  ],
+  "details": [],
+  "item": {"width": 1, "height": 1, "weight": 0.05},
+  "wear": 0.5
+}

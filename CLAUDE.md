@@ -103,6 +103,7 @@ I nomi delle cartelle in `scenes/` e `scripts/` sono **per sistema di gameplay**
 │   ├── Motion/      # CharacterMotor: movimento a piedi condiviso player/NPC
 │   └── Utils/       # NetworkConstants, CollisionLayers, InputBindings, Loc
 ├── animation/       # Corpo in terza persona, viewmodel, IK    -> skill `character-animation`
+├── wearables/       # Vestiario: resa dei capi sul corpo e sul viewmodel, replica dell'aspetto -> skill `character-wearables`
 ├── player/          # Input locale, camera in prima persona (FirstPersonCamera), trasporto sui veicoli
 ├── combat/          # Armi, tiro, salute, hitbox        -> skill `combat-shooting`
 ├── inventory/       # Griglia, item, equipaggiamento, HUD -> skill `inventory-tarkov`
@@ -174,7 +175,9 @@ La documentazione d'ambito vive in `.claude/skills/<nome>/SKILL.md`. **Carica la
 | `water-ocean` | `water/`, `resources/water/` — onde (Gerstner CPU = GPU), marea, stato del mare, galleggiamento di barche e oggetti, colore dell'acqua per zona, shader dell'acqua, **qualunque cosa debba sapere la quota dell'acqua** |
 | `vehicles-boats` | `vehicles/`, `resources/boats/` — barche su misura (scafo, fuoribordo/entrobordo, consolle, accessori, livrea), fisica per triangoli (planata, resistenze, impatti, massa aggiunta), motore, elica, invertitore, trim, timone, pesi a bordo, passeggeri, ponte calpestabile, piattaforme mobili, coordinate locali a un veicolo (`SyncAnchorId`) |
 | `i18n-localization` | `locales/`, `Loc`, **qualunque testo visibile all'utente**: nuove label, nuovi item, dialoghi, cambio lingua, chiavi grezze a video |
-| `blender-pipeline` | `assets/models/`, `tools/blender/` — corpo `Mannequin.glb` (Universal Animation Library, BoneMap umanoide), armi del Retro Weapon Pack (`VM_*.glb`, `W_*.glb`), scala/unità/assi di un modello importato, dialogo con Blender via MCP |
+| `blender-pipeline` | `assets/models/`, `tools/blender/` — corpo `Character_Base.glb` / clip di `Mannequin.glb` (Universal Animation Library, BoneMap umanoide), armi del Retro Weapon Pack (`VM_*.glb`, `W_*.glb`), scala/unità/assi di un modello importato, dialogo con Blender via MCP |
+| `asset-ingest` | **"voglio inserire" una barca, un vestito/equipaggiamento o un'arma da un modello sorgente** (.blend/.glb/.fbx/.obj), `tools/blender/ingest/` — smistamento per categoria, semplificazione, texture originale portata nello stile del gioco |
+| `character-wearables` | `wearables/`, `tools/blender/charlib.py`, `build_character_base.py`, `tools/blender/wearables/` — corpo base (MakeHuman, 1,80 m, scheletro UAL), capi indossabili e regioni nascoste per strato, varianti in prima persona, **pipeline "immagini -> asset vestibile"** (ricette JSON) |
 | `character-animation` | `animation/` — viewmodel in prima persona e corpo in terza, alberi di blend da codice, clip e loop, mira (ADS) e allineamento delle tacche, mani sull'arma in IK, modificatori di scheletro, rinculo visivo, T-pose o animazioni ferme, aggiunta di un'arma |
 | `ai-npc` | `ai/` — NPC umani, navigazione, waypoint, autorita' host sui personaggi non giocanti |
 | `venice-building-kit` | `assets/models/buildings/`, `tools/blender/build_venice_kit.py` — kit modulare dei palazzi veneziani: griglia e assi dei moduli, colori di facciata, collisioni, **o un generatore procedurale di edifici** |

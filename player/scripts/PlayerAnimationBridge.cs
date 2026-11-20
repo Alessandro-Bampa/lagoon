@@ -19,12 +19,15 @@ public partial class PlayerAnimationBridge : Node
 {
     private PlayerController _controller = null!;
     private CharacterAnimator _animator = null!;
+    private CharacterOutfit? _outfit;
+    private CharacterAppearance? _appearance;
     private WeaponController? _weapon;
     private HealthComponent? _health;
 
     /// Camera e viewmodel: solo sul peer proprietario, altrimenti null.
     private FirstPersonCamera? _camera;
     private ViewmodelAnimator? _viewmodel;
+    private ViewmodelOutfit? _viewmodelOutfit;
 
     /// Ultima arma vista, per non risolvere il <c>.tres</c> a ogni frame.
     private string _lastHeldItemId = "";
@@ -34,6 +37,8 @@ public partial class PlayerAnimationBridge : Node
     {
         _controller = GetParent<PlayerController>();
         _animator = GetNode<CharacterAnimator>("../Visual/CharacterRig");
+        _outfit = _animator.GetNodeOrNull<CharacterOutfit>("Outfit");
+        _appearance = GetParent().GetNodeOrNull<CharacterAppearance>("Appearance");
         _weapon = GetParent().GetNodeOrNull<WeaponController>("Weapon");
         _health = GetParent().GetNodeOrNull<HealthComponent>("Health");
 
@@ -63,6 +68,7 @@ public partial class PlayerAnimationBridge : Node
         _animator.FirstPersonOwner = true;
         _camera = GetParent().GetNodeOrNull<FirstPersonCamera>("PlayerCamera");
         _viewmodel = _camera?.GetNodeOrNull<ViewmodelAnimator>("Viewmodel");
+        _viewmodelOutfit = _viewmodel?.GetNodeOrNull<ViewmodelOutfit>("Outfit");
         if (_viewmodel != null)
         {
             _viewmodel.WalkSpeed = _controller.WalkSpeed;
@@ -86,6 +92,12 @@ public partial class PlayerAnimationBridge : Node
     {
         WeaponAnimationSet? weapon = ResolveWeaponSet();
         bool reloading = _weapon?.Reloading ?? false;
+
+        // Vestiti: stato replicato dall'host (CharacterAppearance), resa locale (CharacterOutfit).
+        if (_outfit != null && _appearance != null)
+            _outfit.Worn = _appearance.WornItemIds;
+        if (_viewmodelOutfit != null && _appearance != null)
+            _viewmodelOutfit.Worn = _appearance.WornItemIds;
 
         _animator.LocalVelocity = _controller.SyncLocalVelocity;
         _animator.Crouching = _controller.SyncCrouching;

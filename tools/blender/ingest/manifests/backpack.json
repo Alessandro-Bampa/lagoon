@@ -1,0 +1,64 @@
+{
+  "id": "backpack",
+  "category": "outfit",
+  "description": "Zaino d'assalto militare da tre giorni, mimetica digitale ACU, pannelli MOLLE, spallacci imbottiti con sterno, cinghie di compressione laterali.",
+  "source": "C:/Users/BAMPU/Downloads/military-tactical-backpack.blend",
+  "license": "da indicare (file fornito dall'utente)",
+  "source_front": "+Y",
+  "source_up": "+Z",
+  "size": {
+    "axis": "z",
+    "meters": 0.56
+  },
+  "budget": {
+    "tris": 2600
+  },
+  "symmetry": false,
+  "parts": {
+    "main": {
+      "role": "keep",
+      "share": 0.5
+    },
+    "strap": {
+      "role": "keep",
+      "share": 0.5
+    },
+    "buckle": {
+      "role": "bake"
+    },
+    "zipper": {
+      "role": "bake"
+    },
+    "slider": {
+      "role": "bake"
+    },
+    "plate": {
+      "role": "bake"
+    }
+  },
+  "texture": {
+    "bake_size": 2048,
+    "size": 512,
+    "saturation": 0.88,
+    "value": 0.97,
+    "contrast": 1.05,
+    "ao_strength": 0.25
+  },
+  "outfit": {
+    "slot": "Backpack",
+    "layer": 4,
+    "mount": "back",
+    "top": "neck_01-0.04",
+    "clearance": 0.05,
+    "conform": [
+      "strap"
+    ],
+    "strap_clearance": 0.03,
+    "blend_zone": 0.03,
+    "rigid_bone": "spine_03",
+    "rigidity": 0.85,
+    "ground": "stand",
+    "first_person": false,
+    "max_edge": 0.04
+  }
+}

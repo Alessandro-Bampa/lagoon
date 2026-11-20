@@ -69,7 +69,7 @@ Nel codice si usa sempre il **nome dell'azione**; nei testi `Loc.KeyFor("azione"
 | Azione | Tasto | Gestita da |
 |---|---|---|
 | sguardo | mouse | `FirstPersonCamera` |
-| `move_*` | WASD / frecce | `PlayerInput` — relative allo sguardo |
+| `move_*` | WASD / frecce | `PlayerInput` — relative allo sguardo. **Al timone**: W/S = una tacca della manetta per pressione, A/D = governo tenuto (`VehicleInput`, skill `vehicles-boats` §12) |
 | `jump` · `sprint` · `crouch` | Spazio · Shift · Ctrl | `PlayerInput` (crouch anche a interruttore). **A nuoto**: Spazio tenuto = risali, premuto contro un bordo = issati fuori; Ctrl tenuto = immergiti (sempre a pressione); Shift = nuoto veloce. Nessuna azione nuova |
 | `fire` | mouse sx | `WeaponInput` (auto in `_Process`, semiauto in `_UnhandledInput`) |
 | `aim` | mouse dx (tenuto o interruttore) | `PlayerInput.ReadAim` → zoom |

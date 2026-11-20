@@ -27,8 +27,17 @@ separata, nessun test automatico, categorie come enum ad albero invece che risor
 
 ## 1. Modello: tutto e' un albero di `ItemInstance`
 
-- Il giocatore ha **solo slot di equipaggiamento** (`EquipSlotType`, i 15 di Tarkov). Anche le tasche
-  sono un item (categoria `Pockets`, 4 griglie 1x1) indossato nel proprio slot e **non movibile**.
+- Il giocatore ha **solo slot di equipaggiamento** (`EquipSlotType`, i 15 di Tarkov + 4 di
+  abbigliamento). Anche le tasche sono un item (categoria `Pockets`, 4 griglie 1x1) indossato nel
+  proprio slot e **non movibile**.
+- **Abbigliamento** (`Top`, `Legs`, `Footwear`, `Gloves`, slot 20-23, categorie 31-34): solo estetico,
+  nessuna griglia, colonna a destra degli slot in `InventoryScreen.RebuildGear`. Il kit iniziale veste
+  giacca, pantaloni e stivali.
+- Tutto cio' che si vede addosso e' un **`WearableDefinition`** (`Layer`, `CoversRegions`): capi,
+  elmetto, cuffie, corpetto, rig, zaino. Li scrive la pipeline dei capi; come si vedono e come si
+  replicano (`CharacterAppearance`, ricavato da `HostStateChanged`) e' nella skill `character-wearables`.
+- `PlayerInventory.HostGiveItem(itemId)`: solo host, crea e sistema un oggetto come lo raccoglierebbe.
+  Per collaudi e strumenti, non e' un intento di rete.
 - Un'istanza puo' avere `Grids` (sotto-griglie da `ItemDefinition.GridSpecs`), `SlotItems` (oggi solo
   il pozzetto del caricatore di un'arma) e `Rounds` (pila LIFO di un caricatore: l'ultimo elemento e'
   il prossimo colpo).

@@ -9,6 +9,13 @@ Barche su misura col nucleo fisico per triangoli (§9-§13): la scena generica `
 e una scena per barca in `vehicles/scenes/boats/`. Un pilota e passeggeri che camminano sul ponte in
 movimento. `vehicles/` + `resources/boats/` + il trasporto in `PlayerController`. Barca nuova: §9b.
 
+
+> Barca nuova da un modello sorgente: si parte dalla skill `asset-ingest` (categoria `boat`,
+> `tools/blender/ingest/boat.py`), che semplifica il modello, ne porta la texture nello stile del
+> gioco e produce da solo i passi 1-2 di §9b (`.glb` con `HydroHull`, collisioni, vuoti e materiali
+> per nome; `BoatConfig` da un modello di configurazione con le masse bilanciate sull'LCB). Restano
+> statica e dinamica (§9b passi 4-5) e il livello.
+
 ## 1. `SyncPosition` è nel riferimento di `SyncAnchorId`
 
 `0` = mondo, altrimenti il `VehicleId` della barca su cui si sta. **Ogni calcolo host-side usa
@@ -137,6 +144,7 @@ e crea anche `BoatPhysics` e `BoatMassModel` (solo in gioco). Allestimenti:
 | `gozzo` | **placeholder** 7 m, 2,9 t | diesel 35 cv, asse + timone, chiglia | ~6,8 kn, GM 0,57 m, rollio 2,3 s |
 | `peschereccio` | **placeholder** 20 m, 152 t | diesel 500 cv, mantello Kort, timone idraulico 4°/s, elica di prua | ~9,9 kn, ~6,7 t a punto fisso, rollio 6,6 s |
 | `vaporetto` / `vaporetto_worn` | vaporetto 23,9 × 4,2 m, 24,9 t, corpo 0,66 m + skeg a 1,44 m, cancelli scorrevoli | diesel 147 kW, asse, timone idraulico 12°/s, ruota a raggi | ~10,1 kn, 1754 kgf a punto fisso, GM 2,3 m, rollio 2,5 s, virata 3,3 L |
+| `lancia_cabinata` | lancia da lavoro 11,9 × 3,5 m, 9 t, cabina a mezza nave, pozzetto a poppa; da modello sorgente (`asset-ingest` §5, manifesto `lancia_cabinata.json`: il `.tres` lo RISCRIVE la pipeline) | diesel 55 kW, asse + timone (modello del gozzo con `config.set`), ruota del modello senza consolle | ~8,7 kn, 625 kgf a punto fisso, GM 0,94 m, rollio 2,8 s, virata 2,7 L |
 
 - **Modelli**: `tools/blender/build_lagoon_boats.py` (skill blender-pipeline) → `assets/models/boats/`.
   Nomi letti dal codice: `Seat_Helm`, `Mount_*`, `HydroHull` (mesh idrodinamica, §10),
@@ -194,7 +202,8 @@ e crea anche `BoatPhysics` e `BoatMassModel` (solo in gioco). Allestimenti:
   `HelmLookLimitDegrees`), e `FirstPersonCamera` ignora il mouse perche' non e' corrente. La scelta
   si ricorda per la sessione: lasciato il timone si torna in prima persona, ripreso si riparte da li'.
 - **Livello di prova** `world/scenes/MainWaveTest.tscn` (+ `Levels/WaveTestLevel.tscn`): mare aperto
-  3 km, pontile, i due barchini, gozzo (id 13) e peschereccio (id 14), casse; `SeaStateDebugControls`:
+  3 km, pontile, i due barchini, gozzo (id 13), peschereccio (id 14), vaporetto (id 15), lancia
+  cabinata (id 16, a est del pontile fra barchino a volante e peschereccio), casse; `SeaStateDebugControls`:
   PagSu/PagGiu' stato del mare, Home laguna/mare aperto (solo host), e al timone una riga con nodi,
   giri, marcia, trim, assetto, sbandamento (dallo stato replicato). Non ci sono cime d'ormeggio: in
   tempesta una barca lasciata accanto al pontile fisso ci finisce sotto.
@@ -306,8 +315,12 @@ che sale in accelerazione, motore su di giri con l'elica fuori dall'acqua) nasce
   contro la coppia dell'elica. Benzina = farfalla diretta + PI del minimo, curva con picco +12% al
   70% dei giri; diesel = leva → regime obiettivo, PI (il regime tiene sotto carico). Limitatore con
   isteresi 2%, perdite di pompaggio a farfalla chiusa (senza, il motore restava su di giri 5 s e il
-  cambio aspettava). **Leva unica** −1..1: ±10% folle, poi marcia al minimo, poi gas; il cambio passa
-  dal folle, aspetta `ShiftSeconds` (+ `NeutralDwellSeconds` se inverte) e giri ≤ `MaxShiftRpm`.
+  cambio aspettava). **Leva unica** −1..1: ±10% folle (`NeutralBand`), poi marcia al minimo, poi gas;
+  il cambio passa dal folle e innesta `ShiftSeconds` dopo aver LASCIATO la marcia (il tempo in folle
+  conta), senza aspettare che i giri calino: all'innesto la frizione riporta il regime a
+  `MaxShiftRpm` se e' piu' alto. Dalla crociera a R l'elica gira all'indietro 0,07 s (barchino) -
+  0,6 s (peschereccio) dopo l'arrivo in R1. Prima c'erano permanenza in folle e attesa dei giri: la
+  retromarcia "non prendeva".
 - **`PropulsionUnit`** (+ `PropellerDefinition`): K_T/K_Q lineari in J (tabella P/D se 0, tarabili),
   retromarcia, mantello Kort, immersione del disco, ventilazione con isteresi (perde spinta, coppia
   cala, motore su di giri), effetto evolutivo f(velocita') e reazione di coppia (elica destrorsa:
@@ -341,6 +354,18 @@ che sale in accelerazione, motore su di giri con l'elica fuori dall'acqua) nasce
 - **Comandi** (`VehicleInput`, `SubmitControls(leva, governo, trim, elica di prua)`, tutti −1..1,
   validati e saturati dall'host): `vehicle_trim_up`/`down` (E/Q), `vehicle_thruster_left`/`right`
   (Z/X), riassegnabili (gruppo "Barche" di `InputBindings`). Il trim e' una velocita' (3°/s).
+- **Manetta a tacche** (`ThrottleNotches`): al timone `move_up`/`move_down` (W/S) spostano la leva di
+  UNA tacca per pressione (niente ripetizione), e la leva resta li' anche a inventario aperto.
+  Tacche R2 · R1 · N · 1 · 2 · 3 · 4: avanti minimo in marcia (manovra) / 35% / 65% / tutta forza,
+  indietro minimo / tutta forza. Lo sterzo (A/D) resta a pressione. La tacca vive SOLO sul client
+  (`VehicleInput._notch`, torna N a ogni cambio di timone): l'host riceve la leva continua di sempre,
+  cioe' la posizione della manetta (un intento), e non conosce le tacche — collaudi e
+  `DebugThrottle` possono chiedere una leva qualunque. Leva di una tacca = `MarineEngine.LeverFor`
+  (inversa esatta di `Command`: la tacca 1 vale proprio `NeutralBand`). A regime (acqua ferma):
+  barchino a barra 2,2 / 5,8 / 17,3 / 25,4 kn (la 2 sta sotto la gobba, la 3 gia' in planata),
+  gozzo 1,7 / 4,2 / 5,6 / 6,8, vaporetto 3,7 / 6,3 / 8,2 / 10,1, peschereccio 3,4 / 6,3 / 8,3 / 10,0.
+  La tacca si vede solo nella riga di prova di `SeaStateDebugControls` ("manetta 3 (F)", dalla leva
+  replicata `SyncThrottle`); nessun indicatore nella HUD vera (lacuna §8).
 
 ## 13. Prove (`tools/boat_trials.gd`)
 

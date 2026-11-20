@@ -89,3 +89,23 @@ ITEM_NAILS_SHORT,Nails,Chiodi
 ITEM_POISON_NAME,Poison,Veleno
 ITEM_VAPE_NAME,Vape,Sigaretta elettronica
 ITEM_VAPE_SHORT,Vape,Svapo
+ITEM_WORK_JACKET_NAME,Work jacket,Giacca da lavoro
+ITEM_WORK_JACKET_SHORT,Jacket,Giacca
+ITEM_WORK_JACKET_DESC,"Heavy canvas jacket, faded by salt and sun.","Giacca di tela pesante, scolorita dal sale e dal sole."
+ITEM_CARGO_PANTS_NAME,Cargo trousers,Pantaloni cargo
+ITEM_CARGO_PANTS_SHORT,Cargo,Cargo
+ITEM_CARGO_PANTS_DESC,Work trousers with side pockets.,Pantaloni da lavoro con tasche laterali.
+ITEM_RUBBER_BOOTS_NAME,Rubber boots,Stivali di gomma
+ITEM_RUBBER_BOOTS_SHORT,Boots,Stivali
+ITEM_RUBBER_BOOTS_DESC,Knee-high boots for the mudflats.,Stivali alti fino al ginocchio per le velme.
+ITEM_WORK_GLOVES_NAME,Work gloves,Guanti da lavoro
+ITEM_WORK_GLOVES_SHORT,Gloves,Guanti
+ITEM_WORK_GLOVES_DESC,Worn leather gloves.,Guanti di cuoio consumati.
+ITEM_BALACLAVA_NAME,Balaclava,Passamontagna
+ITEM_BALACLAVA_DESC,Knitted balaclava that leaves only the eyes uncovered.,Passamontagna di lana che lascia scoperti solo gli occhi.
+ITEM_GOGGLES_NAME,Protective goggles,Occhiali protettivi
+ITEM_GOGGLES_SHORT,Goggles,Occhiali
+ITEM_GOGGLES_DESC,Shatterproof goggles with an elastic strap.,Occhiali infrangibili con elastico.
+ITEM_ARMBAND_NAME,Armband,Fascia da braccio
+ITEM_ARMBAND_SHORT,Band,Fascia
+ITEM_ARMBAND_DESC,Coloured cloth band tied around the arm.,Fascia di stoffa colorata legata al braccio.
