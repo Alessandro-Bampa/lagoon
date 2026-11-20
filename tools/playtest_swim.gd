@@ -286,14 +286,6 @@ func run_test_level() -> void:
 	var ladder_pos: Vector3 = ladder.global_position if ladder else boat.global_transform * Vector3(0.55, 0.0, 2.3)
 	teleport(player, Vector3(ladder_pos.x, boat.global_position.y - 0.4, ladder_pos.z) - forward * 0.7)
 	await wait(1.5)
-	# DEBUG temporaneo
-	var space := (player as Node3D).get_world_3d().direct_space_state
-	print("[swim] DBG ladder ", ladder, " pos ", ladder_pos, " player ", player.global_position, " boat ", boat.global_position, " fwd ", forward)
-	for h in [-0.3, -0.1, 0.1, 0.3, 0.5]:
-		var from: Vector3 = Vector3(player.global_position.x, h, player.global_position.z)
-		var q := PhysicsRayQueryParameters3D.create(from, from + forward * 2.0, 39)
-		var hit := space.intersect_ray(q)
-		print("[swim] DBG ray y=%.1f -> %s" % [h, (str(hit.get("position")) + " " + str(hit.get("collider"))) if hit else "niente"])
 	await climb(player, forward)
 	await wait(0.5)
 	print("[swim] barca: ancora %d, a nuoto %s, quota %.2f (ponte %.2f)" % [int(player.get("SyncAnchorId")),

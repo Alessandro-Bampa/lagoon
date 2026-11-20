@@ -785,27 +785,46 @@ public partial class CharacterMotor : CharacterBody3D
 
         Vector3 feet = GlobalPosition - Vector3.Up * _standHeight * 0.5f;
         float submerged = surfaceY - feet.Y;
-        // Al pelo dell'acqua: allo specchio di poppa un barchino pesca appena 0,1 m (meno ancora fuori
-        // asse, con la stellatura): piu' in basso la sonda passerebbe sotto lo scafo.
-        float probeHeight = Mathf.Max(submerged, VaultMinHeight * 0.7f);
         float maxHeight = submerged + Mathf.Max(SwimClimbMaxAboveWater, LadderClimbMaxAboveWater);
 
-        ObstacleProbe.ObstacleInfo info = ObstacleProbe.Scan(
-            GetWorld3D(), GetRid(), feet, forward,
-            maxHeight, probeHeight, VaultReach, VaultMaxDepth,
-            VaultLandingMargin + _capsule.Radius, _capsule);
+        // La parete si cerca a piu' quote, dal pelo dell'acqua in su. Una banchina e' verticale fino
+        // in fondo, ma lo specchio di poppa di un barchino pesca appena 0,1 m e con l'onda si alza:
+        // a pelo d'acqua il raggio passa sotto o prende il fondo che risale (normale quasi verticale,
+        // scartata come rampa), mentre la parete vera sta 0,15-0,3 m piu' su.
+        for (int i = 0; i < SwimClimbProbeOffsets.Length; i++)
+        {
+            float probeHeight = Mathf.Max(submerged + SwimClimbProbeOffsets[i], VaultMinHeight * 0.7f);
+            ObstacleProbe.ObstacleInfo info = ObstacleProbe.Scan(
+                GetWorld3D(), GetRid(), feet, forward,
+                maxHeight, probeHeight, VaultReach, VaultMaxDepth,
+                VaultLandingMargin + _capsule.Radius, _capsule);
 
-        if (!info.Found || !info.TopStandable)
-            return false;
+            // Bordo sottile (la murata di una barca) con spazio libero oltre: si scavalca e si finisce
+            // dentro, sul pagliolo. Arrampicarsi in cima lascerebbe in bilico sulla falchetta.
+            bool thinOver = info.Found && info.LandingClear && info.Depth < SwimClimbVaultDepth
+                && info.LandingPoint.Y < info.LedgePoint.Y;
+            if (!info.Found || (!info.TopStandable && !thinOver))
+                continue;
 
-        float aboveWater = info.LedgePoint.Y - surfaceY;
-        float limit = HasSwimLadderNear(info.WallPoint) ? LadderClimbMaxAboveWater : SwimClimbMaxAboveWater;
-        if (aboveWater > limit)
-            return false;
+            float aboveWater = info.LedgePoint.Y - surfaceY;
+            float limit = HasSwimLadderNear(info.WallPoint) ? LadderClimbMaxAboveWater : SwimClimbMaxAboveWater;
+            if (aboveWater > limit)
+                return false;
 
-        BeginMantle(info);
-        return true;
+            if (thinOver)
+                BeginManeuver(ParkourPhase.Vault, VaultDuration, info.LandingPoint + Vector3.Up * _standHeight * 0.5f, info);
+            else
+                BeginMantle(info);
+            return true;
+        }
+        return false;
     }
+
+    /// Spessore sotto il quale il bordo raggiunto a nuoto si scavalca invece di salirci sopra (m).
+    private const float SwimClimbVaultDepth = 0.35f;
+
+    /// Quote (m, rispetto al pelo dell'acqua) a cui la salita a nuoto cerca la parete, in ordine.
+    private static readonly float[] SwimClimbProbeOffsets = { -0.1f, 0.05f, 0.2f, 0.35f };
 
     /// Una scaletta (nodo del gruppo <see cref="SwimLadderGroup"/>) entro <see cref="LadderReach"/>, in pianta.
     private bool HasSwimLadderNear(Vector3 point)

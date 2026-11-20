@@ -1,0 +1,52 @@
+[gd_resource type="Resource" script_class="InboardDefinition" format=3 uid="uid://cbpqb0yqf54qf"]
+
+[ext_resource type="Script" uid="uid://cy4vin6px0eks" path="res://vehicles/scripts/Propulsion/EngineDefinition.cs" id="1"]
+[ext_resource type="Script" uid="uid://d1p2n2jykwij" path="res://vehicles/scripts/Propulsion/GearboxDefinition.cs" id="2"]
+[ext_resource type="Script" uid="uid://cfrnswtwlvfyc" path="res://vehicles/scripts/Propulsion/PropellerDefinition.cs" id="3"]
+[ext_resource type="Script" uid="uid://5c1r86wn5nmo" path="res://vehicles/scripts/Propulsion/FoilDefinition.cs" id="4"]
+[ext_resource type="Script" uid="uid://d241n372inmjy" path="res://vehicles/scripts/Propulsion/InboardDefinition.cs" id="5"]
+
+[sub_resource type="Resource" id="Engine"]
+script = ExtResource("1")
+Type = 1
+MaxPowerKw = 147.0
+RatedRpm = 1800.0
+IdleRpm = 650.0
+LimiterRpm = 1950.0
+InertiaKgm2 = 2.0
+ThrottleTimeConstant = 1.0
+BsfcGPerKwh = 215.0
+Mass = 850.0
+
+[sub_resource type="Resource" id="Gearbox"]
+script = ExtResource("2")
+RatioForward = 2.94
+RatioReverse = 2.94
+ShiftSeconds = 1.5
+NeutralDwellSeconds = 0.8
+MaxShiftRpm = 1000.0
+
+[sub_resource type="Resource" id="Propeller"]
+script = ExtResource("3")
+Diameter = 0.94
+Pitch = 0.6
+WakeFraction = 0.25
+ThrustDeduction = 0.18
+PropWalkAhead = 0.03
+PropWalkAstern = 0.1
+PropWalkSpeed = 1.5
+InertiaKgm2 = 5.0
+
+[sub_resource type="Resource" id="Rudder"]
+script = ExtResource("4")
+Area = 0.72
+Span = 1.16
+StallDegrees = 35.0
+
+[resource]
+script = ExtResource("5")
+Engine = SubResource("Engine")
+Propeller = SubResource("Propeller")
+Gearbox = SubResource("Gearbox")
+Rudder = SubResource("Rudder")
+RudderRateDegrees = 12.0

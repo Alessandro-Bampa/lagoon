@@ -43,6 +43,14 @@ Ogni nuovo elemento di HUD va aggiunto a `PlayerHud._hudRoot` (eredita rect e re
   Raggiungibile anche dal `MainMenu` (`Open(settingsOnly: true)`).
 - **`SettingsService` è l'unico proprietario dei valori** (`user://settings.cfg`) e l'unico che tocca
   `DisplayServer`/`AudioServer`. La UI legge e scrive le sue proprietà, poi `ApplyAll()`.
+- **Fps**: tetto in primo piano = `application/run/max_fps` (160) letto all'avvio; VSync dalla
+  preferenza salvata (`[display] vsync`), che **vince** sul `project.godot`. Finestra non in primo
+  piano → `BackgroundMaxFps` (30): la seconda istanza dei test multi-istanza costava quanto la
+  prima (editor + due istanze = GPU al 100 %, ~300 W; dopo, a giochi dietro: ~60 %, 213 W).
+  `SettingsService._Process` confronta a ogni frame la finestra in primo piano del sistema (su
+  Windows `GetForegroundWindow`, radice compresa: l'istanza incorporata nella scheda Gioco conta
+  come davanti quando lo è l'editor), perché `WindowIsFocused` e le notifiche FocusIn/Out restano
+  sbagliate per una finestra nata senza focus. Escluso con `--fixed-fps` e in headless.
 - **Mai `GetTree().Paused`**: fermerebbe solo il peer locale. Una UI modale alza
   `GameManager.UiModalOpen`, che sospende il solo input di gameplay.
 - "Esci dalla partita" chiude il processo: manca una disconnessione pulita (va con l'host migration).

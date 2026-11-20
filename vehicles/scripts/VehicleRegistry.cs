@@ -64,6 +64,30 @@ public static class VehicleRegistry
     }
 
     /// <summary>
+    /// Cancello scorrevole piu' vicino a <paramref name="from"/> fra tutte le barche (entro la loro
+    /// <see cref="BoatController.GateRange"/>). <paramref name="gate"/> = -1 se nessuno.
+    /// </summary>
+    public static BoatController? NearestGate(Node context, Vector3 from, out int gate, out float distance)
+    {
+        BoatController? nearest = null;
+        gate = -1;
+        distance = float.MaxValue;
+        foreach (Node node in context.GetTree().GetNodesInGroup(BoatController.GroupName))
+        {
+            if (node is not BoatController boat || boat.IsQueuedForDeletion())
+                continue;
+            int g = boat.NearestGate(from, out float d);
+            if (g >= 0 && d < distance)
+            {
+                distance = d;
+                gate = g;
+                nearest = boat;
+            }
+        }
+        return nearest;
+    }
+
+    /// <summary>
     /// Avatar del peer dato (o null). Serve all'host per validare un intento contro la posizione
     /// REPLICATA del richiedente invece che contro un dato arrivato dal client.
     /// </summary>

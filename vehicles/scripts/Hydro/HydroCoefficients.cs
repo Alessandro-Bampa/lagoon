@@ -45,6 +45,35 @@ public partial class HydroCoefficients : Resource
     /// Senza, lo specchio di poppa di un planante verrebbe risucchiato.
     /// </summary>
     [Export] public float SuctionVentK { get; set; } = 1.0f;
+    /// <summary>
+    /// Presa laterale: moltiplica la parte di pressione/suzione dovuta alla velocita' di DERIVA (asse X
+    /// della barca), con la forza aggiunta solo laterale e applicata sulla faccia. 1 = forma isotropa di
+    /// Kerner. Separa due fenomeni che un coefficiente unico lega: la pressione sulle facce di prua in
+    /// avanzo (nei dislocanti in gran parte gia' contata dalla resistenza d'onda: <c>c_p2</c> 0,1-0,15)
+    /// e la resistenza al flusso trasversale in virata (per una lastra il coefficiente e' ~0,55 + 0,35,
+    /// specifiche §8.3). Con <c>c_p2</c> basso e scala 1 lo scafo non "tiene": in virata scivola finche'
+    /// il timone non si allinea al flusso (deriva ≈ angolo di barra, ~30°). Solo laterale perche'
+    /// scalare la pressione lungo la normale delle facce di sentina darebbe forze verticali spurie
+    /// (sopravvento spinta in su, sottovento risucchio in giu'): la barca sbanderebbe verso l'interno.
+    /// </summary>
+    [Export] public float LateralPressureScale { get; set; } = 1f;
+    /// <summary>
+    /// Distribuzione della pressione lungo la lunghezza bagnata (solo pressione, non suzione): 0 =
+    /// uniforme (Kerner), 1 = lineare da 0 allo specchio a 2× al bordo d'attacco (centro di pressione
+    /// a 2/3 della lunghezza bagnata, come la lastra planante di Savitsky ~0,7; la pressione si annulla
+    /// sullo specchio ventilato). Con la distribuzione uniforme il centro di pressione cade a meta' della
+    /// lunghezza bagnata: per portarlo sul baricentro la barca plana su una superficie troppo lunga,
+    /// con assetto troppo basso e troppo attrito.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,1,0.05")] public float PressureLeadingEdge { get; set; }
+    /// <summary>
+    /// Specchio ventilato (plananti e semi-plananti): in planata la pressione idrostatica si annulla
+    /// sullo specchio e torna piena al bordo d'attacco (lineare, pesata come la dissolvenza della
+    /// resistenza d'onda col Froude volumetrico). 0 = idrostatica piena ovunque. Senza, a 20 nodi un
+    /// terzo del peso restava sulla spinta di Archimede (Savitsky: ~10%) e l'acqua "ferma" sotto lo
+    /// specchio faceva da molla al beccheggio: il trim del motore non cambiava l'assetto.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,1,0.05")] public float TransomRelief { get; set; }
 
     [ExportGroup("Resistenza d'onda")]
     /// Moltiplicatore della curva r_w(Fn) dei dislocanti pesanti: 1 pescherecci, ~0,6 leggeri/plananti.

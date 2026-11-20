@@ -1,23 +1,20 @@
-[gd_resource type="Resource" script_class="BoatConfig" format=3]
+[gd_resource type="Resource" script_class="BoatConfig" format=3 uid="uid://xetcra0stxl7"]
 
-[ext_resource type="Script" path="res://vehicles/scripts/BoatConfig.cs" id="1"]
-[ext_resource type="Resource" path="res://resources/boats/hydro_barchino.tres" id="9"]
-[ext_resource type="Script" path="res://vehicles/scripts/Propulsion/FoilDefinition.cs" id="10"]
-[ext_resource type="Resource" path="res://resources/boats/foil_barchino_skeg.tres" id="11"]
-[ext_resource type="PackedScene" path="res://assets/models/boats/Barchino_Tiller.glb" id="2"]
-[ext_resource type="Resource" path="res://resources/boats/outboard_25.tres" id="3"]
+[ext_resource type="Script" uid="uid://bsgfu4kps7q8c" path="res://vehicles/scripts/BoatConfig.cs" id="1"]
+[ext_resource type="PackedScene" uid="uid://dtq588m8y0hac" path="res://assets/models/boats/Barchino_Tiller.glb" id="2"]
 [ext_resource type="Resource" path="res://resources/boats/livery_graphite.tres" id="4"]
-[ext_resource type="Script" path="res://vehicles/scripts/BoatAccessory.cs" id="5"]
 [ext_resource type="Resource" path="res://resources/boats/accessory_navlight.tres" id="6"]
+[ext_resource type="Resource" uid="uid://dfyxarddumoxf" path="res://resources/boats/outboard_40.tres" id="6_0yldf"]
+[ext_resource type="Resource" path="res://resources/boats/hydro_barchino.tres" id="9"]
+[ext_resource type="Resource" path="res://resources/boats/foil_barchino_skeg.tres" id="11"]
 
 [resource]
 script = ExtResource("1")
 Hull = ExtResource("2")
 HullMass = 360.0
-Hydro = ExtResource("9")
 HullCenterOfMass = Vector3(0, -0.08, 0.5)
-Motor = ExtResource("3")
-FixedFoils = Array[ExtResource("10")]([ExtResource("11")])
-Helm = 0
-Accessories = Array[ExtResource("5")]([ExtResource("6")])
+Hydro = ExtResource("9")
+Motor = ExtResource("6_0yldf")
+FixedFoils = [ExtResource("11")]
+Accessories = [ExtResource("6")]
 Livery = ExtResource("4")

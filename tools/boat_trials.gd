@@ -17,6 +17,7 @@ const PRESETS := {
 	"barchino_console": "res://vehicles/scenes/boats/BarchinoConsole.tscn",
 	"gozzo": "res://vehicles/scenes/boats/Gozzo.tscn",
 	"peschereccio": "res://vehicles/scenes/boats/Peschereccio.tscn",
+	"vaporetto": "res://vehicles/scenes/boats/Vaporetto.tscn",
 }
 
 ## Valori di prova per una barca senza voce in TARGETS (massa del peso a bordo e sua distanza
@@ -29,6 +30,9 @@ const TARGETS := {
 	"barchino_console": {"roll_period": [1.0, 1.6], "speed_kn": [22.0, 27.0], "bollard_kgf": [230.0, 360.0], "plane_s": [2.0, 5.0], "plane_trim": [3.0, 6.0], "deck_y": -0.05, "weight": 90.0, "arm": 0.7, "settle": 10.0, "run": 40.0},
 	"gozzo": {"roll_period": [2.3, 3.0], "speed_kn": [6.5, 7.8], "bollard_kgf": [350.0, 400.0], "deck_y": 0.22, "weight": 90.0, "arm": 0.9, "settle": 15.0, "run": 60.0},
 	"peschereccio": {"roll_period": [6.0, 9.0], "speed_kn": [10.0, 11.0], "bollard_kgf": [6700.0, 8000.0], "deck_y": 1.4, "weight": 3000.0, "arm": 2.0, "settle": 40.0, "run": 150.0},
+	# Vaporetto 24 m, 25 t, 147 kW: velocita' massima ~10,8 kn (MB3, B), punto fisso 11-15 kgf/kW
+	# (dislocante ad asse), rollio: formula IMO 2,83 s (B 4,2, d 0,66, GM 2,3) ±20%.
+	"vaporetto": {"roll_period": [2.2, 3.4], "speed_kn": [10.0, 11.5], "bollard_kgf": [1600.0, 2200.0], "deck_y": 0.5, "weight": 800.0, "arm": 1.5, "settle": 30.0, "run": 120.0},
 }
 
 var level: Node3D

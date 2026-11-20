@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Godot;
 
 namespace Lagoon;
@@ -132,6 +134,22 @@ public partial class SettingsService : Node
     private float _appliedFogDensity = -1f;
 
     /// <summary>
+    /// Tetto di fps quando la finestra del gioco non ha il focus: la seconda istanza dei test
+    /// multi-istanza, un alt-tab. Disegnata a pieno ritmo, una finestra che nessuno guarda costava
+    /// quanto quella in primo piano (19/11/2026, MainLaguna: editor + due istanze a 160 fps = GPU al
+    /// 100 %, ~300 W). Rete e fisica non ne risentono: la fisica ha il suo passo fisso e ne fa piu' di
+    /// uno per frame.
+    /// </summary>
+    public const int BackgroundMaxFps = 30;
+
+    /// Tetto in primo piano (<c>application/run/max_fps</c>, letto all'avvio; 0 = nessun tetto).
+    private int _foregroundMaxFps;
+    /// Falso finche' <see cref="_Ready"/> non ha letto il tetto, in headless e nelle prove in tempo simulato.
+    private bool _throttleInBackground;
+    /// Ultimo stato del focus applicato; null = mai applicato (il primo frame lo applica comunque).
+    private bool? _windowFocused;
+
+    /// <summary>
     /// Comandi riassegnati dal giocatore: azione -> evento in forma testuale
     /// (<see cref="InputBindings.Serialize"/>). Contiene SOLO gli scostamenti dai binding di progetto,
     /// cosi' un domani cambiare un default lo propaga a chi non l'ha mai toccato.
@@ -149,6 +167,12 @@ public partial class SettingsService : Node
         Load();
         // Le impostazioni finestra vanno applicate a viewport gia' pronto.
         CallDeferred(MethodName.ApplyAll);
+
+        _foregroundMaxFps = Engine.MaxFps;
+        // Le prove in tempo simulato (--fixed-fps, es. tools/boat_trials.gd) devono girare alla
+        // velocita' della CPU anche se la loro finestra perde il focus.
+        _throttleInBackground = System.Array.IndexOf(OS.GetCmdlineArgs(), "--fixed-fps") < 0
+            && DisplayServer.GetName() != "headless";
     }
 
     public override void _ExitTree()
@@ -156,6 +180,49 @@ public partial class SettingsService : Node
         if (Instance == this)
             Instance = null;
     }
+
+    /// <summary>
+    /// Il primo piano si legge a ogni frame invece di affidarsi a NotificationApplicationFocusIn/Out:
+    /// una finestra che nasce senza focus (la seconda istanza) non riceve mai FocusOut, e una che lo
+    /// riceve durante l'avvio, prima che l'albero esista, non riceve FocusIn (provato il 19/11/2026:
+    /// istanza in primo piano rimasta a 30 fps). Costa qualche microsecondo.
+    /// </summary>
+    public override void _Process(double delta)
+    {
+        if (!_throttleInBackground)
+            return;
+        bool focused = IsGameWindowInForeground();
+        if (focused == _windowFocused)
+            return;
+        _windowFocused = focused;
+        Engine.MaxFps = focused ? _foregroundMaxFps
+            : _foregroundMaxFps > 0 ? Mathf.Min(_foregroundMaxFps, BackgroundMaxFps) : BackgroundMaxFps;
+    }
+
+    /// <summary>
+    /// Su Windows non basta <c>DisplayServer.WindowIsFocused</c>: una finestra creata mentre un'altra
+    /// applicazione e' in primo piano risulta attiva per il proprio thread senza esserlo mai per il
+    /// sistema, e il flag resta vero per sempre (seconda istanza lanciata dall'editor: "focused" con
+    /// un'altra app davanti, 160 fps). Si confronta quindi con la finestra in primo piano del
+    /// sistema, risalendo alla radice: l'istanza incorporata nella scheda Gioco dell'editor (--wid) e'
+    /// una finestra figlia, e conta come in primo piano quando lo e' l'editor che la mostra.
+    /// </summary>
+    private static bool IsGameWindowInForeground()
+    {
+        if (!OperatingSystem.IsWindows())
+            return DisplayServer.WindowIsFocused();
+        nint own = (nint)DisplayServer.WindowGetNativeHandle(DisplayServer.HandleType.WindowHandle);
+        nint foreground = GetForegroundWindow();
+        return foreground != 0 && GetAncestor(foreground, GaRootOwner) == GetAncestor(own, GaRootOwner);
+    }
+
+    private const uint GaRootOwner = 3;
+
+    [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern nint GetAncestor(nint hwnd, uint flags);
 
     // ====================================================================================
     //  Applicazione

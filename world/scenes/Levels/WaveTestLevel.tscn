@@ -1,16 +1,16 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://dp1nsgwoucp5x"]
 
 [ext_resource type="PackedScene" path="res://water/scenes/Water.tscn" id="1"]
-[ext_resource type="PackedScene" path="res://vehicles/scenes/boats/BarchinoTiller.tscn" id="boat_BarchinoTiller"]
+[ext_resource type="PackedScene" path="res://water/scenes/FloatingCrate.tscn" id="5"]
+[ext_resource type="Script" uid="uid://dh30pyein5y3y" path="res://water/scripts/SeaStateDebugControls.cs" id="6"]
 [ext_resource type="PackedScene" path="res://vehicles/scenes/boats/BarchinoConsole.tscn" id="boat_BarchinoConsole"]
+[ext_resource type="PackedScene" uid="uid://qq8naxatvrbv" path="res://vehicles/scenes/boats/BarchinoTiller.tscn" id="boat_BarchinoTiller"]
 [ext_resource type="PackedScene" path="res://vehicles/scenes/boats/Gozzo.tscn" id="boat_Gozzo"]
 [ext_resource type="PackedScene" path="res://vehicles/scenes/boats/Peschereccio.tscn" id="boat_Peschereccio"]
-[ext_resource type="PackedScene" path="res://water/scenes/FloatingCrate.tscn" id="5"]
-[ext_resource type="Script" path="res://water/scripts/SeaStateDebugControls.cs" id="6"]
+[ext_resource type="PackedScene" path="res://vehicles/scenes/boats/Vaporetto.tscn" id="boat_Vaporetto"]
 
 [sub_resource type="ProceduralSkyMaterial" id="Sky_mat"]
 ground_bottom_color = Color(0.6463, 0.6558, 0.6708, 1)
-ground_horizon_color = Color(0.6463, 0.6558, 0.6708, 1)
 
 [sub_resource type="Sky" id="Sky_1"]
 sky_material = SubResource("Sky_mat")
@@ -25,6 +25,9 @@ fog_light_color = Color(0.72, 0.78, 0.84, 1)
 fog_density = 0.0015
 fog_sky_affect = 0.3
 
+[sub_resource type="BoxShape3D" id="Shape_Seabed"]
+size = Vector3(3000, 1, 3000)
+
 [sub_resource type="BoxShape3D" id="Shape_Pontoon"]
 size = Vector3(14, 0.6, 24)
 
@@ -35,9 +38,6 @@ size = Vector3(14, 0.6, 24)
 albedo_color = Color(0.45, 0.33, 0.22, 1)
 roughness = 0.9
 
-[sub_resource type="BoxShape3D" id="Shape_Seabed"]
-size = Vector3(3000, 1, 3000)
-
 [sub_resource type="BoxShape3D" id="Shape_Post"]
 size = Vector3(0.35, 6, 0.35)
 
@@ -46,82 +46,87 @@ top_radius = 0.17
 bottom_radius = 0.17
 height = 6.0
 
-[node name="WaveTestLevel" type="Node3D"]
+[node name="WaveTestLevel" type="Node3D" unique_id=880625745]
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=128163397]
 environment = SubResource("Env_1")
 
-[node name="Sun" type="DirectionalLight3D" parent="."]
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=715911184]
 transform = Transform3D(0.819152, 0.42625, -0.383798, 0, 0.669131, 0.743145, 0.573576, -0.608749, 0.54812, 0, 30, 0)
 shadow_enabled = true
 directional_shadow_max_distance = 150.0
 
-[node name="Water" parent="." instance=ExtResource("1")]
+[node name="Water" parent="." unique_id=164938850 instance=ExtResource("1")]
 ExtentXZ = Vector2(3000, 3000)
 DefaultExposure = 1.0
-InitialSeaState = 1.0
 TideEnabled = false
+SyncWaveTime = 29.63333333333293
+SyncSeaState = 1.0
 
-[node name="SeaControls" type="Node" parent="."]
+[node name="SeaControls" type="Node" parent="." unique_id=4587073]
 script = ExtResource("6")
 
-[node name="Seabed" type="StaticBody3D" parent="."]
+[node name="Seabed" type="StaticBody3D" parent="." unique_id=6174327]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -12, 0)
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Seabed"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Seabed" unique_id=1846136496]
 shape = SubResource("Shape_Seabed")
 
-[node name="Pontoon" type="StaticBody3D" parent="."]
+[node name="Pontoon" type="StaticBody3D" parent="." unique_id=1256945617]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0.7, 0)
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Pontoon"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Pontoon" unique_id=894712512]
 shape = SubResource("Shape_Pontoon")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Pontoon"]
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Pontoon" unique_id=1648128728]
 mesh = SubResource("Mesh_Pontoon")
 surface_material_override/0 = SubResource("Mat_Wood")
 
-[node name="PostA" type="StaticBody3D" parent="Pontoon"]
+[node name="PostA" type="StaticBody3D" parent="Pontoon" unique_id=671141270]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.2, -1.5, -11.5)
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Pontoon/PostA"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Pontoon/PostA" unique_id=12936112]
 shape = SubResource("Shape_Post")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Pontoon/PostA"]
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Pontoon/PostA" unique_id=1882021219]
 mesh = SubResource("Mesh_Post")
 surface_material_override/0 = SubResource("Mat_Wood")
 
-[node name="PostB" type="StaticBody3D" parent="Pontoon"]
+[node name="PostB" type="StaticBody3D" parent="Pontoon" unique_id=132475763]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.2, -1.5, 11.5)
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Pontoon/PostB"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Pontoon/PostB" unique_id=570901192]
 shape = SubResource("Shape_Post")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Pontoon/PostB"]
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Pontoon/PostB" unique_id=554834369]
 mesh = SubResource("Mesh_Post")
 surface_material_override/0 = SubResource("Mat_Wood")
 
-[node name="WaterRespawn" type="Marker3D" parent="." groups=["water_respawn"]]
+[node name="WaterRespawn" type="Marker3D" parent="." unique_id=1855654806 groups=["water_respawn"]]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 1.2, -4)
 
-[node name="BarchinoTiller" parent="." instance=ExtResource("boat_BarchinoTiller")]
+[node name="BarchinoTiller" parent="." unique_id=1876976541 instance=ExtResource("boat_BarchinoTiller")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.4, 0.05, -5)
 VehicleId = 11
 
-[node name="BarchinoConsole" parent="." instance=ExtResource("boat_BarchinoConsole")]
+[node name="BarchinoConsole" parent="." unique_id=648211786 instance=ExtResource("boat_BarchinoConsole")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.4, 0.05, 4)
 VehicleId = 12
 
-[node name="Gozzo" parent="." instance=ExtResource("boat_Gozzo")]
+[node name="Gozzo" parent="." unique_id=229542572 instance=ExtResource("boat_Gozzo")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0.15, -6)
 VehicleId = 13
 
-[node name="Peschereccio" parent="." instance=ExtResource("boat_Peschereccio")]
+[node name="Peschereccio" parent="." unique_id=1045616874 instance=ExtResource("boat_Peschereccio")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.2, 2)
 VehicleId = 14
 
-[node name="CrateA" parent="." instance=ExtResource("5")]
+[node name="Vaporetto" parent="." unique_id=1996097346 instance=ExtResource("boat_Vaporetto")]
+transform = Transform3D(-0.025388427, 0, -0.9996777, 0, 1, 0, 0.9996777, 0, -0.025388427, -3.9964442, 0, 14.813644)
+VehicleId = 15
+
+[node name="CrateA" parent="." unique_id=673257268 instance=ExtResource("5")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.4, 3)
 
-[node name="CrateB" parent="." instance=ExtResource("5")]
+[node name="CrateB" parent="." unique_id=150317546 instance=ExtResource("5")]
 transform = Transform3D(0.866, 0, 0.5, 0, 1, 0, -0.5, 0, 0.866, -18, 0.4, -4)

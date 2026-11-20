@@ -141,7 +141,7 @@ script = ExtResource("11")
 script = ExtResource("6")
 
 [node name="GroundProbe" type="RayCast3D" parent="." unique_id=299609997]
-target_position = Vector3(0, -1.2, 0)
+target_position = Vector3(0, -1.5, 0)
 collision_mask = 32
 
 [node name="VehicleInput" type="Node" parent="." unique_id=80664865]

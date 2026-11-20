@@ -129,8 +129,13 @@ public partial class WaterVolume : Node3D
     [Export] public Vector3 Current { get; set; }
 
     [ExportGroup("Editor")]
-    /// Anima le onde nella vista 3D dell'editor.
-    [Export] public bool AnimateInEditor { get; set; } = true;
+    /// <summary>
+    /// Fa scorrere le onde nella vista 3D dell'editor (mai mentre il gioco e' avviato dall'editor).
+    /// Spento di default: animate, la vista si ridisegna a ogni frame e su una mappa piena d'acqua
+    /// l'editor teneva la GPU all'80 % anche a gioco fermo. Ferme, la forma delle onde si vede lo
+    /// stesso e i valori dell'ispettore (mare, vento, sovralzo, marea) si applicano subito.
+    /// </summary>
+    [Export] public bool AnimateInEditor { get; set; }
 
     /// <summary>
     /// Solo anteprima nell'editor: rallenta o accelera lo scorrere delle onde per guardarle. In gioco
@@ -229,6 +234,23 @@ public partial class WaterVolume : Node3D
     /// ogni frame ma restano nello stesso tempo della fisica (la barca non "scivola" sull'onda).
     public double RenderTime => _renderTime;
 
+    /// <summary>
+    /// Solo editor: l'orologio delle onde avanza. Falso con <see cref="AnimateInEditor"/> spento e
+    /// mentre il gioco e' avviato dall'editor, quando la vista 3D resterebbe a ridisegnarsi dietro
+    /// alle finestre del gioco. In gioco non si usa.
+    /// </summary>
+    public bool AnimatingInEditor
+    {
+        get
+        {
+#if TOOLS
+            return AnimateInEditor && !EditorInterface.Singleton.IsPlayingScene();
+#else
+            return false;
+#endif
+        }
+    }
+
     private static readonly float[] WindBySeaState = { 1.5f, 4f, 7f, 11f, 17f };
 
     /// Velocita' del vento a 10 m (m/s), nel verso in cui soffia (vedi <see cref="WindSpeedOverride"/>).
@@ -311,12 +333,10 @@ public partial class WaterVolume : Node3D
     {
         if (_spectrum == null)
             Initialize();
+        // Nell'editor con le onde ferme si fa lo stesso un passo, a tempo nullo: l'orologio resta
+        // fermo ma i valori cambiati dall'ispettore (rampe a 0 s) si applicano.
         if (Engine.IsEditorHint())
-        {
-            if (!AnimateInEditor)
-                return;
-            delta *= EditorTimeScale;
-        }
+            delta = AnimatingInEditor ? delta * EditorTimeScale : 0.0;
 
         if (IsHost())
             HostStep(delta);
@@ -328,6 +348,13 @@ public partial class WaterVolume : Node3D
 
     public override void _Process(double delta)
     {
+        // Onde ferme nell'editor: niente frazione del passo, che cambia a ogni frame e farebbe
+        // riscrivere lo shader (quindi ridisegnare la vista) senza che nulla si muova.
+        if (Engine.IsEditorHint() && !AnimatingInEditor)
+        {
+            _renderTime = _physicsTime;
+            return;
+        }
         // Fra un passo fisico e l'altro: stesso orologio, frazione del passo in corso.
         double step = 1.0 / Engine.PhysicsTicksPerSecond;
         _renderTime = _physicsTime + Engine.GetPhysicsInterpolationFraction() * step;
@@ -542,6 +569,32 @@ public partial class WaterVolume : Node3D
         offset = new Vector2((float)(x - x0), (float)(z - z0));
         _spectrum.Evaluate(x0, z0, t, exposure, out Vector3 disp, out Vector3 normal, out Vector3 velocity);
         return new WaterSample(_waterLevel + disp.Y, normal, velocity + new Vector3(Current.X, 0f, Current.Z), exposure);
+    }
+
+    /// <summary>
+    /// Prepara <paramref name="frame"/> per letture vicine a <paramref name="center"/> all'orologio
+    /// fisico (vedi <see cref="WaveLocalFrame"/>). Da rifare a ogni passo.
+    /// </summary>
+    public void PrepareLocal(WaveLocalFrame frame, Vector3 center)
+        => frame.Prepare(_spectrum, center.X, center.Z, _physicsTime, ExposureAt(center.X, center.Z));
+
+    /// <summary>
+    /// Come <see cref="SampleNear"/>, ma col banco locale preparato da <see cref="PrepareLocal"/>:
+    /// fase in float rispetto all'origine del passo, onde spente saltate, esposizione costante.
+    /// </summary>
+    public WaterSample SampleLocal(WaveLocalFrame frame, Vector3 globalPoint, ref Vector2 offset, int iterations)
+    {
+        float x = (float)(globalPoint.X - frame.OriginX), z = (float)(globalPoint.Z - frame.OriginZ);
+        float x0 = x - offset.X, z0 = z - offset.Y;
+        for (int i = 0; i < iterations; i++)
+        {
+            frame.Horizontal(x0, z0, out float dx, out float dz);
+            x0 = x - dx;
+            z0 = z - dz;
+        }
+        offset = new Vector2(x - x0, z - z0);
+        frame.Evaluate(x0, z0, out Vector3 disp, out Vector3 normal, out Vector3 velocity);
+        return new WaterSample(_waterLevel + disp.Y, normal, velocity + new Vector3(Current.X, 0f, Current.Z), frame.Exposure);
     }
 
     /// <summary>

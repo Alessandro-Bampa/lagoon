@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="BoatConfig" format=3 uid="uid://ud1lifd6i7ao"]
+
+[ext_resource type="Script" uid="uid://bsgfu4kps7q8c" path="res://vehicles/scripts/BoatConfig.cs" id="1"]
+[ext_resource type="PackedScene" uid="uid://b52yyg7wni308" path="res://assets/models/boats/Vaporetto.glb" id="2"]
+[ext_resource type="PackedScene" uid="uid://oq87y8kdjh5h" path="res://assets/models/boats/Console_Vaporetto.glb" id="3"]
+[ext_resource type="Resource" path="res://resources/boats/vaporetto_hydro.tres" id="4"]
+[ext_resource type="Resource" uid="uid://cbpqb0yqf54qf" path="res://resources/boats/vaporetto_inboard.tres" id="5"]
+[ext_resource type="Resource" path="res://resources/boats/vaporetto_skeg.tres" id="6"]
+[ext_resource type="Script" uid="uid://cduk1e8f0ahf7" path="res://vehicles/scripts/BoatMassItem.cs" id="7"]
+
+[sub_resource type="Resource" id="Fuel"]
+script = ExtResource("7")
+Label = "Gasolio (400 L al 50%)"
+Mass = 168.0
+Position = Vector3(0, -0.5, 1)
+Size = Vector3(1, 0.5, 0.8)
+
+[sub_resource type="Resource" id="Stern"]
+script = ExtResource("7")
+Label = "Asse, elica, timone e agghiaccio"
+Mass = 250.0
+Position = Vector3(0, -0.6, 9.5)
+Size = Vector3(0.4, 0.8, 1.5)
+
+[resource]
+script = ExtResource("1")
+Hull = ExtResource("2")
+HullMass = 23602.0
+HullCenterOfMass = Vector3(0, 0.95, -0.242)
+Hydro = ExtResource("4")
+Inboard = ExtResource("5")
+FixedFoils = [ExtResource("6")]
+MassItems = [SubResource("Fuel"), SubResource("Stern")]
+Helm = 1
+Console = ExtResource("3")
+WheelTurnsLockToLock = 4.0

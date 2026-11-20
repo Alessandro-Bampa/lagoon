@@ -491,6 +491,10 @@ def build_barchino(variant):
     solids = [(-0.75, 0.75, Y0 + t_stern * L, Y0 + t_bow * L, FLOOR - 0.05, FLOOR)]
     solids.append((-0.6, 0.6, Y0 + t_bow * L, Y1 - 0.3, sheer_z(t_bow) - 0.05, sheer_z(t_bow) + 0.02))
     solids += side_walls(gunwale)
+    # Ponticello di poppa (pozzetto del motore): calpestabile, e' dove arriva chi sale dall'acqua
+    # dalla scaletta sullo specchio.
+    xt = half_beam(0.0) - gunwale
+    solids.append((-xt, xt, Y0, Y0 + t_stern * L, sheer_z(0.0) - 0.12, sheer_z(0.0) - 0.06))
 
     if tiller:
         # Panca di poppa a tutta larghezza: il pilota siede a dritta e tiene la barra con la sinistra.

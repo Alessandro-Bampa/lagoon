@@ -31,6 +31,7 @@ FormFactorK = 0.35
 PressureQuadratic = 0.1
 SuctionQuadratic = 0.05
 ReferenceSpeed = 5.0
+LateralPressureScale = 5.5
 WaveResistanceScale = 0.8
 SlamMaxG = 2.0
 AddedMass = Vector3(0.07, 0.9, 0.9)

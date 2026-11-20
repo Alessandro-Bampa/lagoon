@@ -24,12 +24,33 @@ public static class VehicleInteraction
         if (player.Mode == PlayerMode.Driving)
             return true;
 
-        BoatController? helm = VehicleRegistry.NearestHelm(
-            player, player.GlobalPosition, out float helmDistance);
+        // Candidato veicolo = il piu' vicino fra timone e cancello scorrevole (vedi Target).
+        Target(player, out _, out _, out float vehicleDistance);
 
         // A parita' non esiste: senza candidato veicolo vince il pickup; con entrambi vince il piu'
         // vicino. Se nessuno dei due e' a portata, nessuno consuma l'evento — e F a vuoto non viene
         // piu' ingoiato dalla HUD.
-        return helm != null && helmDistance < pickupDistance;
+        return vehicleDistance < pickupDistance;
+    }
+
+    /// <summary>
+    /// Cosa farebbe F lato veicolo (a piedi): prendere un timone o muovere un cancello, il piu'
+    /// vicino dei due. <paramref name="gate"/> &gt;= 0 = cancello di <paramref name="boat"/>, -1 = timone.
+    /// Distanza <see cref="float.MaxValue"/> e barca null se nessuno e' a portata.
+    /// </summary>
+    public static void Target(PlayerController player, out BoatController? boat, out int gate, out float distance)
+    {
+        BoatController? helm = VehicleRegistry.NearestHelm(player, player.GlobalPosition, out float helmDistance);
+        BoatController? gateBoat = VehicleRegistry.NearestGate(player, player.GlobalPosition, out int g, out float gateDistance);
+        if (gateBoat != null && gateDistance < helmDistance)
+        {
+            boat = gateBoat;
+            gate = g;
+            distance = gateDistance;
+            return;
+        }
+        boat = helm;
+        gate = -1;
+        distance = helm != null ? helmDistance : float.MaxValue;
     }
 }

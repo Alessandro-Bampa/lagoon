@@ -23,6 +23,15 @@ mesh chiusa `HydroHull` per la fisica). Lo script RESETTA la scena: se l'utente 
 lavoro suo, eseguirlo in un Blender separato in background (`blender --background --factory-startup
 --python <runner>` che definisce `PROJECT_DIR` e `ARGV` come fa `blender_client.py`).
 
+Il **vaporetto** invece parte da un modello scaricato (Sketchfab, CC-BY-4.0, fuori dal repo):
+`tools/blender/build_vaporetto.py "<...>/2010_vaporetto/scene.gltf" [noexport]`. Resetta la scena,
+rifà scafo/ponti/timoneria/texture, esporta `Vaporetto(_Worn).glb` e `Console_Vaporetto(_Worn).glb` e
+lascia in Blender la revisione (copia rovinata a +7 m, piano dell'acqua, cilindro da 1,80 m).
+Trappole di Blender 5.2 viste qui: `temp_override(selected_objects=...)` fa fallire l'export glTF
+(passare solo finestra/area e selezionare prima); dopo `bpy.data.objects.remove` il view layer ha voci
+vuote finche' non si chiama `view_layer.update()`; i poligoni non triangolati li triangola l'export a
+modo suo (triangoli degeneri nella `HydroHull`): triangolare le geometrie di ruolo prima.
+
 ## 1. Parlare con Blender
 
 Estensione **ufficiale Blender Lab `mcp`** (non `ahujasid/blender-mcp`: protocollo incompatibile, non

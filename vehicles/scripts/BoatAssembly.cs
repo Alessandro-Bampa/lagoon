@@ -15,7 +15,8 @@ namespace Lagoon;
 ///
 /// Nomi letti dai modelli (generati da <c>tools/blender/build_lagoon_boats.py</c>, skill
 /// vehicles-boats §9): <c>Seat_Helm</c>, <c>Mount_*</c>, <c>HydroHull</c>, <c>HullCollision</c>,
-/// <c>DeckCollision</c>; sulla consolle <c>Wheel</c>, <c>Hand_L</c>, <c>Hand_R</c>.
+/// <c>DeckCollision</c>; sulla consolle <c>Wheel</c>, <c>Hand_L</c>, <c>Hand_R</c>; cancelli scorrevoli
+/// <c>Gate_*</c> + <c>Gate_*_Open</c> (<see cref="BoatGates"/>).
 ///
 /// Rete: e' pura costruzione deterministica dalla scena, uguale su ogni peer. Lo stato che cambia
 /// (sterzo, gas) lo replica la barca; qui c'e' solo la resa (<see cref="ApplyHelmPose"/>).
@@ -79,6 +80,9 @@ public partial class BoatAssembly : Node3D
     /// Angolo massimo del governo (rad): sterzo del fuoribordo o timone.
     public float MaxSteerAngle => Mathf.DegToRad(_config?.Motor?.MaxSteerDegrees
         ?? _config?.Inboard?.RudderMaxDegrees ?? 30f);
+
+    /// Cancelli scorrevoli del modello (null = nessuno). Stato in <see cref="BoatController.SyncGateOpenMask"/>.
+    public BoatGates? Gates { get; private set; }
 
     /// Dove vanno le mani del pilota (null = quella mano resta come nella clip).
     public Node3D? LeftHandTarget { get; private set; }
@@ -171,6 +175,9 @@ public partial class BoatAssembly : Node3D
 
         ApplyLivery(visual);
 
+        // --- Cancelli scorrevoli (Gate_* + Gate_*_Open), se il modello ne ha -----------------
+        Gates = BoatGates.Collect(hull, panel => toBoat * InHull(hull, (Node3D)panel.GetParent()));
+
         // --- Posto di guida e galleggiamento -------------------------------------------------
         if (Find(hull, "Seat_Helm") is Node3D seat && boat.GetNodeOrNull<Marker3D>("HelmSeat") is Marker3D helm)
             helm.Transform = (toBoat * InHull(hull, seat)).Translated(Vector3.Up * PilotBodyCenter);
@@ -228,6 +235,9 @@ public partial class BoatAssembly : Node3D
                     Transform = deck.Transform.AffineInverse() * toBoat * InHull(hull, shape),
                 });
             }
+            Gates?.CreateColliders(deck,
+                panel => deck.Transform.AffineInverse() * toBoat * InHull(hull, (Node3D)panel.GetParent()),
+                GeneratedPrefix);
         }
 
         MassModel.Apply(boat, true);

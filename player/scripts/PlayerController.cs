@@ -517,6 +517,8 @@ public partial class PlayerController : CharacterMotor
     /// Volutamente NON si usa <c>GetLastSlideCollision()</c>: quello ritorna null quando nel tick non
     /// c'e' stato movimento, quindi un giocatore FERMO sul ponte perderebbe e riacquisterebbe l'ancora
     /// a intermittenza — e con essa il riferimento del trasporto, cioe' resterebbe indietro a scatti.
+    /// Il raggio e' lungo 1,5 m dal centro (0,5 sotto i piedi): chi sta sullo spigolo di una panca ha
+    /// il centro oltre il bordo, e il raggio deve arrivare al pagliolo sotto.
     /// </summary>
     private void RefreshAnchor()
     {

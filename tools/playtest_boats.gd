@@ -1,7 +1,7 @@
 extends SceneTree
 ## Collaudo delle barche su misura (skill vehicles-boats §9) nel livello di prova delle onde.
 ##
-##   Godot --path . --resolution 1280x720 --script tools/playtest_boats.gd -- <cartella_output>
+##   Godot --path . --resolution 1280x720 --script tools/playtest_boats.gd -- <cartella_output> [Barca,Barca]
 ##
 ## Partita locale ENet su MainWaveTest: il giocatore prende il timone della barca a barra e poi di
 ## quella a volante, accelera, vira, e ripete col mare in tempesta. Stampa velocita', angolo del
@@ -9,6 +9,8 @@ extends SceneTree
 ## lo vedono gli altri) e in prima persona. Con --headless solo numeri.
 
 var out_dir := ""
+## Barche da provare (secondo argomento, separate da virgola); vuoto = tutte.
+var only: PackedStringArray = []
 var shots := 0
 var main: Node
 var player: Node3D
@@ -18,6 +20,8 @@ var chase: Camera3D
 func _init() -> void:
 	var args := OS.get_cmdline_user_args()
 	out_dir = args[0] if args.size() > 0 else "user://"
+	if args.size() > 1:
+		only = args[1].split(",")
 	_run.call_deferred()
 
 
@@ -105,6 +109,113 @@ func take_helm(boat: RigidBody3D) -> void:
 	print("[boats] %s: pilota %d, modalita' %d" % [boat.name, boat.get("PilotPeerId"), player.get("Mode")])
 
 
+## A nuoto dietro la scaletta della barca, poi avanti + salto: si deve finire a bordo (ancora = barca).
+func board_from_water(boat: RigidBody3D) -> void:
+	var ladder: Node3D = null
+	for n in boat.find_children("*", "Node3D", true, false):
+		if n.is_in_group("swim_ladder"):
+			ladder = n
+			break
+	if ladder == null:
+		print("[boats] %s: nessuna scaletta, salita dall'acqua non provata" % boat.name)
+		return
+	# Il −Z della scaletta punta verso l'interno della barca (cosi' la montano tutti gli scafi).
+	var to_boat: Vector3 = ladder.global_basis * Vector3.FORWARD
+	to_boat.y = 0.0
+	to_boat = to_boat.normalized()
+	player.global_position = Vector3(ladder.global_position.x, boat.global_position.y - 0.6, ladder.global_position.z) - to_boat * 0.7
+	player.velocity = Vector3.ZERO
+	await wait(1.5)
+	var cam: Node = player.get_node("PlayerCamera")
+	cam.call("AddYaw", angle_difference(float(cam.get("LookYaw")), atan2(to_boat.x, to_boat.z)))
+	# Come un giocatore: avanti contro lo scafo e salto, riprovando se l'onda lo ha spostato.
+	Input.action_press("move_up")
+	for attempt in 4:
+		# Davanti alla scaletta (le onde spostano chi nuota), rivolti verso di lei: e' li' che il bordo
+		# concede la salita alta.
+		# Il −Z della scaletta punta verso l'interno della barca (cosi' la montano tutti gli scafi).
+		to_boat = ladder.global_basis * Vector3.FORWARD
+		to_boat.y = 0.0
+		to_boat = to_boat.normalized()
+		player.global_position = Vector3(ladder.global_position.x, player.global_position.y, ladder.global_position.z) - to_boat * 0.6
+		player.velocity = Vector3.ZERO
+		cam.call("AddYaw", angle_difference(float(cam.get("LookYaw")), atan2(to_boat.x, to_boat.z)))
+		await wait(0.6)
+		Input.action_press("jump")
+		await wait(0.1)
+		Input.action_release("jump")
+		await wait(1.2)
+		if not bool(player.get("SyncSwimming")):
+			break
+	Input.action_release("move_up")
+	await wait(1.5)
+	var ok := int(player.get("SyncAnchorId")) == int(boat.get("VehicleId")) and not bool(player.get("SyncSwimming"))
+	print("[boats] %s salita dall'acqua dalla scaletta: %s (ancora %d, a nuoto %s, piedi %.2f m sopra l'acqua)" % [
+		boat.name, "OK" if ok else "FALLITA", int(player.get("SyncAnchorId")), player.get("SyncSwimming"),
+		player.global_position.y - 1.0])
+
+
+## Varco con cancello scorrevole (vaporetto): da in acqua, davanti al varco, a cancello CHIUSO non si
+## deve salire; aperto (richiesta fatta dall'acqua) si sale col bordo libero basso. Poi lo si richiude.
+func board_through_gate(boat: RigidBody3D) -> void:
+	var count := int(boat.get("GateCount"))
+	if count == 0:
+		return
+	var gate := count - 1
+	var centre: Vector3 = boat.call("GateGlobalCenter", gate)
+	var outward: Vector3 = centre - boat.global_position
+	var right: Vector3 = boat.global_basis.x
+	outward = right * signf(outward.dot(right))
+	var cam: Node = player.get_node("PlayerCamera")
+
+	var climb := func(label: String) -> bool:
+		player.global_position = Vector3(centre.x, boat.global_position.y - 0.6, centre.z) + outward * 0.9
+		player.velocity = Vector3.ZERO
+		await wait(1.5)
+		Input.action_press("move_up")
+		for attempt in 3:
+			player.global_position = Vector3(centre.x, player.global_position.y, centre.z) + outward * 0.6
+			player.velocity = Vector3.ZERO
+			cam.call("AddYaw", angle_difference(float(cam.get("LookYaw")), atan2(-outward.x, -outward.z)))
+			await wait(0.6)
+			Input.action_press("jump")
+			await wait(0.1)
+			Input.action_release("jump")
+			await wait(1.2)
+			if not bool(player.get("SyncSwimming")):
+				break
+		Input.action_release("move_up")
+		await wait(1.0)
+		var aboard := int(player.get("SyncAnchorId")) == int(boat.get("VehicleId")) and not bool(player.get("SyncSwimming"))
+		print("[boats] %s varco %d %s: %s (maschera %d)" % [boat.name, gate, label, "a bordo" if aboard else "in acqua", int(boat.get("SyncGateOpenMask"))])
+		return aboard
+
+	var closed_ok: bool = not await climb.call("chiuso")
+	# Dall'acqua: richiesta al cancello (l'host valida la distanza sulla posizione replicata).
+	player.global_position = Vector3(centre.x, boat.global_position.y - 0.6, centre.z) + outward * 0.9
+	await wait(0.5)
+	var rp: Vector3 = player.get("ResolvedSyncPosition")
+	print("[boats] richiesta dall'acqua: distanza dal varco %.2f m (portata %.1f)" % [
+		float(boat.call("GateDistance", gate, rp)), float(boat.get("GateRange"))])
+	boat.call("SubmitToggleGate", gate)
+	await wait(2.6)
+	var opened := (int(boat.get("SyncGateOpenMask")) & (1 << gate)) != 0
+	show_full_body(true)
+	chase.make_current()
+	chase.global_position = centre + outward * 6.0 + Vector3.UP * 1.5
+	chase.look_at(centre, Vector3.UP)
+	await snap(String(boat.name) + "_varco_aperto")
+	player.get_node("PlayerCamera").call("make_current")
+	show_full_body(false)
+	var open_ok: bool = await climb.call("aperto")
+	boat.call("SubmitToggleGate", gate)
+	await wait(2.6)
+	var reclosed := (int(boat.get("SyncGateOpenMask")) & (1 << gate)) == 0
+	print("[boats] %s cancelli: chiuso blocca %s, apertura %s, salita dal varco %s, richiusura %s" % [
+		boat.name, "OK" if closed_ok else "FALLITO", "OK" if opened else "FALLITA",
+		"OK" if open_ok else "FALLITA", "OK" if reclosed else "FALLITA"])
+
+
 func leave_helm(boat: RigidBody3D) -> void:
 	boat.call("SubmitControls", 0.0, 0.0, 0.0, 0.0)
 	boat.call("SubmitLeaveHelm")
@@ -135,9 +246,11 @@ func _run() -> void:
 	level.add_child(chase)
 
 	var moorings := {}
-	for n in ["BarchinoTiller", "BarchinoConsole", "Gozzo", "Peschereccio"]:
+	for n in ["BarchinoTiller", "BarchinoConsole", "Gozzo", "Peschereccio", "Vaporetto"]:
 		moorings[n] = (level.get_node(n) as Node3D).global_transform
-	for boat_name in ["BarchinoTiller", "BarchinoConsole", "Gozzo", "Peschereccio"]:
+	for boat_name in ["BarchinoTiller", "BarchinoConsole", "Gozzo", "Peschereccio", "Vaporetto"]:
+		if not only.is_empty() and not boat_name in only:
+			continue
 		var boat: RigidBody3D = level.get_node(boat_name)
 		water.call("SetSeaState", 1.0, 0.0)
 		# Tutte le barche all'ormeggio: in tempesta una barca lasciata accanto al pontile fisso ci
@@ -149,6 +262,8 @@ func _run() -> void:
 			other.angular_velocity = Vector3.ZERO
 		await wait(1.5)
 		print("[boats] %s a riposo: y %.2f, massa %.0f kg" % [boat_name, boat.global_position.y, boat.mass])
+		await board_from_water(boat)
+		await board_through_gate(boat)
 		await take_helm(boat)
 
 		# Pilota seduto: vista di tre quarti dal fianco, corpo intero; poi la prima persona.
@@ -170,6 +285,9 @@ func _run() -> void:
 		await drive(boat, 0.0, 1.0, 0.3)
 		await snap(boat_name + "_prima_persona")
 		look_pitch(-400.0)
+		# Visuale in guida (pipeline §4.1): sguardo dritto a prua, si deve vedere fuori dai vetri.
+		await drive(boat, 0.0, 0.0, 0.3)
+		await snap(boat_name + "_prima_persona_avanti")
 
 		# Mare poco mosso: accelerazione e virata.
 		var r := await drive(boat, 1.0, 0.0, 8.0)

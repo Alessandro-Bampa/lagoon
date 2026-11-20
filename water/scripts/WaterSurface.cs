@@ -77,6 +77,12 @@ public partial class WaterSurface : Node3D
     private bool _paletteInitialized;
     private double _zoneTimer;
 
+    /// Solo editor: frequenza massima degli aggiornamenti dovuti all'orologio (onde animate).
+    private const double EditorRefreshHz = 30.0;
+    private double _editorOriginX = double.NaN, _editorOriginZ = double.NaN;
+    private int _editorState;
+    private ulong _editorLastUpdateMsec;
+
     private readonly Vector4[] _waveA = new Vector4[WaveSpectrum.MaxWaves];
     private readonly Vector4[] _waveB = new Vector4[WaveSpectrum.MaxWaves];
 
@@ -174,6 +180,8 @@ public partial class WaterSurface : Node3D
         Vector3 camPos = cam.GlobalPosition;
         double ox = Math.Floor(camPos.X / _snapStep) * _snapStep;
         double oz = Math.Floor(camPos.Z / _snapStep) * _snapStep;
+        if (Engine.IsEditorHint() && !EditorNeedsUpdate(ox, oz))
+            return;
         _mesh.GlobalTransform = new Transform3D(Basis.Identity, new Vector3((float)ox, 0f, (float)oz));
 
         double time = _water.RenderTime;
@@ -186,9 +194,40 @@ public partial class WaterSurface : Node3D
 
     private Camera3D? ActiveCamera()
     {
+#if TOOLS
         if (Engine.IsEditorHint())
             return EditorInterface.Singleton.GetEditorViewport3D(0)?.GetCamera3D();
+#endif
         return GetViewport().GetCamera3D();
+    }
+
+    /// <summary>
+    /// Solo editor. Ogni scrittura su un materiale fa ridisegnare la vista 3D, e l'editor ridisegna
+    /// solo se qualcosa cambia: riscrivendo le uniformi a ogni frame la vista restava a ~140 fps fissi
+    /// (misura del 19/11/2026, MainLaguna: GPU all'80 % con l'editor da solo, al 100 % con il gioco).
+    /// Si aggiorna quindi quando la griglia scatta (camera spostata: subito, sennò si vedrebbe
+    /// rincorrere la camera) o quando cambia lo stato che si vede (orologio, livello, mare, banco
+    /// d'onde, rettangolo dell'acqua), al piu' a <see cref="EditorRefreshHz"/>. Con le onde ferme
+    /// (<see cref="WaterVolume.AnimateInEditor"/> spento, o gioco avviato) l'orologio non cambia e la
+    /// vista resta immobile finche' non la si tocca.
+    /// </summary>
+    private bool EditorNeedsUpdate(double ox, double oz)
+    {
+        bool moved = ox != _editorOriginX || oz != _editorOriginZ;
+        WaterVolume water = _water!;
+        int state = HashCode.Combine(water.RenderTime, water.WaterLevel, water.SeaState,
+            System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(water.Spectrum),
+            water.DefaultExposure, water.ExtentXZ, water.GlobalPosition);
+        ulong now = Time.GetTicksMsec();
+        bool due = state != _editorState && now - _editorLastUpdateMsec >= 1000.0 / EditorRefreshHz;
+        if (!moved && !due)
+            return false;
+
+        _editorOriginX = ox;
+        _editorOriginZ = oz;
+        _editorState = state;
+        _editorLastUpdateMsec = now;
+        return true;
     }
 
     private void UpdateWaves(WaveSpectrum spectrum, double ox, double oz, double time)
@@ -242,6 +281,13 @@ public partial class WaterSurface : Node3D
 
     private void UpdatePalette(Vector3 camPos, double delta)
     {
+        if (Engine.IsEditorHint())
+        {
+            // Nell'editor niente sfumatura (sarebbero altri frame da ridisegnare): la zona si guarda a
+            // ogni aggiornamento, che arriva solo quando la camera si sposta, e il colore scatta.
+            _zoneTimer = 0.0;
+            _paletteInitialized = false;
+        }
         _zoneTimer -= delta;
         if (_zoneTimer <= 0.0 || _targetPalette == null)
         {

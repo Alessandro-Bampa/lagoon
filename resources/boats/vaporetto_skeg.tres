@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="FoilDefinition" format=3]
+
+[ext_resource type="Script" uid="uid://5c1r86wn5nmo" path="res://vehicles/scripts/Propulsion/FoilDefinition.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+Kind = 2
+Mount = "Mount_Skeg"
+Area = 5.25
+Span = 0.73
+StallDegrees = 25.0
+DragCoefficient = 0.02
+ChordSegments = 3
+Chord = 7.15

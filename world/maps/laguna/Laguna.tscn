@@ -1,33 +1,17 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://d08iqgpkpk75w"]
 
-[ext_resource type="Script" path="res://world/scripts/TerrainStreamer.cs" id="1_streamer"]
+[ext_resource type="Script" uid="uid://bbrt3hs33esg2" path="res://world/scripts/TerrainStreamer.cs" id="1_streamer"]
+[ext_resource type="Script" uid="uid://des50dgjni8ga" path="res://addons/terrain_3d/csharp/Terrain3D.cs" id="2_508ab"]
 [ext_resource type="PackedScene" path="res://water/scenes/Water.tscn" id="2_water"]
-[ext_resource type="Shader" path="res://world/shaders/far_terrain.gdshader" id="3_far"]
-[ext_resource type="Texture2D" path="res://world/maps/laguna/far/far_atlas.png" id="4_atlas"]
-[ext_resource type="Terrain3DAssets" path="res://world/maps/laguna/terrain_assets.tres" id="5_assets"]
-[ext_resource type="Script" path="res://world/scripts/WorldRenderSettings.cs" id="6_render"]
-
-[sub_resource type="SceneReplicationConfig" id="Repl_render"]
-properties/0/path = NodePath(".:SessionRenderDistance")
-properties/0/spawn = true
-properties/0/replication_mode = 1
-
-[sub_resource type="Terrain3DMaterial" id="Terrain3DMaterial_lag"]
-world_background = 0
-show_checkered = false
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_far"]
-render_priority = 0
-shader = ExtResource("3_far")
-shader_parameter/atlas = ExtResource("4_atlas")
-shader_parameter/world_rect = Vector4(-24576, -24576, 24576, 24576)
-
-[sub_resource type="PlaneMesh" id="PlaneMesh_far"]
-size = Vector2(49152, 49152)
+[ext_resource type="Shader" uid="uid://vgxs8clgu5i" path="res://world/shaders/far_terrain.gdshader" id="3_far"]
+[ext_resource type="Texture2D" uid="uid://djw160nqackb1" path="res://world/maps/laguna/far/far_atlas.png" id="4_atlas"]
+[ext_resource type="Terrain3DAssets" uid="uid://haqxxm8vgdg8" path="res://world/maps/laguna/terrain_assets.tres" id="5_assets"]
+[ext_resource type="Script" uid="uid://d2b5wf17o12ug" path="res://world/scripts/WorldRenderSettings.cs" id="6_render"]
+[ext_resource type="PackedScene" uid="uid://qq8naxatvrbv" path="res://vehicles/scenes/boats/BarchinoTiller.tscn" id="8_rhavi"]
+[ext_resource type="Script" uid="uid://dh30pyein5y3y" path="res://water/scripts/SeaStateDebugControls.cs" id="9_rhavi"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_lag"]
 ground_bottom_color = Color(0.6463, 0.6558, 0.6708, 1)
-ground_horizon_color = Color(0.6463, 0.6558, 0.6708, 1)
 
 [sub_resource type="Sky" id="Sky_lag"]
 sky_material = SubResource("ProceduralSkyMaterial_lag")
@@ -42,46 +26,99 @@ fog_light_color = Color(0.72, 0.78, 0.84, 1)
 fog_density = 0.00012
 fog_sky_affect = 0.3
 
-[node name="Laguna" type="Node3D"]
+[sub_resource type="Terrain3DMaterial" id="Terrain3DMaterial_lag"]
+_shader_parameters = {
+&"bias_distance": null,
+&"blend_sharpness": null,
+&"depth_blur": null,
+&"distant_normal_scale": null,
+&"flat_terrain_normals": null,
+&"general_uniforms": null,
+&"mipmap_bias": null,
+&"mipmaps": null,
+&"private": null
+}
+world_background = 0
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+[sub_resource type="SceneReplicationConfig" id="Repl_render"]
+properties/0/path = NodePath(".:SessionRenderDistance")
+properties/0/spawn = true
+properties/0/replication_mode = 1
+
+[sub_resource type="Image" id="Image_rhavi"]
+data = {
+"data": PackedByteArray(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+"format": "Red8",
+"height": 24,
+"mipmaps": false,
+"width": 24
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_xm7dj"]
+image = SubResource("Image_rhavi")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_far"]
+render_priority = 0
+shader = ExtResource("3_far")
+shader_parameter/atlas = ExtResource("4_atlas")
+shader_parameter/loaded_mask = SubResource("ImageTexture_xm7dj")
+shader_parameter/world_rect = Vector4(-24576, -24576, 24576, 24576)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_far"]
+size = Vector2(49152, 49152)
+
+[node name="Laguna" type="Node3D" unique_id=173238680]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=897675601]
 environment = SubResource("Environment_lag")
 
-[node name="Sun" type="DirectionalLight3D" parent="."]
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=1732110534]
 transform = Transform3D(0.819152, 0.42625, -0.383798, 0, 0.669131, 0.743145, 0.573576, -0.608749, 0.54812, 0, 100, 0)
 shadow_enabled = true
 directional_shadow_max_distance = 250.0
 
-[node name="Terrain3D" type="Terrain3D" parent="."]
-region_size = 2048
+[node name="Terrain3D" type="Terrain3D" parent="." unique_id=1102239563]
 material = SubResource("Terrain3DMaterial_lag")
 assets = ExtResource("5_assets")
-cast_shadows = 0
 color_compress_mode = 0
+keep_uncompressed_color = false
+cast_shadows = 0
+displacement_sharpness = 0.5
+top_level = true
+script = ExtResource("2_508ab")
+metadata/_edit_lock_ = true
 
-[node name="TerrainStreamer" type="Node" parent="."]
+[node name="TerrainStreamer" type="Node" parent="." unique_id=1764914622]
 script = ExtResource("1_streamer")
 
-[node name="WorldRenderSettings" type="Node" parent="."]
+[node name="WorldRenderSettings" type="Node" parent="." unique_id=1541400840]
 script = ExtResource("6_render")
 
-[node name="Sync" type="MultiplayerSynchronizer" parent="WorldRenderSettings"]
-root_path = NodePath("..")
+[node name="Sync" type="MultiplayerSynchronizer" parent="WorldRenderSettings" unique_id=865742300]
 replication_interval = 1.0
 replication_config = SubResource("Repl_render")
 
-[node name="FarTerrain" type="MeshInstance3D" parent="."]
+[node name="FarTerrain" type="MeshInstance3D" parent="." unique_id=472838246]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
+material_override = SubResource("ShaderMaterial_far")
 cast_shadow = 0
 mesh = SubResource("PlaneMesh_far")
-material_override = SubResource("ShaderMaterial_far")
 
-[node name="Water" parent="." instance=ExtResource("2_water")]
+[node name="Water" parent="." unique_id=619219195 instance=ExtResource("2_water")]
 ExtentXZ = Vector2(200000, 200000)
 WaterMapDirectory = "res://world/maps/laguna/water"
-InitialSeaState = 1.0
+WindFromDegrees = 200.0
+SyncWaveTime = 11.000000000000126
+SyncSeaState = 1.0
+SyncWaterLevel = 0.45039597
 
-[node name="PreviewCamera" type="Camera3D" parent="."]
+[node name="PreviewCamera" type="Camera3D" parent="." unique_id=1745220231]
 transform = Transform3D(0.452651, -0.175547, 0.874237, 0, 0.98043, 0.19687, -0.891688, -0.0891134, 0.443792, -6600, 60, -7150)
 current = true
 far = 30000.0
+
+[node name="BarchinoTiller" parent="." unique_id=1712968364 instance=ExtResource("8_rhavi")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1168.7675, 0, -14054.651)
+
+[node name="SeaControls" type="Node" parent="." unique_id=21154637]
+script = ExtResource("9_rhavi")

@@ -113,12 +113,18 @@ public partial class VehicleInput : Node
             return;
         }
 
-        BoatController? nearest = VehicleRegistry.NearestHelm(_player, _player.GlobalPosition, out _);
-        if (nearest == null || nearest.HasPilot)
+        // A piedi (o a nuoto): il piu' vicino fra timone e cancello scorrevole (stesso arbitro della HUD).
+        VehicleInteraction.Target(_player, out BoatController? nearest, out int gate, out _);
+        if (nearest == null)
             return;
 
-        // Solo un intento: l'host rivalida timone libero e distanza sulla posizione replicata.
-        nearest.SubmitTakeHelm();
+        // Solo intenti: l'host rivalida distanza (sulla posizione replicata), timone libero, frequenza.
+        if (gate >= 0)
+            nearest.SubmitToggleGate(gate);
+        else if (!nearest.HasPilot)
+            nearest.SubmitTakeHelm();
+        else
+            return;
         GetViewport().SetInputAsHandled();
     }
 }

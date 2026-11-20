@@ -88,6 +88,20 @@ public partial class BoatController : RigidBody3D
     [Export] public float SyncEngineRpm { get; set; }
     [Export] public float SyncPropRpm { get; set; }
 
+    /// <summary>
+    /// Cancelli scorrevoli aperti (bit N = cancello N di <see cref="BoatAssembly.Gates"/>). Deciso
+    /// dall'host su richiesta (<see cref="RequestToggleGate"/>), replicato: ogni peer ne fa scorrere i
+    /// pannelli e le loro collisioni.
+    /// </summary>
+    [Export] public int SyncGateOpenMask { get; set; }
+
+    /// Distanza massima dal centro del varco per aprire o chiudere un cancello (validata dall'host).
+    [Export] public float GateRange { get; set; } = 2.0f;
+
+    /// Tempo minimo fra due comandi allo stesso cancello (host): niente sfarfallio da tasto ripetuto.
+    private const float GateCooldownSeconds = 0.6f;
+    private readonly System.Collections.Generic.Dictionary<int, ulong> _gateLastToggleMs = new();
+
     // ====================================================================================
     //  Stato locale
     // ====================================================================================
@@ -236,6 +250,59 @@ public partial class BoatController : RigidBody3D
     {
         // Resa del governo su ogni peer, dallo stato replicato (sull'host e' lo stesso valore).
         _assembly?.ApplyHelmPose(SyncMotorAngle, SyncTrim, SyncPropRpm, delta);
+        _assembly?.Gates?.Apply(SyncGateOpenMask, delta);
+    }
+
+    /// Numero di cancelli scorrevoli (0 = nessuno). Anche per i collaudi in GDScript.
+    public int GateCount => _assembly?.Gates?.Count ?? 0;
+
+    /// Centro del varco del cancello in coordinate globali (punto di manovra, ~1 m sopra il ponte).
+    public Vector3 GateGlobalCenter(int gate) =>
+        _assembly?.Gates is BoatGates g && gate >= 0 && gate < g.Count ? GlobalTransform * g.Center(gate) : GlobalPosition;
+
+    /// <summary>
+    /// Distanza ORIZZONTALE (nel piano della barca) fra <paramref name="from"/> e il varco; infinita se
+    /// il dislivello supera <see cref="GateMaxRise"/>. Chi nuota ha il centro della capsula mezzo metro
+    /// sotto l'acqua e il varco 1,5-2 m sopra: con la distanza 3D non arrivava mai a portata.
+    /// </summary>
+    public float GateDistance(int gate, Vector3 from)
+    {
+        if (_assembly?.Gates is not BoatGates gates || gate < 0 || gate >= gates.Count)
+            return float.MaxValue;
+        Vector3 d = from - GlobalTransform * gates.Center(gate);
+        Vector3 up = GlobalBasis.Y.Normalized();
+        float rise = d.Dot(up);
+        if (Mathf.Abs(rise) > GateMaxRise)
+            return float.MaxValue;
+        return (d - up * rise).Length();
+    }
+
+    /// Dislivello massimo fra il giocatore e il centro del varco per manovrare il cancello (m).
+    private const float GateMaxRise = 2.6f;
+
+    /// <summary>
+    /// Cancello piu' vicino a <paramref name="from"/> (posizione globale del centro della capsula)
+    /// entro <see cref="GateRange"/>; -1 se nessuno.
+    /// </summary>
+    public int NearestGate(Vector3 from, out float distance)
+    {
+        distance = float.MaxValue;
+        int best = -1;
+        BoatGates? gates = _assembly?.Gates;
+        if (gates == null)
+            return -1;
+        for (int g = 0; g < gates.Count; g++)
+        {
+            float d = GateDistance(g, from);
+            if (d <= GateRange && d < distance)
+            {
+                distance = d;
+                best = g;
+            }
+        }
+        if (best < 0)
+            distance = float.MaxValue;
+        return best;
     }
 
     /// <summary>
@@ -640,6 +707,43 @@ public partial class BoatController : RigidBody3D
         if (Mathf.Abs(_trimCommand) > 0.01f)
             _manualTrim = true;
         _sinceLastInput = 0f;
+    }
+
+    /// Intento "apri/chiudi il cancello N". Host = locale; client = RpcId(host).
+    public void SubmitToggleGate(int gate)
+    {
+        if (IsMultiplayerAuthority())
+            RequestToggleGate(gate);
+        else
+            RpcId(NetworkConstants.HostPeerId, MethodName.RequestToggleGate, gate);
+    }
+
+    /// <summary>
+    /// Chiunque (anche da in acqua: e' da li' che si sale a bordo) puo' chiederlo; l'host valida che
+    /// il cancello esista e che il richiedente sia davvero al varco, sulla posizione REPLICATA del suo
+    /// avatar, e limita la frequenza. Il risultato e' <see cref="SyncGateOpenMask"/>, replicato.
+    /// </summary>
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    public void RequestToggleGate(int gate)
+    {
+        if (!IsMultiplayerAuthority())
+            return;
+        BoatGates? gates = _assembly?.Gates;
+        if (gates == null || gate < 0 || gate >= gates.Count || gate >= 31)
+            return;
+
+        PlayerController? player = VehicleRegistry.FindPlayer(this, ResolveSender());
+        if (player == null)
+            return;
+        // Tolleranza sulla portata: la posizione replicata arriva con un po' di ritardo.
+        if (GateDistance(gate, player.ResolvedSyncPosition) > GateRange + 0.5f)
+            return;
+
+        ulong now = Time.GetTicksMsec();
+        if (_gateLastToggleMs.TryGetValue(gate, out ulong last) && now - last < (ulong)(GateCooldownSeconds * 1000f))
+            return;
+        _gateLastToggleMs[gate] = now;
+        SyncGateOpenMask ^= 1 << gate;
     }
 
     /// Peer mittente dell'RPC corrente; 0 significa "chiamata locale dell'host".

@@ -126,7 +126,15 @@ public sealed class BoatPhysics
                 force -= against * (braking - limit);
         }
 
-        // Massa aggiunta: F' = F·m/(m + A) per asse, A scalata con l'immersione.
+        // Massa aggiunta: F' = F·m/(m + A) per asse, A scalata con l'immersione. La scalatura vale per
+        // l'accelerazione RELATIVA agli assi della barca, non per la parte dovuta alla rotazione: in
+        // virata a regime l'accelerazione centripeta laterale u·r e' tutta "rotazione", e la quantita'
+        // di moto dell'acqua che la produce e' quella d'AVANZO (A_avanzo·u ruotata), non quella di
+        // deriva. Scalando anche lei la barca girava come se pesasse (1 + a_deriva) volte: deriva in
+        // virata gonfiata del 30-80% e punto di rotazione davanti alla prua. Forma corretta (Fossen,
+        // corpo con massa diagonale M = m + A): F' = (F − ω × (M v)) ⊘ (1 + a) + m·(ω × v), con v
+        // relativa all'acqua. Il momento di Munk (v × A v) resta escluso: il modello per triangoli non
+        // ha la ripresa viscosa che in uno scafo vero lo compensa in parte.
         AddedMassScale = Mathf.Clamp(Hydro.ImmersedArea / StaticImmersedArea, 0f, 1.5f);
         if (Coefficients.AddedMassEnabled && AddedMassScale > 0f)
         {
@@ -136,7 +144,11 @@ public sealed class BoatPhysics
             Vector3 tb = inv * torque;
             Vector3 lin = HydroSolver.AxesFromSurgeSwayHeave(Coefficients.AddedMass) * AddedMassScale;
             Vector3 ang = HydroSolver.AxesFromRollPitchYaw(Coefficients.AddedInertia) * AddedMassScale;
-            fb = new Vector3(fb.X / (1f + lin.X), fb.Y / (1f + lin.Y), fb.Z / (1f + lin.Z));
+            Vector3 vb = inv * (ctx.LinearVelocity - Hydro.MeanWaterVelocity);
+            Vector3 wb = inv * ctx.AngularVelocity;
+            Vector3 one = Vector3.One;
+            Vector3 coriolis = wb.Cross(mass * (one + lin) * vb);
+            fb = (fb - coriolis) / (one + lin) + mass * wb.Cross(vb);
             tb = new Vector3(tb.X / (1f + ang.X), tb.Y / (1f + ang.Y), tb.Z / (1f + ang.Z));
             force = basis * fb;
             torque = basis * tb;

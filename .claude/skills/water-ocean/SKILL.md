@@ -9,6 +9,7 @@ description: Acqua del mondo — onde di Gerstner identiche su CPU e GPU, marea,
 water/scripts/WaveSpectrum.cs   banco di 12 onde di Gerstner + stati del mare (CPU)    ┐ stesso
 water/shaders/water.gdshader    le stesse onde in vertex, ottica in fragment (GPU)    ┘ contratto
 water/scripts/WaterVolume.cs    stato autoritativo (host): orologio, marea, mare; Sample()
+water/scripts/WaveLocalFrame.cs banco d'onde in float attorno a un punto (letture in massa, §3b)
 water/scripts/WaterSurface.cs   resa per peer: griglia sulla camera, uniformi, colore, velo
 water/scripts/WaterMap.cs       zone (16 m) + esposizione alle onde (32 m) della mappa
 water/scripts/Buoyancy.cs       spinta + trascinamento per punti (barche e oggetti)
@@ -81,6 +82,10 @@ medio con la marea, senza onde (lo usa solo la rete di sicurezza contro il vuoto
 - `Sample(p)`: quota, normale, velocita' delle particelle (onde + `Current`), esposizione.
 - `SampleNear(p, ref offset, iterazioni)`: stessa cosa ma l'inversione di Gerstner riparte dallo
   spostamento del passo prima (lo scafo per triangoli campiona centinaia di vertici: 2 iterazioni).
+- `PrepareLocal(frame, centro)` + `SampleLocal(frame, p, ref offset, iterazioni)`: come `SampleNear`
+  per molte letture vicine nello stesso passo (`WaveLocalFrame`: fase grande in double una volta per
+  onda e avvolta, il resto in float come lo shader; onde spente saltate; esposizione del centro).
+  Stessi numeri di `SampleNear` nelle prove della barca, ~3× piu' veloce.
 - `PeakWavenumber(esposizione)`: k del picco dello spettro corrente, per attenuare con la profondita'.
 - `Density` (1025), `WindVelocity` (a 10 m, dalla direzione delle onde; `WindSpeedOverride` < 0 =
   dallo stato del mare: calmo 1,5 … tempesta 17 m/s), `Current` (corrente uniforme X/Z, sommata a
@@ -89,7 +94,7 @@ medio con la marea, senza onde (lo usa solo la rete di sicurezza contro il vuoto
 ## 4. Galleggiamento (`Buoyancy.Apply`)
 
 Le barche su misura NON lo usano piu': hanno lo scafo per triangoli (skill vehicles-boats §10).
-`Buoyancy` resta per le casse (`FloatingBody`) e la scatola di prova `Boat.tscn`.
+`Buoyancy` resta per le casse (`FloatingBody`).
 
 Per punto (`Marker3D` figli di `Floaters`): spinta ∝ immersione sotto la superficie CON le onde,
 satura a `MaxSubmerge`, auto-bilanciata (`BuoyancyRatio` 2 = a metà); smorzamento verticale
@@ -110,7 +115,9 @@ tratta da massa infinita), la barca sì. Statiche nel livello: per crearle a run
   sempre sugli stessi punti: niente onde che nuotano). `UV2.x` = passo: lo shader spegne le onde
   più corte di 2–4 passi. Qualità: Low 1 m/×1,06 (~100k vertici, niente SSR), Medium 0,5/×1,05
   (~170k, SSR 12 passi), High 0,5/×1,035 (~275k, SSR 24). Misura 1080p RTX 3070 Ti: **acqua
-  0,55–0,75 ms GPU a ogni qualità** (domina il costo fisso della copia di schermo/profondità).
+  0,55–0,75 ms GPU a ogni qualità** con poca acqua a schermo (San Marco). Dove l'acqua riempie la
+  vista costa di più (19/11/2026, laguna presso Torcello, High): metà schermo 1,4 ms (SSR 0,4),
+  vista dall'alto 1,9 ms (SSR 1,1); frame intero 2,0 ms in High, 1,16 ms in Low.
 - **Ottica**: il fondale (screen texture, rifratto) attraversa l'acqua con Beer-Lambert per canale
   (`absorption`), la torbidità lo sostituisce col `scatter_color` illuminato (ALBEDO); Fresnel di
   Schlick; cielo e sole da Godot (SPECULAR), oggetti a schermo da SSR (rifiuta i colpi sotto la
@@ -131,6 +138,19 @@ tratta da massa infinita), la barca sì. Statiche nel livello: per crearle a run
 - Materiali **duplicati** in `_Ready`: le uniformi per frame non devono finire nel `.tscn`.
   `WaterSurface`, `WaterVolume`, `WaterPalette` sono `[Tool]` (onde visibili nell'editor; una
   risorsa letta da un tool senza `[Tool]` è un segnaposto e il cast fallisce).
+- **Editor: niente ridisegno continuo.** Ogni scrittura su un materiale fa ridisegnare la vista 3D;
+  con le uniformi riscritte a ogni frame l'editor restava a ~140 fps e su MainLaguna teneva la GPU
+  all'80 % a gioco fermo. Ora `AnimateInEditor` è **spento di default** (onde ferme ma visibili, i
+  valori dell'ispettore si applicano con un passo a tempo nullo), l'orologio è fermo comunque
+  mentre il gioco è avviato dall'editor (`AnimatingInEditor`), e `WaterSurface` nell'editor scrive
+  lo shader solo se la griglia scatta (subito) o se cambia lo stato visibile (orologio, livello,
+  mare, banco d'onde, rettangolo; al più 30 Hz). Nell'editor il colore della zona scatta senza
+  sfumatura. Chi aggiunge un'uniforme che dipende da altro deve metterlo nella firma di
+  `EditorNeedsUpdate`, sennò nell'editor non si aggiorna. Dopo una build un nodo già aperto tiene il
+  valore che aveva (il vecchio default era acceso): riaprire la scena.
+  Con "Visualizza tempo di frame" acceso la vista è rimasta comunque a ~145 fps (il pannello
+  aggiorna le sue etichette a ogni frame, e ogni aggiornamento chiede un frame nuovo); mentre il gioco è avviato
+  l'editor non scende ai 10 fps da finestra senza focus.
 - `clip_rect` = `ExtentXZ`: in `TestLevel` l'acqua resta nel bacino 60 × 60 m.
 - **Ricarica dell'assembly nell'editor**: a ogni build i campi privati dei nodi `[Tool]` si
   azzerano e `_Ready` non riparte. `WaterVolume` e `WaterSurface` si reinizializzano da soli
@@ -145,7 +165,8 @@ nell'albero remoto a gioco avviato (lì solo sull'host): `InitialSeaState` (0 ca
 grande si vede solo a 1), `WindFromDegrees`, `WaveSeed`, `WaveCount`, `InitialSurge`,
 `TideStartHours`. `ExtentXZ` di `Water.tscn` è 60 × 60: per guardare il mare allargarlo. La
 **velocità** delle onde non è un parametro (c = √(gλ/2π): le lunghe corrono di più, quindi cresce
-con lo stato del mare); `EditorTimeScale` la rallenta o accelera solo nell'anteprima dell'editor.
+con lo stato del mare); per vederle scorrere nell'editor accendere `AnimateInEditor`, poi
+`EditorTimeScale` le rallenta o accelera.
 
 ## 6. Mappa dell'acqua
 
@@ -193,11 +214,14 @@ la deduce (`Swimming`) su ogni peer.
   Sponda in pendenza ripida (i rii nel terreno della laguna sono a ~60°: né pavimento né parete):
   spingendoci contro ci si arrampica (`PushingIntoBank`) finché i piedi non superano
   `SwimClimbMaxAboveWater`. (3) Parete verticale (banchina, scafo): Spazio = `TryStartSwimClimb`,
-  la stessa arrampicata del parkour con la sonda appena sotto il pelo dell'acqua e il limite misurato
-  dall'ACQUA: 0,6 m, oppure 1,6 m entro 1 m da un nodo del gruppo `swim_ladder`
-  (`world/scenes/Props/SwimLadder.tscn`: sulla barca e sul molo di `TestLevel`).
-- **Barca**: lo scafo è solido per chi nuota grazie a `Deck/HullSides` (layer 6, alto fino al
-  ponte); se il bordo della manovra è una barca, la traiettoria la segue (`CarryManeuver`).
+  la stessa arrampicata del parkour con la parete cercata a piu' quote dal pelo dell'acqua in su
+  (−0,1 … +0,35 m: lo specchio di un barchino pesca 0,1 m) e il limite misurato dall'ACQUA: 0,6 m,
+  oppure 1,6 m entro 1 m da un nodo del gruppo `swim_ladder` (`world/scenes/Props/SwimLadder.tscn`
+  sul molo di `TestLevel`; sulle barche la scaletta accessorio). Un bordo sottile con spazio oltre
+  (falchetta) si scavalca invece di salirci sopra.
+- **Barca**: lo scafo è solido per chi nuota grazie a `SwimCollision` (fasciame esterno, layer 6,
+  skill vehicles-boats §6); se il bordo della manovra è una barca, la traiettoria la segue
+  (`CarryManeuver`).
 - A nuoto non si spara né si ricarica (`WeaponController.HandsFree`, host) e non si prende il timone.
 - Collaudo: `tools/playtest_swim.gd` (vedi l'intestazione). Misure, mare 4: occhi sopra l'onda
   min/max 0,03/0,41 m nel bacino (esposizione 0,45), −0,08/0,58 in mare aperto (1,0), 0,05/0,48

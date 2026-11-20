@@ -29,6 +29,7 @@ public sealed class HydroSolver
     private readonly float[] _depth;
     private readonly Vector3[] _waterVel;
     private readonly Vector2[] _offset;
+    private readonly WaveLocalFrame _waves = new();
     private readonly float[] _prevArea;
     private readonly float[] _prevVn;
     private bool _hasPrev;
@@ -90,15 +91,27 @@ public sealed class HydroSolver
         Vector3 waterVelSum = Vector3.Zero;
         float waterHeightSum = 0f;
         int wet = 0;
+        // Area d'acqua letta UNA volta: WaterVolume.Contains legge GlobalPosition, una chiamata al
+        // motore per vertice (un terzo del passo nella build di debug).
+        Vector3 waterOrigin = water?.GlobalPosition ?? Vector3.Zero;
+        Vector2 waterHalf = (water?.ExtentXZ ?? Vector2.Zero) * 0.5f;
+        // Banco d'onde locale al baricentro: fase grande in double una volta per onda, il resto in
+        // float per vertice (come lo shader). Esposizione unica per lo scafo.
+        float peakK = 0f;
+        if (water != null)
+        {
+            water.PrepareLocal(_waves, ctx.Com);
+            peakK = water.PeakWavenumber(_waves.Exposure);
+        }
         for (int v = 0; v < _world.Length; v++)
         {
             Vector3 p = xf * _hull.Vertices[v];
             _world[v] = p;
-            if (water != null && water.Contains(p))
+            if (water != null && Mathf.Abs(p.X - waterOrigin.X) <= waterHalf.X && Mathf.Abs(p.Z - waterOrigin.Z) <= waterHalf.Y)
             {
                 // Inversione di Gerstner ripartendo dal passo precedente: 2 iterazioni bastano
                 // (errore di quota ~mm), 4 al primo passo o dopo un teletrasporto.
-                WaterSample s = water.SampleNear(p, ref _offset[v], _hasPrev ? 2 : 4);
+                WaterSample s = water.SampleLocal(_waves, p, ref _offset[v], _hasPrev ? 2 : 4);
                 float d = s.Height - p.Y;
                 Vector3 vel = s.Velocity;
                 if (d > 0f)
@@ -107,7 +120,7 @@ public sealed class HydroSolver
                     // con lo stiramento di Wheeler (0 in superficie, idrostatica media in fondo) e
                     // velocita' orbitale ridotta. Senza, uno scafo che pesca 2 m in onde di 20 m
                     // sentirebbe sulla chiglia tutta l'onda di superficie e rollerebbe il triplo.
-                    float att = Mathf.Exp(-water.PeakWavenumber(s.Exposure) * d);
+                    float att = Mathf.Exp(-peakK * d);
                     d -= (s.Height - water.WaterLevel) * (1f - att);
                     var current = new Vector3(water.Current.X, 0f, water.Current.Z);
                     vel = (vel - current) * att + current;
@@ -152,9 +165,29 @@ public sealed class HydroSolver
         Vector3 areaCentroid = Vector3.Zero;
         float viscAlong = 0f, pressAlong = 0f;
         Vector3 motionDir = u > 1e-3f ? relComH / u : forward;
+
+        // Presa laterale aggiuntiva (solo forza laterale, vedi HydroCoefficients.LateralPressureScale).
+        float lateralExtra = k.LateralPressureScale - 1f;
+        Vector3 right = xf.Basis.X.Normalized();
+        Vector3 up = xf.Basis.Y.Normalized();
+        // Distribuzione verso il bordo d'attacco: peso 1 + e·(2ξ − 1), ξ = 0 sullo specchio, 1 a prua
+        // (a marcia indietro si inverte), attenuata se la barca non va dritta.
+        float leading = 0f, relief = 0f, alongMin = minAlong, alongSpan = 1f;
+        if ((k.PressureLeadingEdge > 0f || k.TransomRelief > 0f) && wet > 0 && u > 1e-3f)
+        {
+            float along = motionDir.Dot(forward);
+            leading = k.PressureLeadingEdge * along;
+            alongSpan = Mathf.Max(maxAlong - minAlong, 1e-3f);
+            // Specchio ventilato in planata (Froude volumetrico del passo prima): la pressione
+            // idrostatica si annulla sullo specchio e torna piena al bordo d'attacco.
+            if (k.Hull != HullType.Displacement)
+                relief = k.TransomRelief * Mathf.Max(along, 0f)
+                    * Mathf.SmoothStep(k.WaveFadeFnv.X, k.WaveFadeFnv.Y, FroudeVolumetric);
+        }
         float slamGammaMax = Mathf.Max(k.SlamGammaMaxG * g, 0.01f);
         float dt = Mathf.Max(ctx.Dt, 1e-4f);
         bool airborneTerms = k.AirCd > 0f;
+        bool calmAir = windAt10m.LengthSquared() < 1e-6f;
 
         Span<Vector3> poly = _poly;
         Span<float> polyDepth = _polyDepth;
@@ -187,6 +220,8 @@ public sealed class HydroSolver
                     // Idrostatica: solo verticale, nel centro di pressione.
                     HydroMath.PressureSplit(p0, p1, p2, d0, d1, d2, area, out float f1, out Vector3 cp1, out float f2, out Vector3 cp2);
                     float scale = -rho * g * n.Y;
+                    if (relief > 0f)
+                        scale *= 1f - relief * (1f - Mathf.Clamp((c.Dot(forward) - alongMin) / alongSpan, 0f, 1f));
                     var fv1 = new Vector3(0f, f1 * scale, 0f);
                     var fv2 = new Vector3(0f, f2 * scale, 0f);
                     force += fv1 + fv2;
@@ -211,6 +246,15 @@ public sealed class HydroSolver
                     {
                         float p = (k.PressureLinear * 0.5f * rho * vRef * speed + k.PressureQuadratic * q)
                             * (k.PressureExponent == 1f ? cosTheta : Mathf.Pow(cosTheta, k.PressureExponent));
+                        if (leading != 0f)
+                        {
+                            // Solo il fondo (normale verticale negli assi barca): e' la radice dello
+                            // spruzzo della planata. Sui fianchi spostare la pressione a prua
+                            // sposterebbe avanti la presa laterale (meno stabilita' di rotta).
+                            float ny = n.Dot(up);
+                            float xi = Mathf.Clamp((c.Dot(forward) - alongMin) / alongSpan, 0f, 1f);
+                            p *= 1f + leading * ny * ny * (2f * xi - 1f);
+                        }
                         fPress = -p * area * n;
                     }
                     else
@@ -219,6 +263,22 @@ public sealed class HydroSolver
                             * (k.SuctionExponent == 1f ? -cosTheta : Mathf.Pow(-cosTheta, k.SuctionExponent));
                         p = Mathf.Min(p, k.SuctionVentK * rho * g * Mathf.Max(dMean, 0f));
                         fPress = p * area * n;
+                    }
+
+                    if (lateralExtra != 0f)
+                    {
+                        // Contributo della deriva alla velocita' normale: w = v_lat·n_lat. Pressione
+                        // (w > 0) o suzione (w < 0): in entrambi i casi la forza si oppone alla deriva,
+                        // ∝ n_lat²·|v_lat|, come una lastra in flusso trasversale.
+                        float vl = vRel.Dot(right);
+                        float nl = n.Dot(right);
+                        float w = vl * nl;
+                        bool push = w > 0f;
+                        float pe = lateralExtra * ((push ? k.PressureLinear : k.SuctionLinear) * 0.5f * rho * vRef
+                            + (push ? k.PressureQuadratic : k.SuctionQuadratic) * 0.5f * rho * speed) * Mathf.Abs(w);
+                        if (!push)
+                            pe = Mathf.Min(pe, k.SuctionVentK * rho * g * Mathf.Max(dMean, 0f));
+                        fPress += -Mathf.Sign(vl) * pe * area * Mathf.Abs(nl) * right;
                     }
 
                     Vector3 fDyn = fVisc + fPress;
@@ -260,16 +320,28 @@ public sealed class HydroSolver
             // Aria: pezzi emersi contro il vento apparente.
             if (anyDry && airborneTerms)
             {
-                int count = HydroMath.Clip(_world[ia], _world[ib], _world[ic], da, db, dc,
-                    Vector3.Zero, Vector3.Zero, Vector3.Zero, false, poly, polyDepth, Span<Vector3>.Empty);
+                // Triangolo tutto emerso (la maggior parte): niente taglio, area precalcolata.
+                int count;
+                if (anyWet)
+                {
+                    count = HydroMath.Clip(_world[ia], _world[ib], _world[ic], da, db, dc,
+                        Vector3.Zero, Vector3.Zero, Vector3.Zero, false, poly, polyDepth, Span<Vector3>.Empty);
+                }
+                else
+                {
+                    poly[0] = _world[ia];
+                    poly[1] = _world[ib];
+                    poly[2] = _world[ic];
+                    count = 3;
+                }
                 for (int t = 1; t + 1 < count; t++)
                 {
-                    float area = HydroMath.TriangleArea(poly[0], poly[t], poly[t + 1]);
+                    float area = anyWet ? HydroMath.TriangleArea(poly[0], poly[t], poly[t + 1]) : _hull.Areas[i];
                     if (area < 1e-5f)
                         continue;
                     Vector3 c = (poly[0] + poly[t] + poly[t + 1]) / 3f;
                     float h = Mathf.Max(c.Y - waterLevel, 0.5f);
-                    Vector3 wind = windAt10m * Mathf.Pow(h / 10f, 1f / 7f);
+                    Vector3 wind = calmAir ? Vector3.Zero : windAt10m * Mathf.Pow(h / 10f, 1f / 7f);
                     Vector3 vAir = ctx.PointVelocity(c) - wind;
                     float sp = vAir.Length();
                     if (sp < 1e-3f)
